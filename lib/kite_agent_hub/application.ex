@@ -12,9 +12,7 @@ defmodule KiteAgentHub.Application do
       KiteAgentHub.Repo,
       {DNSCluster, query: Application.get_env(:kite_agent_hub, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: KiteAgentHub.PubSub},
-      # Start a worker by calling: KiteAgentHub.Worker.start_link(arg)
-      # {KiteAgentHub.Worker, arg},
-      # Start to serve requests, typically the last entry
+      {Oban, Application.fetch_env!(:kite_agent_hub, Oban)},
       KiteAgentHubWeb.Endpoint
     ]
 

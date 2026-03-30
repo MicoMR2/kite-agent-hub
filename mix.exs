@@ -41,6 +41,7 @@ defmodule KiteAgentHub.MixProject do
   defp deps do
     [
       {:bcrypt_elixir, "~> 3.0"},
+      {:oban, "~> 2.19"},
       {:phoenix, "~> 1.8.5"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},

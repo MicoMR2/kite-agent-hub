@@ -93,6 +93,10 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
+  def list_open_trades(agent_id) do
+    list_trades(agent_id, status: "open", limit: 200)
+  end
+
   def count_open_trades(agent_id) do
     TradeRecord
     |> where(kite_agent_id: ^agent_id, status: "open")

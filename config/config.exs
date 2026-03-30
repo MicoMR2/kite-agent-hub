@@ -73,6 +73,16 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Oban trade job queue
+config :kite_agent_hub, Oban,
+  engine: Oban.Engines.Basic,
+  repo: KiteAgentHub.Repo,
+  queues: [
+    trade_execution: 5,
+    settlement: 10,
+    position_sync: 2
+  ]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
