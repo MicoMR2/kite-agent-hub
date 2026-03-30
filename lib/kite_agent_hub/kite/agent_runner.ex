@@ -22,7 +22,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   require Logger
 
   alias KiteAgentHub.Trading
-  alias KiteAgentHub.Kite.{RPC, SignalEngine}
+  alias KiteAgentHub.Kite.{RPC, SignalEngine, PriceOracle}
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
   @default_interval_ms 60_000
@@ -128,21 +128,23 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
     open_count = Trading.count_open_trades(agent.id)
 
+    oracle_data =
+      case PriceOracle.get(market) do
+        {:ok, data} -> data
+        _ -> %{price: "0.00", trend: "neutral", rsi: 50, change_24h: 0.0}
+      end
+
     %{
       market: market,
-      price: fetch_market_price(market),
+      price: oracle_data.price,
+      trend: oracle_data.trend,
+      rsi: oracle_data.rsi,
+      change_24h: oracle_data[:change_24h],
       block_number: block_number,
       vault_balance_wei: vault_balance_wei,
       open_positions: open_count,
-      trend: "neutral",
       recent_trades: Trading.list_open_trades(agent.id) |> Enum.take(5)
     }
-  end
-
-  defp fetch_market_price(_market) do
-    # Placeholder — a real implementation would call a price oracle or DEX
-    # For testnet demo purposes, return a static price
-    "3250.00"
   end
 
   defp schedule_tick(interval) do

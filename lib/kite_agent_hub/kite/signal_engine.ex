@@ -68,6 +68,7 @@ defmodule KiteAgentHub.Kite.SignalEngine do
     price = context[:price] || "unknown"
     trend = context[:trend] || "neutral"
     rsi = context[:rsi]
+    change_24h = context[:change_24h]
     recent = context[:recent_trades] || []
 
     recent_summary =
@@ -96,7 +97,8 @@ defmodule KiteAgentHub.Kite.SignalEngine do
     - Market: #{market}
     - Price: #{price}
     - Trend: #{trend}
-    #{if rsi, do: "- RSI: #{rsi}", else: ""}
+    #{if rsi, do: "- RSI (approx): #{rsi}", else: ""}
+    #{if change_24h, do: "- 24h change: #{change_24h}%", else: ""}
 
     ## Recent Trade History
     #{recent_summary}
