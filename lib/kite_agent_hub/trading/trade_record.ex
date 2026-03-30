@@ -51,8 +51,14 @@ defmodule KiteAgentHub.Trading.TradeRecord do
 
   # tx_hash and trade_id_onchain cannot be changed after insert
   defp lock_immutable_fields(changeset) do
-    if changeset.data.tx_hash != nil && get_change(changeset, :tx_hash) do
-      add_error(changeset, :tx_hash, "cannot be changed after insert")
+    changeset
+    |> lock_field(:tx_hash)
+    |> lock_field(:trade_id_onchain)
+  end
+
+  defp lock_field(changeset, field) do
+    if Map.get(changeset.data, field) != nil && get_change(changeset, field) do
+      add_error(changeset, field, "cannot be changed after insert")
     else
       changeset
     end

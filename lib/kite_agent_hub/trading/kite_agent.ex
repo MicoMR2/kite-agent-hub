@@ -31,6 +31,8 @@ defmodule KiteAgentHub.Trading.KiteAgent do
                     :status, :organization_id])
     |> validate_required([:name, :wallet_address, :organization_id])
     |> validate_inclusion(:status, @statuses)
+    |> validate_evm_address(:wallet_address)
+    |> validate_evm_address(:vault_address)
     |> validate_spending_limits()
     |> unique_constraint(:wallet_address)
   end
@@ -47,6 +49,16 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     agent
     |> cast(attrs, [:daily_limit_usd, :per_trade_limit_usd, :max_open_positions])
     |> validate_spending_limits()
+  end
+
+  defp validate_evm_address(changeset, field) do
+    validate_change(changeset, field, fn _, value ->
+      if Regex.match?(~r/\A0x[0-9a-fA-F]{40}\z/, value) do
+        []
+      else
+        [{field, "must be a valid EVM address (0x + 40 hex chars)"}]
+      end
+    end)
   end
 
   defp validate_spending_limits(changeset) do
