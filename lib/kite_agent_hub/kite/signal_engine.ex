@@ -43,13 +43,18 @@ defmodule KiteAgentHub.Kite.SignalEngine do
   Returns {:ok, signal_map}, {:hold, reason}, or {:error, reason}.
   """
   def generate(%KiteAgent{} = agent, context) do
-    api_key = Application.fetch_env!(:kite_agent_hub, :anthropic_api_key)
+    case Application.get_env(:kite_agent_hub, :anthropic_api_key, "") do
+      "" ->
+        Logger.warning("SignalEngine: ANTHROPIC_API_KEY not set, returning hold")
+        {:hold, "api_key_not_configured"}
 
-    prompt = build_prompt(agent, context)
+      api_key ->
+        prompt = build_prompt(agent, context)
 
-    case call_claude(api_key, prompt) do
-      {:ok, text} -> parse_signal(text, context)
-      {:error, _} = err -> err
+        case call_claude(api_key, prompt) do
+          {:ok, text} -> parse_signal(text, context)
+          {:error, _} = err -> err
+        end
     end
   end
 
