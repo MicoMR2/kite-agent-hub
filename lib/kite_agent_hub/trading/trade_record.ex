@@ -31,9 +31,21 @@ defmodule KiteAgentHub.Trading.TradeRecord do
   # Insert-only changeset — tx_hash and trade_id_onchain are set on creation, never updated
   def changeset(record, attrs) do
     record
-    |> cast(attrs, [:trade_id_onchain, :tx_hash, :market, :side, :action,
-                    :contracts, :fill_price, :notional_usd, :status,
-                    :source, :reason, :kite_agent_id])
+    |> cast(attrs, [
+      :trade_id_onchain,
+      :tx_hash,
+      :market,
+      :side,
+      :action,
+      :contracts,
+      :fill_price,
+      :notional_usd,
+      :status,
+      :realized_pnl,
+      :source,
+      :reason,
+      :kite_agent_id
+    ])
     |> validate_required([:market, :side, :action, :contracts, :fill_price, :kite_agent_id])
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:side, @sides)

@@ -26,9 +26,17 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   # Full changeset — used on creation only
   def changeset(agent, attrs) do
     agent
-    |> cast(attrs, [:name, :wallet_address, :vault_address, :chain_id,
-                    :daily_limit_usd, :per_trade_limit_usd, :max_open_positions,
-                    :status, :organization_id])
+    |> cast(attrs, [
+      :name,
+      :wallet_address,
+      :vault_address,
+      :chain_id,
+      :daily_limit_usd,
+      :per_trade_limit_usd,
+      :max_open_positions,
+      :status,
+      :organization_id
+    ])
     |> validate_required([:name, :wallet_address, :organization_id])
     |> validate_inclusion(:status, @statuses)
     |> validate_evm_address(:wallet_address)

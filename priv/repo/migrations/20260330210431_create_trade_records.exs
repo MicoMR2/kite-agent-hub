@@ -16,7 +16,9 @@ defmodule KiteAgentHub.Repo.Migrations.CreateTradeRecords do
       add :realized_pnl, :decimal
       add :source, :string
       add :reason, :string
-      add :kite_agent_id, references(:kite_agents, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :kite_agent_id, references(:kite_agents, type: :binary_id, on_delete: :delete_all),
+        null: false
 
       timestamps(type: :utc_datetime)
     end

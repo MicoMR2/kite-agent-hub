@@ -20,7 +20,9 @@ defmodule KiteAgentHub.Orgs.Organization do
     org
     |> cast(attrs, [:name, :slug])
     |> validate_required([:name, :slug])
-    |> validate_format(:slug, ~r/^[a-z0-9-]+$/, message: "only lowercase letters, numbers, and hyphens")
+    |> validate_format(:slug, ~r/^[a-z0-9-]+$/,
+      message: "only lowercase letters, numbers, and hyphens"
+    )
     |> validate_length(:slug, min: 2, max: 60)
     |> unique_constraint(:slug)
   end

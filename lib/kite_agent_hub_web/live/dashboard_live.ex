@@ -43,8 +43,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     if connected?(socket) do
       if socket.assigns.selected_agent do
-        Phoenix.PubSub.unsubscribe(KiteAgentHub.PubSub, "agent:#{socket.assigns.selected_agent.id}")
+        Phoenix.PubSub.unsubscribe(
+          KiteAgentHub.PubSub,
+          "agent:#{socket.assigns.selected_agent.id}"
+        )
       end
+
       Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent.id}")
     end
 
@@ -71,9 +75,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       true ->
         case Trading.activate_agent(agent, vault_address) do
           {:ok, updated_agent} ->
-            agents = Enum.map(socket.assigns.agents, fn a ->
-              if a.id == updated_agent.id, do: updated_agent, else: a
-            end)
+            agents =
+              Enum.map(socket.assigns.agents, fn a ->
+                if a.id == updated_agent.id, do: updated_agent, else: a
+              end)
 
             {:noreply,
              socket
@@ -82,7 +87,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
              |> put_flash(:info, "Agent activated! Vault is live on Kite chain.")}
 
           {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to activate agent. Check the vault address.")}
+            {:noreply,
+             put_flash(socket, :error, "Failed to activate agent. Check the vault address.")}
         end
     end
   end
@@ -121,7 +127,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     @selected_agent.status == "paused" && "bg-yellow-400",
                     @selected_agent.status == "pending" && "bg-gray-400",
                     @selected_agent.status == "error" && "bg-red-400"
-                  ]}></span>
+                  ]}>
+                  </span>
                   {String.capitalize(@selected_agent.status)}
                 </span>
               <% end %>
@@ -138,11 +145,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <div class="max-w-7xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">
           <!-- Sidebar: Agent List -->
           <div class="col-span-3">
-            <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Your Agents</h2>
+            <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Your Agents
+            </h2>
             <%= if @agents == [] do %>
               <div class="rounded-xl border border-dashed border-gray-700 p-6 text-center">
                 <p class="text-sm text-gray-500">No agents yet.</p>
-                <.link navigate={~p"/agents/new"} class="mt-3 inline-block text-xs text-violet-400 hover:text-violet-300">
+                <.link
+                  navigate={~p"/agents/new"}
+                  class="mt-3 inline-block text-xs text-violet-400 hover:text-violet-300"
+                >
                   Onboard your first agent →
                 </.link>
               </div>
@@ -167,7 +179,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         agent.status == "paused" && "bg-yellow-400",
                         agent.status == "pending" && "bg-gray-500",
                         agent.status == "error" && "bg-red-400"
-                      ]}></span>
+                      ]}>
+                      </span>
                     </div>
                     <p class="text-xs text-gray-500 mt-0.5 font-mono truncate">
                       {String.slice(agent.wallet_address, 0, 10)}…
@@ -177,23 +190,29 @@ defmodule KiteAgentHubWeb.DashboardLive do
               </div>
             <% end %>
           </div>
-
-          <!-- Main: Agent Detail + Trade Feed -->
+          
+    <!-- Main: Agent Detail + Trade Feed -->
           <div class="col-span-9 space-y-6">
             <%= if @selected_agent do %>
               <!-- Agent Stats -->
               <div class="grid grid-cols-4 gap-4">
                 <div class="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
                   <p class="text-xs text-gray-500">Daily Limit</p>
-                  <p class="text-lg font-semibold text-white mt-1">${@selected_agent.daily_limit_usd}K</p>
+                  <p class="text-lg font-semibold text-white mt-1">
+                    ${@selected_agent.daily_limit_usd}K
+                  </p>
                 </div>
                 <div class="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
                   <p class="text-xs text-gray-500">Per Trade</p>
-                  <p class="text-lg font-semibold text-white mt-1">${@selected_agent.per_trade_limit_usd}</p>
+                  <p class="text-lg font-semibold text-white mt-1">
+                    ${@selected_agent.per_trade_limit_usd}
+                  </p>
                 </div>
                 <div class="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
                   <p class="text-xs text-gray-500">Max Positions</p>
-                  <p class="text-lg font-semibold text-white mt-1">{@selected_agent.max_open_positions}</p>
+                  <p class="text-lg font-semibold text-white mt-1">
+                    {@selected_agent.max_open_positions}
+                  </p>
                 </div>
                 <div class="rounded-xl bg-gray-900 border border-gray-800 px-4 py-3">
                   <p class="text-xs text-gray-500">Vault</p>
@@ -204,8 +223,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </p>
                 </div>
               </div>
-
-              <!-- Vault Activation Banner -->
+              
+    <!-- Vault Activation Banner -->
               <%= if @selected_agent.status == "pending" do %>
                 <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
                   <div class="flex items-start gap-4">
@@ -215,7 +234,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <div class="flex-1 min-w-0">
                       <h3 class="text-sm font-semibold text-amber-300 mb-1">Activate your vault</h3>
                       <p class="text-xs text-amber-400/70 mb-4">
-                        Run <code class="bg-gray-800 px-1.5 py-0.5 rounded text-amber-300">python scripts/agent_onboard.py --private-key YOUR_KEY</code> to deploy the vault contract, then paste the address below.
+                        Run
+                        <code class="bg-gray-800 px-1.5 py-0.5 rounded text-amber-300">
+                          python scripts/agent_onboard.py --private-key YOUR_KEY
+                        </code>
+                        to deploy the vault contract, then paste the address below.
                       </p>
                       <.form for={@vault_form} phx-submit="activate_vault" class="flex gap-3">
                         <input
@@ -236,14 +259,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 </div>
               <% end %>
-
-              <!-- Live Trade Feed -->
+              
+    <!-- Live Trade Feed -->
               <div class="rounded-xl bg-gray-900 border border-gray-800">
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
                   <h3 class="text-sm font-semibold text-white">Live Trade Feed</h3>
                   <span class="flex items-center gap-1.5 text-xs text-emerald-400">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Live
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Live
                   </span>
                 </div>
 
@@ -252,7 +274,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     No trades yet — agent is standing by
                   </div>
                   <%= for {id, trade} <- @streams.trades do %>
-                    <div id={id} class="flex items-center gap-4 px-5 py-3 hover:bg-gray-800/50 transition-colors">
+                    <div
+                      id={id}
+                      class="flex items-center gap-4 px-5 py-3 hover:bg-gray-800/50 transition-colors"
+                    >
                       <span class={[
                         "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase",
                         trade.action == "buy" && "bg-emerald-500/15 text-emerald-400",
@@ -261,7 +286,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         {trade.action} {trade.side}
                       </span>
                       <span class="text-sm font-medium text-white flex-1">{trade.market}</span>
-                      <span class="text-xs text-gray-400">{trade.contracts}x @ ${trade.fill_price}</span>
+                      <span class="text-xs text-gray-400">
+                        {trade.contracts}x @ ${trade.fill_price}
+                      </span>
                       <span class={[
                         "text-xs px-2 py-0.5 rounded-full",
                         trade.status == "open" && "bg-blue-500/15 text-blue-400",
@@ -291,7 +318,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <.icon name="hero-cpu-chip" class="w-6 h-6 text-violet-400" />
                 </div>
                 <h3 class="text-lg font-semibold text-white mb-2">No agent selected</h3>
-                <p class="text-sm text-gray-500 mb-6">Onboard an agent to start trading on Kite chain.</p>
+                <p class="text-sm text-gray-500 mb-6">
+                  Onboard an agent to start trading on Kite chain.
+                </p>
                 <.link
                   navigate={~p"/agents/new"}
                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"

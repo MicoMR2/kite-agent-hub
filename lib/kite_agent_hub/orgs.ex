@@ -18,7 +18,10 @@ defmodule KiteAgentHub.Orgs do
     slug = attrs[:slug] || attrs["slug"] || slugify(attrs[:name] || attrs["name"] || "")
 
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:org, Organization.changeset(%Organization{}, Map.put(attrs, :slug, slug)))
+    |> Ecto.Multi.insert(
+      :org,
+      Organization.changeset(%Organization{}, Map.put(attrs, :slug, slug))
+    )
     |> Ecto.Multi.insert(:membership, fn %{org: org} ->
       Membership.changeset(%Membership{}, %{
         user_id: user.id,
