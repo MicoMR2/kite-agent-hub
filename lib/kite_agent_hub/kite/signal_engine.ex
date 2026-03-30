@@ -163,11 +163,14 @@ defmodule KiteAgentHub.Kite.SignalEngine do
         action = parsed["action"]
 
         if action in ["buy", "sell"] do
+          raw_contracts = parsed["contracts"] || 1
+          contracts = max(1, min(raw_contracts, 100))
+
           signal = %{
             "action" => action,
             "side" => parsed["side"] || default_side(action),
             "market" => market,
-            "contracts" => parsed["contracts"] || 1,
+            "contracts" => contracts,
             "fill_price" => parsed["fill_price"] || context[:price] || "0",
             "reason" => parsed["reason"] || "",
             "confidence" => parsed["confidence"] || 0.5

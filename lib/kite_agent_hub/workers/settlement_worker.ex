@@ -25,12 +25,13 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
 
   require Logger
 
-  alias KiteAgentHub.{Repo, Trading}
+  alias KiteAgentHub.{Repo, Trading, Orgs}
   alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.Kite.RPC
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"trade_id" => trade_id} = args, attempt: attempt}) do
+    # Load trade outside RLS context (by primary key) — safe read before we know the owner
     trade = Repo.get!(TradeRecord, trade_id)
 
     if trade.status != "open" do
@@ -38,7 +39,9 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
       :ok
     else
       tx_hash = args["tx_hash"] || trade.tx_hash
-      check_and_settle(trade, tx_hash, attempt)
+      agent = Trading.get_agent!(trade.kite_agent_id)
+      owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
+      Repo.with_user(owner_user_id, fn -> check_and_settle(trade, tx_hash, attempt) end)
     end
   end
 

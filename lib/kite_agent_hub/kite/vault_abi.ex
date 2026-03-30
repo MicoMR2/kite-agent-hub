@@ -63,8 +63,18 @@ defmodule KiteAgentHub.Kite.VaultABI do
   def calldata_for_trade(trade) do
     market_id = market_to_id(trade.market)
     side = side_to_int(trade.side, trade.action)
-    size_wei = round(trade.contracts * 1.0e18)
-    price_wei = round(Decimal.to_float(trade.fill_price) * 1.0e18)
+
+    size_wei =
+      Decimal.new(trade.contracts)
+      |> Decimal.mult(Decimal.new("1000000000000000000"))
+      |> Decimal.round(0)
+      |> Decimal.to_integer()
+
+    price_wei =
+      trade.fill_price
+      |> Decimal.mult(Decimal.new("1000000000000000000"))
+      |> Decimal.round(0)
+      |> Decimal.to_integer()
 
     encode_open_position(market_id, side, size_wei, price_wei)
   end

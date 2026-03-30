@@ -31,7 +31,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   require Logger
 
-  alias KiteAgentHub.Trading
+  alias KiteAgentHub.{Trading, Repo, Orgs}
   alias KiteAgentHub.Kite.{RPC, TxSigner, VaultABI}
 
   @impl Oban.Worker
@@ -49,7 +49,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         {:cancel, "per-trade limit exceeded"}
 
       true ->
-        execute_trade(agent, args)
+        owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
+        Repo.with_user(owner_user_id, fn -> execute_trade(agent, args) end)
     end
   end
 
@@ -105,9 +106,11 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       {:ok, tx_hash} ->
         Logger.info("TradeExecutionWorker: trade #{trade.id} submitted, tx=#{tx_hash}")
 
+        # tx_hash update runs inside the same Repo.with_user context as create_trade
+        # (this function is called from within the with_user block in perform/1)
         trade
         |> KiteAgentHub.Trading.TradeRecord.changeset(%{tx_hash: tx_hash})
-        |> KiteAgentHub.Repo.update()
+        |> Repo.update()
 
         enqueue_settlement(trade.id, tx_hash)
         :ok
