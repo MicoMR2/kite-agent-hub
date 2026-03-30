@@ -1,0 +1,9 @@
+.elixir_ls
+_build
+deps
+node_modules
+.git
+.env
+*.secret
+test
+priv/static/uploads
