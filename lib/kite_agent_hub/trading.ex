@@ -16,6 +16,12 @@ defmodule KiteAgentHub.Trading do
 
   def get_agent!(id), do: Repo.get!(KiteAgent, id)
 
+  def list_all_active_agents do
+    KiteAgent
+    |> where(status: "active")
+    |> Repo.all()
+  end
+
   def get_agent_by_wallet(wallet_address) do
     Repo.get_by(KiteAgent, wallet_address: wallet_address)
   end
@@ -46,6 +52,7 @@ defmodule KiteAgentHub.Trading do
          |> Repo.update() do
       {:ok, updated} = ok ->
         Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        KiteAgentHub.Kite.AgentRunnerSupervisor.start_agent(updated.id)
         ok
 
       err ->
@@ -59,6 +66,7 @@ defmodule KiteAgentHub.Trading do
          |> Repo.update() do
       {:ok, updated} = ok ->
         Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        KiteAgentHub.Kite.AgentRunnerSupervisor.stop_agent(updated.id)
         ok
 
       err ->
@@ -72,6 +80,7 @@ defmodule KiteAgentHub.Trading do
          |> Repo.update() do
       {:ok, updated} = ok ->
         Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        KiteAgentHub.Kite.AgentRunnerSupervisor.start_agent(updated.id)
         ok
 
       err ->
