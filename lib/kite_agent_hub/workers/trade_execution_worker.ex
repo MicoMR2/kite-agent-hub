@@ -32,6 +32,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   require Logger
 
   alias KiteAgentHub.Trading
+  alias KiteAgentHub.Kite.{RPC, TxSigner}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -77,17 +78,91 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  defp maybe_submit_onchain(trade, agent, _args) do
-    if agent.vault_address do
-      # The actual signed transaction hex would be passed from the calling agent's local wallet.
-      # In the current architecture the agent signs locally and passes signed_tx_hex in args.
-      # If not provided, we record the trade intent without submitting to chain.
-      Logger.info(
-        "TradeExecutionWorker: vault present but no signed_tx in args — trade #{trade.id} recorded as open, awaiting settlement"
-      )
-    end
+  defp maybe_submit_onchain(trade, agent, args) do
+    signed_tx = args["signed_tx_hex"]
+    private_key = Application.get_env(:kite_agent_hub, :agent_private_key, "")
 
-    :ok
+    cond do
+      signed_tx ->
+        # Caller already signed — submit directly
+        submit_tx(trade, signed_tx)
+
+      private_key != "" and agent.vault_address ->
+        # Server-side signing using configured key
+        sign_and_submit(trade, agent, private_key)
+
+      true ->
+        Logger.info(
+          "TradeExecutionWorker: no signing key — trade #{trade.id} recorded as open intent"
+        )
+
+        :ok
+    end
+  end
+
+  defp submit_tx(trade, signed_tx_hex) do
+    case RPC.send_raw_transaction(signed_tx_hex) do
+      {:ok, tx_hash} ->
+        Logger.info("TradeExecutionWorker: trade #{trade.id} submitted, tx=#{tx_hash}")
+
+        trade
+        |> KiteAgentHub.Trading.TradeRecord.changeset(%{tx_hash: tx_hash})
+        |> KiteAgentHub.Repo.update()
+
+        enqueue_settlement(trade.id, tx_hash)
+        :ok
+
+      {:error, reason} ->
+        Logger.error("TradeExecutionWorker: tx submission failed: #{inspect(reason)}")
+        {:error, "tx_submit_failed"}
+    end
+  end
+
+  defp sign_and_submit(trade, agent, private_key) do
+    case RPC.get_transaction_count(agent.vault_address) do
+      {:ok, nonce} ->
+        case RPC.gas_price() do
+          {:ok, gas_price} ->
+            tx = %{
+              nonce: nonce,
+              gas_price: gas_price,
+              gas_limit: 100_000,
+              to: agent.vault_address,
+              value: 0,
+              data: encode_trade_calldata(trade)
+            }
+
+            case TxSigner.sign(tx, private_key, chain_id: agent.chain_id || 2368) do
+              {:ok, signed_hex} ->
+                submit_tx(trade, signed_hex)
+
+              {:error, reason} ->
+                Logger.error("TradeExecutionWorker: signing failed: #{inspect(reason)}")
+                {:error, "signing_failed"}
+            end
+
+          {:error, reason} ->
+            Logger.error("TradeExecutionWorker: gas_price fetch failed: #{inspect(reason)}")
+            {:error, "gas_price_failed"}
+        end
+
+      {:error, reason} ->
+        Logger.error("TradeExecutionWorker: nonce fetch failed: #{inspect(reason)}")
+        {:error, "nonce_failed"}
+    end
+  end
+
+  defp enqueue_settlement(trade_id, tx_hash) do
+    %{"trade_id" => trade_id, "tx_hash" => tx_hash}
+    |> KiteAgentHub.Workers.SettlementWorker.new(schedule_in: 15)
+    |> Oban.insert()
+  end
+
+  # Placeholder ABI encoding — encode trade action as a minimal calldata stub.
+  # In production this would use the TradingAgentVault ABI.
+  defp encode_trade_calldata(trade) do
+    action_byte = if trade.action == "buy", do: "01", else: "00"
+    "0x" <> action_byte
   end
 
   defp within_per_trade_limit?(agent, args) do

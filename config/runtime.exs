@@ -7,7 +7,8 @@ config :kite_agent_hub,
   workos_redirect_uri:
     System.get_env("WORKOS_REDIRECT_URI") ||
       "http://localhost:4000/auth/workos/callback",
-  anthropic_api_key: System.get_env("ANTHROPIC_API_KEY") || ""
+  anthropic_api_key: System.get_env("ANTHROPIC_API_KEY") || "",
+  agent_private_key: System.get_env("AGENT_PRIVATE_KEY") || ""
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
