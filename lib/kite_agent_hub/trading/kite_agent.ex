@@ -23,6 +23,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     timestamps(type: :utc_datetime)
   end
 
+  # Full changeset — used on creation only
   def changeset(agent, attrs) do
     agent
     |> cast(attrs, [:name, :wallet_address, :vault_address, :chain_id,
@@ -30,9 +31,28 @@ defmodule KiteAgentHub.Trading.KiteAgent do
                     :status, :organization_id])
     |> validate_required([:name, :wallet_address, :organization_id])
     |> validate_inclusion(:status, @statuses)
+    |> validate_spending_limits()
+    |> unique_constraint(:wallet_address)
+  end
+
+  # Name-only update — spending limits never touched
+  def name_changeset(agent, attrs) do
+    agent
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+  end
+
+  # Privileged — spending limits require explicit mutation, not general form update
+  def spending_limits_changeset(agent, attrs) do
+    agent
+    |> cast(attrs, [:daily_limit_usd, :per_trade_limit_usd, :max_open_positions])
+    |> validate_spending_limits()
+  end
+
+  defp validate_spending_limits(changeset) do
+    changeset
     |> validate_number(:daily_limit_usd, greater_than: 0)
     |> validate_number(:per_trade_limit_usd, greater_than: 0)
     |> validate_number(:max_open_positions, greater_than: 0)
-    |> unique_constraint(:wallet_address)
   end
 end

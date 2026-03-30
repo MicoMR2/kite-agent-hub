@@ -24,9 +24,17 @@ defmodule KiteAgentHub.Trading do
     |> Repo.insert()
   end
 
-  def update_agent(%KiteAgent{} = agent, attrs) do
+  # General name update only — spending limits require explicit separate call
+  def update_agent_name(%KiteAgent{} = agent, name) do
     agent
-    |> KiteAgent.changeset(attrs)
+    |> KiteAgent.name_changeset(%{name: name})
+    |> Repo.update()
+  end
+
+  # Spending limits are a privileged mutation — separate from general updates
+  def update_spending_limits(%KiteAgent{} = agent, attrs) do
+    agent
+    |> KiteAgent.spending_limits_changeset(attrs)
     |> Repo.update()
   end
 
@@ -64,7 +72,7 @@ defmodule KiteAgentHub.Trading do
 
   def settle_trade(%TradeRecord{} = record, pnl) do
     record
-    |> TradeRecord.changeset(%{status: "settled", realized_pnl: pnl})
+    |> TradeRecord.settle_changeset(pnl)
     |> Repo.update()
   end
 
