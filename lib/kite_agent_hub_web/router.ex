@@ -69,6 +69,7 @@ defmodule KiteAgentHubWeb.Router do
       on_mount: [{KiteAgentHubWeb.UserAuth, :require_authenticated}] do
       live "/dashboard", DashboardLive
       live "/agents/new", AgentOnboardLive
+      live "/trades", TradesLive
     end
   end
 

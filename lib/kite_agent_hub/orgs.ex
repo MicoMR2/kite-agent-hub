@@ -7,6 +7,10 @@ defmodule KiteAgentHub.Orgs do
 
   def get_org_by_slug(slug), do: Repo.get_by(Organization, slug: slug)
 
+  def get_org_for_user(user_id) do
+    list_orgs_for_user(user_id) |> List.first()
+  end
+
   def list_orgs_for_user(user_id) do
     Organization
     |> join(:inner, [o], m in Membership, on: m.organization_id == o.id)

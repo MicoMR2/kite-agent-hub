@@ -92,6 +92,7 @@ defmodule KiteAgentHub.Trading do
 
   def list_trades(agent_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
     status = Keyword.get(opts, :status)
 
     TradeRecord
@@ -99,6 +100,7 @@ defmodule KiteAgentHub.Trading do
     |> then(fn q -> if status, do: where(q, status: ^status), else: q end)
     |> order_by(desc: :inserted_at)
     |> limit(^limit)
+    |> offset(^offset)
     |> Repo.all()
   end
 
