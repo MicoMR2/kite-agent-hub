@@ -3,6 +3,8 @@ defmodule KiteAgentHub.Trading do
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading.{KiteAgent, TradeRecord}
 
+  @pubsub KiteAgentHub.PubSub
+
   # ── Agents ────────────────────────────────────────────────────────────────────
 
   def list_agents(org_id) do
@@ -39,9 +41,42 @@ defmodule KiteAgentHub.Trading do
   end
 
   def activate_agent(%KiteAgent{} = agent, vault_address) do
-    agent
-    |> KiteAgent.changeset(%{vault_address: vault_address, status: "active"})
-    |> Repo.update()
+    case agent
+         |> KiteAgent.changeset(%{vault_address: vault_address, status: "active"})
+         |> Repo.update() do
+      {:ok, updated} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        ok
+
+      err ->
+        err
+    end
+  end
+
+  def pause_agent(%KiteAgent{} = agent) do
+    case agent
+         |> KiteAgent.changeset(%{status: "paused"})
+         |> Repo.update() do
+      {:ok, updated} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        ok
+
+      err ->
+        err
+    end
+  end
+
+  def resume_agent(%KiteAgent{} = agent) do
+    case agent
+         |> KiteAgent.changeset(%{status: "active"})
+         |> Repo.update() do
+      {:ok, updated} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        ok
+
+      err ->
+        err
+    end
   end
 
   # ── Trade Records ─────────────────────────────────────────────────────────────
@@ -65,20 +100,64 @@ defmodule KiteAgentHub.Trading do
   end
 
   def create_trade(attrs) do
-    %TradeRecord{}
-    |> TradeRecord.changeset(attrs)
-    |> Repo.insert()
+    case %TradeRecord{}
+         |> TradeRecord.changeset(attrs)
+         |> Repo.insert() do
+      {:ok, trade} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{trade.kite_agent_id}", {:trade_created, trade})
+        ok
+
+      err ->
+        err
+    end
   end
 
   def settle_trade(%TradeRecord{} = record, pnl) do
-    record
-    |> TradeRecord.settle_changeset(pnl)
-    |> Repo.update()
+    case record
+         |> TradeRecord.settle_changeset(pnl)
+         |> Repo.update() do
+      {:ok, trade} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{trade.kite_agent_id}", {:trade_updated, trade})
+        ok
+
+      err ->
+        err
+    end
   end
 
   def total_pnl(agent_id) do
     TradeRecord
     |> where(kite_agent_id: ^agent_id, status: "settled")
     |> Repo.aggregate(:sum, :realized_pnl) || Decimal.new(0)
+  end
+
+  @doc """
+  Returns aggregated P&L stats for an agent:
+  %{total_pnl, win_count, loss_count, open_count, trade_count}
+  """
+  def agent_pnl_stats(agent_id) do
+    settled =
+      TradeRecord
+      |> where(kite_agent_id: ^agent_id, status: "settled")
+      |> select([t], %{
+        total_pnl: sum(t.realized_pnl),
+        win_count: sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        loss_count: sum(fragment("CASE WHEN ? < 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        trade_count: count(t.id)
+      })
+      |> Repo.one()
+
+    open_count =
+      TradeRecord
+      |> where(kite_agent_id: ^agent_id, status: "open")
+      |> Repo.aggregate(:count)
+
+    %{
+      total_pnl: settled.total_pnl || Decimal.new(0),
+      win_count: settled.win_count || 0,
+      loss_count: settled.loss_count || 0,
+      trade_count: settled.trade_count || 0,
+      open_count: open_count
+    }
   end
 end
