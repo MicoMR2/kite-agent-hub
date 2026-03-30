@@ -32,7 +32,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   require Logger
 
   alias KiteAgentHub.Trading
-  alias KiteAgentHub.Kite.{RPC, TxSigner}
+  alias KiteAgentHub.Kite.{RPC, TxSigner, VaultABI}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -158,11 +158,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     |> Oban.insert()
   end
 
-  # Placeholder ABI encoding — encode trade action as a minimal calldata stub.
-  # In production this would use the TradingAgentVault ABI.
   defp encode_trade_calldata(trade) do
-    action_byte = if trade.action == "buy", do: "01", else: "00"
-    "0x" <> action_byte
+    VaultABI.calldata_for_trade(trade)
   end
 
   defp within_per_trade_limit?(agent, args) do
