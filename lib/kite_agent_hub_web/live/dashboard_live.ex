@@ -30,6 +30,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:organization, org)
       |> assign(:agents, agents)
       |> assign(:selected_agent, selected_agent)
+      |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -54,6 +55,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("activate_vault", %{"vault" => %{"vault_address" => vault_address}}, socket) do
+    agent = socket.assigns.selected_agent
+    vault_address = String.trim(vault_address)
+
+    cond do
+      is_nil(agent) ->
+        {:noreply, put_flash(socket, :error, "No agent selected.")}
+
+      not String.match?(vault_address, ~r/^0x[0-9a-fA-F]{40}$/) ->
+        {:noreply, put_flash(socket, :error, "Invalid vault address — must be a 0x EVM address.")}
+
+      true ->
+        case Trading.activate_agent(agent, vault_address) do
+          {:ok, updated_agent} ->
+            agents = Enum.map(socket.assigns.agents, fn a ->
+              if a.id == updated_agent.id, do: updated_agent, else: a
+            end)
+
+            {:noreply,
+             socket
+             |> assign(:selected_agent, updated_agent)
+             |> assign(:agents, agents)
+             |> put_flash(:info, "Agent activated! Vault is live on Kite chain.")}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to activate agent. Check the vault address.")}
+        end
+    end
+  end
 
   @impl true
   def handle_info({:trade_updated, trade}, socket) do
@@ -172,6 +204,38 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </p>
                 </div>
               </div>
+
+              <!-- Vault Activation Banner -->
+              <%= if @selected_agent.status == "pending" do %>
+                <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
+                  <div class="flex items-start gap-4">
+                    <div class="h-9 w-9 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                      <.icon name="hero-bolt" class="w-5 h-5 text-amber-400" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <h3 class="text-sm font-semibold text-amber-300 mb-1">Activate your vault</h3>
+                      <p class="text-xs text-amber-400/70 mb-4">
+                        Run <code class="bg-gray-800 px-1.5 py-0.5 rounded text-amber-300">python scripts/agent_onboard.py --private-key YOUR_KEY</code> to deploy the vault contract, then paste the address below.
+                      </p>
+                      <.form for={@vault_form} phx-submit="activate_vault" class="flex gap-3">
+                        <input
+                          type="text"
+                          name="vault[vault_address]"
+                          placeholder="0x vault address"
+                          class="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white font-mono text-sm placeholder-gray-500 focus:border-amber-500 focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          phx-disable-with="Activating..."
+                          class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-900 font-semibold text-sm transition-colors whitespace-nowrap"
+                        >
+                          Activate
+                        </button>
+                      </.form>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
 
               <!-- Live Trade Feed -->
               <div class="rounded-xl bg-gray-900 border border-gray-800">
