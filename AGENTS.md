@@ -5,6 +5,15 @@ This is a web application written using the Phoenix web framework.
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
 
+### Security rules (Kite Agent Hub specific)
+
+- **NEVER log private keys, wallet seeds, or API tokens** at any log level — `Logger.debug`, `Logger.info`, `IO.inspect`, etc. Elixir Logger does not redact these automatically.
+- **Non-custodial by design** — private keys live in the user's local `.env` only. The platform stores wallet addresses and vault addresses, never private keys. Do not add any feature that accepts or stores a private key server-side.
+- **Spending limits are privileged** — always use `KiteAgent.spending_limits_changeset/2` via `Trading.update_spending_limits/2` for limit changes. Never include spending limit fields in general update forms or bulk-update paths.
+- **TradeRecord is append-only** — `tx_hash` and `trade_id_onchain` are set on insert and must never change. Use `TradeRecord.settle_changeset/2` for settlement. Do not expose a generic update path on TradeRecord.
+- **EVM RPC calls go through `KiteAgentHub.Kite.RPC`** — do not make raw HTTP calls to the Kite RPC elsewhere. This keeps the call surface auditable.
+- **Multi-tenant RLS** — every DB query that touches agent, trade, or org data must be scoped to the authenticated user's org. Never fetch by ID alone without verifying org membership.
+
 ### Phoenix v1.8 guidelines
 
 - **Always** begin your LiveView templates with `<Layouts.app flash={@flash} ...>` which wraps all inner content
