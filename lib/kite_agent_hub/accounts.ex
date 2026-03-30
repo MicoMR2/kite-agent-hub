@@ -80,6 +80,31 @@ defmodule KiteAgentHub.Accounts do
     |> Repo.insert()
   end
 
+  def register_user_with_org(attrs) do
+    alias KiteAgentHub.Orgs
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:user, User.registration_changeset(%User{}, attrs))
+    |> Ecto.Multi.run(:org, fn _repo, %{user: user} ->
+      email_prefix = user.email |> String.split("@") |> List.first()
+      Orgs.create_org_for_user(user, %{name: "#{email_prefix}'s Org"})
+      |> case do
+        {:ok, org} -> {:ok, org}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: user}} -> {:ok, user}
+      {:error, :user, changeset, _} -> {:error, changeset}
+      {:error, _, _, _} -> {:error, :failed}
+    end
+  end
+
+  def change_user_registration(%User{} = user, attrs \\ %{}) do
+    User.registration_changeset(user, attrs, hash_password: false, validate_unique: false)
+  end
+
   ## Settings
 
   @doc """

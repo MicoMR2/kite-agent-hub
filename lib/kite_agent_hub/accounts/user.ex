@@ -107,6 +107,18 @@ defmodule KiteAgentHub.Accounts.User do
   end
 
   @doc """
+  Direct registration changeset — email + password, auto-confirmed (no email required).
+  """
+  def registration_changeset(user, attrs, opts \\ []) do
+    user
+    |> cast(attrs, [:email, :password])
+    |> validate_email(opts)
+    |> validate_confirmation(:password, message: "does not match password")
+    |> validate_password(opts)
+    |> put_change(:confirmed_at, DateTime.utc_now(:second))
+  end
+
+  @doc """
   Confirms the account by setting `confirmed_at`.
   """
   def confirm_changeset(user) do
