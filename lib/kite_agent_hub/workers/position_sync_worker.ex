@@ -25,7 +25,7 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
 
   require Logger
 
-  alias KiteAgentHub.{Trading, Repo, Orgs}
+  alias KiteAgentHub.{Trading, Repo}
   alias KiteAgentHub.Kite.RPC
   alias KiteAgentHub.Workers.SettlementWorker
 
@@ -83,11 +83,9 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
     end
   end
 
-  # Fallback owner resolution for jobs enqueued without owner_user_id.
-  # Uses a raw (non-RLS) SELECT by agent PK to find the org, then fetches owner.
-  # This is safe because the agent_id comes from trusted Oban job args (never user input).
+  # Fallback owner resolution using SECURITY DEFINER SQL — bypasses RLS safely.
+  # agent_id comes from trusted Oban job args (never user input).
   defp resolve_owner(agent_id) do
-    agent = Repo.get!(KiteAgentHub.Trading.KiteAgent, agent_id)
-    Orgs.get_org_owner_user_id(agent.organization_id)
+    Repo.owner_user_id_for_agent(agent_id)
   end
 end

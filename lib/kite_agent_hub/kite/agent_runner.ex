@@ -21,7 +21,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
   require Logger
 
-  alias KiteAgentHub.{Trading, Orgs}
+  alias KiteAgentHub.{Trading, Repo}
   alias KiteAgentHub.Kite.{RPC, SignalEngine, PriceOracle}
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
@@ -70,20 +70,31 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         :tick,
         %{agent_id: agent_id, interval_ms: interval, owner_user_id: owner_user_id} = state
       ) do
-    # Resolve owner lazily on first tick if not provided at start
-    owner_user_id =
-      owner_user_id ||
-        resolve_owner_user_id(agent_id)
+    result =
+      Repo.with_user(owner_user_id, fn ->
+        agent = Trading.get_agent!(agent_id)
 
-    agent = Trading.get_agent!(agent_id)
+        if agent.status != "active" do
+          Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
+          :stop
+        else
+          run_cycle(agent, owner_user_id)
+          :continue
+        end
+      end)
 
-    if agent.status != "active" do
-      Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
-      {:stop, :normal, state}
-    else
-      run_cycle(agent, owner_user_id)
-      schedule_tick(interval)
-      {:noreply, %{state | owner_user_id: owner_user_id}}
+    case result do
+      {:ok, :stop} ->
+        {:stop, :normal, state}
+
+      {:ok, :continue} ->
+        schedule_tick(interval)
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.error("AgentRunner: tick failed for agent #{agent_id}: #{inspect(reason)}")
+        schedule_tick(interval)
+        {:noreply, state}
     end
   end
 
@@ -116,11 +127,6 @@ defmodule KiteAgentHub.Kite.AgentRunner do
       {:error, reason} ->
         Logger.error("AgentRunner: signal error for agent #{agent.id}: #{inspect(reason)}")
     end
-  end
-
-  defp resolve_owner_user_id(agent_id) do
-    agent = Trading.get_agent!(agent_id)
-    Orgs.get_org_owner_user_id(agent.organization_id)
   end
 
   defp build_context(agent) do

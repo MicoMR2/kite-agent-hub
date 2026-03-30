@@ -4,13 +4,13 @@ defmodule KiteAgentHub.Kite.AgentRunnerSupervisor do
 
   Usage:
 
-      # Start a runner for an agent
-      AgentRunnerSupervisor.start_agent(agent.id)
+      # Start a runner — owner_user_id required for RLS
+      AgentRunnerSupervisor.start_agent(agent.id, owner_user_id)
 
       # Stop a runner (e.g. when agent is paused)
       AgentRunnerSupervisor.stop_agent(agent.id)
 
-      # Restart all active agents (called from Application.start)
+      # Restart all active agents at boot (uses SECURITY DEFINER SQL to bypass RLS)
       AgentRunnerSupervisor.restart_active_agents()
   """
 
@@ -18,7 +18,7 @@ defmodule KiteAgentHub.Kite.AgentRunnerSupervisor do
 
   require Logger
 
-  alias KiteAgentHub.Trading
+  alias KiteAgentHub.Repo
   alias KiteAgentHub.Kite.AgentRunner
 
   def start_link(opts) do
@@ -30,13 +30,14 @@ defmodule KiteAgentHub.Kite.AgentRunnerSupervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  @doc "Start an AgentRunner for the given agent_id."
-  def start_agent(agent_id, opts \\ []) do
+  @doc "Start an AgentRunner for the given agent_id with its org owner's user_id."
+  def start_agent(agent_id, owner_user_id \\ nil) do
     if AgentRunner.running?(agent_id) do
       Logger.info("AgentRunnerSupervisor: runner already running for agent #{agent_id}")
       {:ok, :already_running}
     else
-      child_spec = {AgentRunner, Keyword.merge([agent_id: agent_id], opts)}
+      resolved_owner = owner_user_id || Repo.owner_user_id_for_agent(agent_id)
+      child_spec = {AgentRunner, [agent_id: agent_id, owner_user_id: resolved_owner]}
       DynamicSupervisor.start_child(__MODULE__, child_spec)
     end
   end
@@ -46,13 +47,17 @@ defmodule KiteAgentHub.Kite.AgentRunnerSupervisor do
     AgentRunner.stop(agent_id)
   end
 
-  @doc "Called at startup — starts runners for all agents currently in 'active' status."
+  @doc """
+  Called at startup — starts runners for all agents currently in 'active' status.
+  Uses Repo.active_agents_with_owners/0 (SECURITY DEFINER) to bypass RLS at boot
+  when no user context is available.
+  """
   def restart_active_agents do
-    agents = Trading.list_all_active_agents()
-    Logger.info("AgentRunnerSupervisor: restarting #{length(agents)} active agent runner(s)")
+    pairs = Repo.active_agents_with_owners()
+    Logger.info("AgentRunnerSupervisor: restarting #{length(pairs)} active agent runner(s)")
 
-    Enum.each(agents, fn agent ->
-      start_agent(agent.id)
+    Enum.each(pairs, fn {agent_id, owner_user_id} ->
+      start_agent(agent_id, owner_user_id)
     end)
   end
 end

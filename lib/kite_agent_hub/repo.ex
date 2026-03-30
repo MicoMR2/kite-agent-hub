@@ -29,4 +29,26 @@ defmodule KiteAgentHub.Repo do
       fun.()
     end)
   end
+
+  @doc """
+  Returns the owner user_id for an agent using a SECURITY DEFINER SQL function.
+  Bypasses RLS — safe for trusted server processes (Oban workers, GenServers).
+  """
+  def owner_user_id_for_agent(agent_id) do
+    case query!("SELECT owner_user_id_for_agent($1::uuid)", [agent_id]) do
+      %{rows: [[user_id]]} -> user_id
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Returns all active agents with their owner user_ids using a SECURITY DEFINER function.
+  Used at boot by AgentRunnerSupervisor to restart runners without a user context.
+  """
+  def active_agents_with_owners do
+    case query!("SELECT agent_id, owner_user_id FROM active_agents_with_owners()", []) do
+      %{rows: rows} ->
+        Enum.map(rows, fn [agent_id, owner_user_id] -> {agent_id, owner_user_id} end)
+    end
+  end
 end
