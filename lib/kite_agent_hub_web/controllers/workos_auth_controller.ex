@@ -1,6 +1,8 @@
 defmodule KiteAgentHubWeb.WorkOSAuthController do
   use KiteAgentHubWeb, :controller
 
+  require Logger
+
   alias KiteAgentHub.Accounts
   alias KiteAgentHub.WorkOS
   alias KiteAgentHubWeb.UserAuth
@@ -41,7 +43,6 @@ defmodule KiteAgentHubWeb.WorkOSAuthController do
           end
 
         {:error, reason} ->
-          require Logger
           Logger.error("WorkOS auth failed: #{reason}")
 
           conn
