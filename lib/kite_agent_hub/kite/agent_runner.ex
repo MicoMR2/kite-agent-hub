@@ -21,7 +21,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
   require Logger
 
-  alias KiteAgentHub.Trading
+  alias KiteAgentHub.{Trading, Orgs}
   alias KiteAgentHub.Kite.{RPC, SignalEngine, PriceOracle}
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
@@ -55,33 +55,43 @@ defmodule KiteAgentHub.Kite.AgentRunner do
     agent_id = Keyword.fetch!(opts, :agent_id)
     interval = Keyword.get(opts, :interval_ms, @default_interval_ms)
 
+    # owner_user_id may be passed in directly (from supervisor at boot) or resolved lazily on first tick
+    owner_user_id = Keyword.get(opts, :owner_user_id)
+
     Logger.info("AgentRunner: starting for agent #{agent_id}, interval #{interval}ms")
 
-    # Fire the first tick immediately
     send(self(), :tick)
 
-    {:ok, %{agent_id: agent_id, interval_ms: interval}}
+    {:ok, %{agent_id: agent_id, interval_ms: interval, owner_user_id: owner_user_id}}
   end
 
   @impl true
-  def handle_info(:tick, %{agent_id: agent_id, interval_ms: interval} = state) do
+  def handle_info(
+        :tick,
+        %{agent_id: agent_id, interval_ms: interval, owner_user_id: owner_user_id} = state
+      ) do
+    # Resolve owner lazily on first tick if not provided at start
+    owner_user_id =
+      owner_user_id ||
+        resolve_owner_user_id(agent_id)
+
     agent = Trading.get_agent!(agent_id)
 
     if agent.status != "active" do
       Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
       {:stop, :normal, state}
     else
-      run_cycle(agent)
+      run_cycle(agent, owner_user_id)
       schedule_tick(interval)
-      {:noreply, state}
+      {:noreply, %{state | owner_user_id: owner_user_id}}
     end
   end
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  defp run_cycle(agent) do
-    # Always sync open positions
-    %{"agent_id" => agent.id}
+  defp run_cycle(agent, owner_user_id) do
+    # Always sync open positions — pass owner_user_id so SettlementWorker can satisfy RLS
+    %{"agent_id" => agent.id, "owner_user_id" => owner_user_id}
     |> PositionSyncWorker.new()
     |> Oban.insert()
 
@@ -96,6 +106,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
         signal
         |> Map.put("agent_id", agent.id)
+        |> Map.put("owner_user_id", owner_user_id)
         |> TradeExecutionWorker.new()
         |> Oban.insert()
 
@@ -105,6 +116,11 @@ defmodule KiteAgentHub.Kite.AgentRunner do
       {:error, reason} ->
         Logger.error("AgentRunner: signal error for agent #{agent.id}: #{inspect(reason)}")
     end
+  end
+
+  defp resolve_owner_user_id(agent_id) do
+    agent = Trading.get_agent!(agent_id)
+    Orgs.get_org_owner_user_id(agent.organization_id)
   end
 
   defp build_context(agent) do

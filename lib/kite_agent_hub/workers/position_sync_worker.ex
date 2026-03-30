@@ -4,17 +4,17 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
 
   Enqueue via:
 
-      %{"agent_id" => agent.id}
+      %{"agent_id" => agent.id, "owner_user_id" => owner_user_id}
       |> KiteAgentHub.Workers.PositionSyncWorker.new()
       |> Oban.insert()
 
-  Or schedule a recurring sync with `schedule_in: 60`.
+  owner_user_id is required for RLS — all DB reads run inside Repo.with_user/2.
 
   The worker:
-  1. Loads the agent and verifies it is active or paused.
+  1. Loads the agent (inside user context) and verifies it is active or paused.
   2. Queries all open TradeRecords for the agent.
   3. For each open trade that has a tx_hash, enqueues a SettlementWorker
-     (Oban unique constraint prevents duplicate settlement jobs).
+     with owner_user_id so SettlementWorker can satisfy RLS.
   4. Logs the vault balance from Kite chain if a vault_address is present.
   """
 
@@ -25,36 +25,40 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
 
   require Logger
 
-  alias KiteAgentHub.Trading
+  alias KiteAgentHub.{Trading, Repo, Orgs}
   alias KiteAgentHub.Kite.RPC
   alias KiteAgentHub.Workers.SettlementWorker
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"agent_id" => agent_id}}) do
-    agent = Trading.get_agent!(agent_id)
+  def perform(%Oban.Job{args: %{"agent_id" => agent_id} = args}) do
+    owner_user_id = args["owner_user_id"] || resolve_owner(agent_id)
 
-    if agent.status not in ["active", "paused"] do
-      Logger.info("PositionSyncWorker: agent #{agent_id} is #{agent.status}, skipping sync")
-      {:cancel, "agent not active or paused"}
-    else
-      sync_positions(agent)
-    end
+    Repo.with_user(owner_user_id, fn ->
+      agent = Trading.get_agent!(agent_id)
+
+      if agent.status not in ["active", "paused"] do
+        Logger.info("PositionSyncWorker: agent #{agent_id} is #{agent.status}, skipping sync")
+        {:cancel, "agent not active or paused"}
+      else
+        sync_positions(agent, owner_user_id)
+      end
+    end)
   end
 
-  defp sync_positions(agent) do
+  defp sync_positions(agent, owner_user_id) do
     open_trades = Trading.list_open_trades(agent.id)
     Logger.info("PositionSyncWorker: agent #{agent.id} has #{length(open_trades)} open trade(s)")
 
-    enqueue_pending_settlements(open_trades)
+    enqueue_pending_settlements(open_trades, owner_user_id)
     log_vault_balance(agent)
 
     :ok
   end
 
-  defp enqueue_pending_settlements(open_trades) do
+  defp enqueue_pending_settlements(open_trades, owner_user_id) do
     Enum.each(open_trades, fn trade ->
       if trade.tx_hash do
-        %{"trade_id" => trade.id, "tx_hash" => trade.tx_hash}
+        %{"trade_id" => trade.id, "tx_hash" => trade.tx_hash, "owner_user_id" => owner_user_id}
         |> SettlementWorker.new()
         |> Oban.insert()
       end
@@ -77,5 +81,13 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
           )
       end
     end
+  end
+
+  # Fallback owner resolution for jobs enqueued without owner_user_id.
+  # Uses a raw (non-RLS) SELECT by agent PK to find the org, then fetches owner.
+  # This is safe because the agent_id comes from trusted Oban job args (never user input).
+  defp resolve_owner(agent_id) do
+    agent = Repo.get!(KiteAgentHub.Trading.KiteAgent, agent_id)
+    Orgs.get_org_owner_user_id(agent.organization_id)
   end
 end

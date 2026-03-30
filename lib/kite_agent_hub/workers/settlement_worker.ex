@@ -25,7 +25,7 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
 
   require Logger
 
-  alias KiteAgentHub.{Repo, Trading, Orgs}
+  alias KiteAgentHub.{Repo, Trading}
   alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.Kite.RPC
 
@@ -50,17 +50,21 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
     end)
   end
 
-  # Fallback for jobs enqueued by PositionSyncWorker (which doesn't have owner_user_id).
-  # Loads the agent → org → owner. Slightly more expensive but correct.
+  # Fallback for jobs that predate the owner_user_id convention.
+  # Uses a join on kite_agents + org_memberships — safe raw SELECT by trusted trade_id PK.
   defp fallback_owner_user_id(trade_id) do
-    case Repo.get(TradeRecord, trade_id) do
-      nil ->
-        nil
+    import Ecto.Query
 
-      trade ->
-        agent = Trading.get_agent!(trade.kite_agent_id)
-        Orgs.get_org_owner_user_id(agent.organization_id)
-    end
+    KiteAgentHub.Orgs.Membership
+    |> join(:inner, [m], a in KiteAgentHub.Trading.KiteAgent,
+      on: a.organization_id == m.organization_id
+    )
+    |> join(:inner, [_, a], t in TradeRecord, on: t.kite_agent_id == a.id)
+    |> where([_, _, t], t.id == ^trade_id)
+    |> where([m], m.role == "owner")
+    |> select([m], m.user_id)
+    |> limit(1)
+    |> Repo.one()
   end
 
   defp check_and_settle(trade, nil, _attempt) do
