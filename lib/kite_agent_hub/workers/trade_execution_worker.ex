@@ -50,11 +50,11 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
       true ->
         owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
-        Repo.with_user(owner_user_id, fn -> execute_trade(agent, args) end)
+        Repo.with_user(owner_user_id, fn -> execute_trade(agent, args, owner_user_id) end)
     end
   end
 
-  defp execute_trade(agent, args) do
+  defp execute_trade(agent, args, owner_user_id) do
     trade_attrs = %{
       kite_agent_id: agent.id,
       market: args["market"],
@@ -71,7 +71,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     case Trading.create_trade(trade_attrs) do
       {:ok, trade} ->
         Logger.info("TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id}")
-        maybe_submit_onchain(trade, agent, args)
+        maybe_submit_onchain(trade, agent, args, owner_user_id)
 
       {:error, changeset} ->
         Logger.error("TradeExecutionWorker: failed to create trade: #{inspect(changeset.errors)}")
@@ -79,18 +79,16 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  defp maybe_submit_onchain(trade, agent, args) do
+  defp maybe_submit_onchain(trade, agent, args, owner_user_id) do
     signed_tx = args["signed_tx_hex"]
     private_key = Application.get_env(:kite_agent_hub, :agent_private_key, "")
 
     cond do
       signed_tx ->
-        # Caller already signed — submit directly
-        submit_tx(trade, signed_tx)
+        submit_tx(trade, signed_tx, owner_user_id)
 
       private_key != "" and agent.vault_address ->
-        # Server-side signing using configured key
-        sign_and_submit(trade, agent, private_key)
+        sign_and_submit(trade, agent, private_key, owner_user_id)
 
       true ->
         Logger.info(
@@ -101,18 +99,16 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  defp submit_tx(trade, signed_tx_hex) do
+  defp submit_tx(trade, signed_tx_hex, owner_user_id) do
     case RPC.send_raw_transaction(signed_tx_hex) do
       {:ok, tx_hash} ->
         Logger.info("TradeExecutionWorker: trade #{trade.id} submitted, tx=#{tx_hash}")
 
-        # tx_hash update runs inside the same Repo.with_user context as create_trade
-        # (this function is called from within the with_user block in perform/1)
         trade
         |> KiteAgentHub.Trading.TradeRecord.changeset(%{tx_hash: tx_hash})
         |> Repo.update()
 
-        enqueue_settlement(trade.id, tx_hash)
+        enqueue_settlement(trade.id, tx_hash, owner_user_id)
         :ok
 
       {:error, reason} ->
@@ -121,7 +117,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  defp sign_and_submit(trade, agent, private_key) do
+  defp sign_and_submit(trade, agent, private_key, owner_user_id) do
     case RPC.get_transaction_count(agent.vault_address) do
       {:ok, nonce} ->
         case RPC.gas_price() do
@@ -137,7 +133,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
             case TxSigner.sign(tx, private_key, chain_id: agent.chain_id || 2368) do
               {:ok, signed_hex} ->
-                submit_tx(trade, signed_hex)
+                submit_tx(trade, signed_hex, owner_user_id)
 
               {:error, reason} ->
                 Logger.error("TradeExecutionWorker: signing failed: #{inspect(reason)}")
@@ -155,8 +151,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  defp enqueue_settlement(trade_id, tx_hash) do
-    %{"trade_id" => trade_id, "tx_hash" => tx_hash}
+  defp enqueue_settlement(trade_id, tx_hash, owner_user_id) do
+    %{"trade_id" => trade_id, "tx_hash" => tx_hash, "owner_user_id" => owner_user_id}
     |> KiteAgentHub.Workers.SettlementWorker.new(schedule_in: 15)
     |> Oban.insert()
   end

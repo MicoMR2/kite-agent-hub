@@ -31,17 +31,35 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"trade_id" => trade_id} = args, attempt: attempt}) do
-    # Load trade outside RLS context (by primary key) — safe read before we know the owner
-    trade = Repo.get!(TradeRecord, trade_id)
+    # owner_user_id is passed from TradeExecutionWorker to avoid an owner lookup
+    # and to ensure Repo.get! runs inside the correct RLS context from the start
+    owner_user_id =
+      args["owner_user_id"] ||
+        fallback_owner_user_id(trade_id)
 
-    if trade.status != "open" do
-      Logger.info("SettlementWorker: trade #{trade_id} already #{trade.status}, skipping")
-      :ok
-    else
-      tx_hash = args["tx_hash"] || trade.tx_hash
-      agent = Trading.get_agent!(trade.kite_agent_id)
-      owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
-      Repo.with_user(owner_user_id, fn -> check_and_settle(trade, tx_hash, attempt) end)
+    Repo.with_user(owner_user_id, fn ->
+      trade = Repo.get!(TradeRecord, trade_id)
+
+      if trade.status != "open" do
+        Logger.info("SettlementWorker: trade #{trade_id} already #{trade.status}, skipping")
+        :ok
+      else
+        tx_hash = args["tx_hash"] || trade.tx_hash
+        check_and_settle(trade, tx_hash, attempt)
+      end
+    end)
+  end
+
+  # Fallback for jobs enqueued by PositionSyncWorker (which doesn't have owner_user_id).
+  # Loads the agent → org → owner. Slightly more expensive but correct.
+  defp fallback_owner_user_id(trade_id) do
+    case Repo.get(TradeRecord, trade_id) do
+      nil ->
+        nil
+
+      trade ->
+        agent = Trading.get_agent!(trade.kite_agent_id)
+        Orgs.get_org_owner_user_id(agent.organization_id)
     end
   end
 
