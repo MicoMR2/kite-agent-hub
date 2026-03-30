@@ -8,6 +8,9 @@ defmodule KiteAgentHub.Accounts.User do
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
+    field :workos_id, :string
+    field :first_name, :string
+    field :last_name, :string
 
     timestamps(type: :utc_datetime)
   end
@@ -104,6 +107,34 @@ defmodule KiteAgentHub.Accounts.User do
     else
       changeset
     end
+  end
+
+  @doc """
+  Direct registration changeset — email + password, auto-confirmed (no email required).
+  """
+  def registration_changeset(user, attrs, opts \\ []) do
+    user
+    |> cast(attrs, [:email, :password])
+    |> validate_email(opts)
+    |> validate_confirmation(:password, message: "does not match password")
+    |> validate_password(opts)
+    |> put_change(:confirmed_at, DateTime.utc_now(:second))
+  end
+
+  @doc """
+  Changeset for WorkOS OAuth sign-in / registration.
+  Creates or updates a user from WorkOS user data (no password required).
+  """
+  def workos_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:email, :workos_id, :first_name, :last_name])
+    |> validate_required([:email, :workos_id])
+    |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/)
+    |> validate_length(:email, max: 160)
+    |> unsafe_validate_unique(:email, KiteAgentHub.Repo)
+    |> unique_constraint(:email)
+    |> unique_constraint(:workos_id)
+    |> put_change(:confirmed_at, DateTime.utc_now(:second))
   end
 
   @doc """

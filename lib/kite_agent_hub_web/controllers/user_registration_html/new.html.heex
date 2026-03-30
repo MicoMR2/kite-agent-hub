@@ -2,13 +2,12 @@
   <div class="mx-auto max-w-sm">
     <div class="text-center">
       <.header>
-        Register for an account
+        Create your account
         <:subtitle>
-          Already registered?
+          Already have an account?
           <.link navigate={~p"/users/log-in"} class="font-semibold text-brand hover:underline">
             Log in
           </.link>
-          to your account now.
         </:subtitle>
       </.header>
     </div>
@@ -23,9 +22,23 @@
         required
         phx-mounted={JS.focus()}
       />
+      <.input
+        field={f[:password]}
+        type="password"
+        label="Password"
+        autocomplete="new-password"
+        required
+      />
+      <.input
+        field={f[:password_confirmation]}
+        type="password"
+        label="Confirm password"
+        autocomplete="new-password"
+        required
+      />
 
-      <.button phx-disable-with="Creating account..." class="btn btn-primary w-full">
-        Create an account
+      <.button phx-disable-with="Creating account..." class="btn btn-primary w-full mt-4">
+        Create account
       </.button>
     </.form>
   </div>

@@ -80,4 +80,12 @@ defmodule KiteAgentHubWeb.Router do
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
   end
+
+  # WorkOS OAuth — open to all (unauthenticated users initiate here)
+  scope "/auth", KiteAgentHubWeb do
+    pipe_through :browser
+
+    get "/workos", WorkOSAuthController, :authorize
+    get "/workos/callback", WorkOSAuthController, :callback
+  end
 end

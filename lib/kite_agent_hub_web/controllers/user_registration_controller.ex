@@ -5,28 +5,24 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
   alias KiteAgentHub.Accounts.User
 
   def new(conn, _params) do
-    changeset = Accounts.change_user_email(%User{})
+    changeset = Accounts.change_user_registration(%User{})
     render(conn, :new, changeset: changeset)
   end
 
   def create(conn, %{"user" => user_params}) do
-    case Accounts.register_user(user_params) do
+    case Accounts.register_user_with_org(user_params) do
       {:ok, user} ->
-        {:ok, _} =
-          Accounts.deliver_login_instructions(
-            user,
-            &url(~p"/users/log-in/#{&1}")
-          )
-
         conn
-        |> put_flash(
-          :info,
-          "An email was sent to #{user.email}, please access it to confirm your account."
-        )
-        |> redirect(to: ~p"/users/log-in")
+        |> put_flash(:info, "Welcome to Kite Agent Hub!")
+        |> KiteAgentHubWeb.UserAuth.log_in_user(user)
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, :new, changeset: changeset)
+
+      {:error, _} ->
+        conn
+        |> put_flash(:error, "Something went wrong. Please try again.")
+        |> render(:new, changeset: Accounts.change_user_registration(%User{}))
     end
   end
 end

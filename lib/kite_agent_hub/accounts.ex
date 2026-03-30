@@ -80,6 +80,32 @@ defmodule KiteAgentHub.Accounts do
     |> Repo.insert()
   end
 
+  def register_user_with_org(attrs) do
+    alias KiteAgentHub.Orgs
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:user, User.registration_changeset(%User{}, attrs))
+    |> Ecto.Multi.run(:org, fn _repo, %{user: user} ->
+      email_prefix = user.email |> String.split("@") |> List.first()
+
+      Orgs.create_org_for_user(user, %{name: "#{email_prefix}'s Org"})
+      |> case do
+        {:ok, org} -> {:ok, org}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: user}} -> {:ok, user}
+      {:error, :user, changeset, _} -> {:error, changeset}
+      {:error, _, _, _} -> {:error, :failed}
+    end
+  end
+
+  def change_user_registration(%User{} = user, attrs \\ %{}) do
+    User.registration_changeset(user, attrs, hash_password: false, validate_unique: false)
+  end
+
   ## Settings
 
   @doc """
@@ -279,6 +305,33 @@ defmodule KiteAgentHub.Accounts do
   def delete_user_session_token(token) do
     Repo.delete_all(from(UserToken, where: [token: ^token, context: "session"]))
     :ok
+  end
+
+  ## WorkOS OAuth
+
+  @doc """
+  Finds an existing user by workos_id, or creates one from WorkOS profile data.
+
+  Returns `{:ok, user}` or `{:error, changeset}`.
+  """
+  def find_or_create_workos_user(%{workos_id: workos_id} = attrs) when is_binary(workos_id) do
+    case Repo.get_by(User, workos_id: workos_id) do
+      %User{} = user ->
+        {:ok, user}
+
+      nil ->
+        case Repo.get_by(User, email: attrs.email) do
+          %User{} = user ->
+            user
+            |> User.workos_changeset(attrs)
+            |> Repo.update()
+
+          nil ->
+            %User{}
+            |> User.workos_changeset(attrs)
+            |> Repo.insert()
+        end
+    end
   end
 
   ## Token helper

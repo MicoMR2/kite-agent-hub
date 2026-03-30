@@ -12,7 +12,9 @@ defmodule KiteAgentHub.Repo.Migrations.CreateKiteAgents do
       add :per_trade_limit_usd, :integer, default: 500
       add :max_open_positions, :integer, default: 10
       add :status, :string, default: "pending"
-      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
+        null: false
 
       timestamps(type: :utc_datetime)
     end

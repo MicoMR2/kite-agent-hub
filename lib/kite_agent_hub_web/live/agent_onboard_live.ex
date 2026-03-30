@@ -69,7 +69,13 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
           </div>
 
           <div class="rounded-2xl bg-gray-900 border border-gray-800 p-6">
-            <.form for={@form} id="agent-form" phx-change="validate" phx-submit="save" class="space-y-5">
+            <.form
+              for={@form}
+              id="agent-form"
+              phx-change="validate"
+              phx-submit="save"
+              class="space-y-5"
+            >
               <.input
                 field={@form[:name]}
                 label="Agent Name"
@@ -109,7 +115,12 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
               <div class="rounded-lg bg-violet-500/10 border border-violet-500/20 p-3 text-xs text-violet-300">
                 <p class="font-medium mb-1">After saving:</p>
                 <ol class="list-decimal list-inside space-y-1 text-violet-400/80">
-                  <li>Run <code class="bg-gray-800 px-1 rounded">python scripts/agent_onboard.py --private-key YOUR_KEY</code></li>
+                  <li>
+                    Run
+                    <code class="bg-gray-800 px-1 rounded">
+                      python scripts/agent_onboard.py --private-key YOUR_KEY
+                    </code>
+                  </li>
                   <li>Fund the vault with USDT at faucet.gokite.ai</li>
                   <li>Paste the vault address to activate your agent</li>
                 </ol>
