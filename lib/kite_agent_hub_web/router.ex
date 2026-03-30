@@ -23,10 +23,15 @@ defmodule KiteAgentHubWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", KiteAgentHubWeb do
-  #   pipe_through :api
-  # end
+  # External agent API — stateless JSON, auth via Bearer wallet_address
+  scope "/api/v1", KiteAgentHubWeb.API do
+    pipe_through :api
+
+    post "/trades", TradesController, :create
+    get "/trades", TradesController, :index
+    get "/trades/:id", TradesController, :show
+    get "/agents/me", TradesController, :agent_me
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:kite_agent_hub, :dev_routes) do
@@ -69,6 +74,7 @@ defmodule KiteAgentHubWeb.Router do
       on_mount: [{KiteAgentHubWeb.UserAuth, :require_authenticated}] do
       live "/dashboard", DashboardLive
       live "/agents/new", AgentOnboardLive
+      live "/trades", TradesLive
     end
   end
 

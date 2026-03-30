@@ -1,12 +1,14 @@
 import Config
 
-# WorkOS AuthKit — read from env in all environments
+# WorkOS AuthKit + Anthropic — read from env in all environments
 config :kite_agent_hub,
   workos_api_key: System.get_env("WORKOS_API_KEY") || "",
   workos_client_id: System.get_env("WORKOS_CLIENT_ID") || "",
   workos_redirect_uri:
     System.get_env("WORKOS_REDIRECT_URI") ||
-      "http://localhost:4000/auth/workos/callback"
+      "http://localhost:4000/auth/workos/callback",
+  anthropic_api_key: System.get_env("ANTHROPIC_API_KEY") || "",
+  agent_private_key: System.get_env("AGENT_PRIVATE_KEY") || ""
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the

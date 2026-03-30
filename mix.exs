@@ -41,6 +41,7 @@ defmodule KiteAgentHub.MixProject do
   defp deps do
     [
       {:bcrypt_elixir, "~> 3.0"},
+      {:oban, "~> 2.19"},
       {:phoenix, "~> 1.8.5"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
@@ -61,6 +62,9 @@ defmodule KiteAgentHub.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
+      {:ex_keccak, "~> 0.7"},
+      {:ex_secp256k1, "~> 0.8"},
+      {:ex_rlp, "~> 0.6"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
