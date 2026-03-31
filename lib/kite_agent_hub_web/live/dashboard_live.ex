@@ -259,6 +259,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <.icon name="hero-plus" class="w-4 h-4" /> New Agent
               </.link>
               <.link
+                navigate={~p"/users/settings"}
+                class="text-xs text-gray-500 hover:text-gray-300 transition-colors font-medium"
+              >
+                {@current_scope.user.email}
+              </.link>
+              <.link
                 href={~p"/users/log-out"}
                 method="delete"
                 class="text-xs text-gray-600 hover:text-gray-400 transition-colors font-medium"
