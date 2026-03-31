@@ -38,6 +38,13 @@ defmodule KiteAgentHub.Credentials.Cipher do
 
       hex when byte_size(hex) >= 64 ->
         Base.decode16!(binary_part(hex, 0, 64), case: :mixed)
+
+      _short ->
+        # Misconfigured key — fall back to dev key and log a warning
+        require Logger
+        Logger.warning("Cipher: CREDENTIAL_ENCRYPTION_KEY must be >= 64 hex chars. Using dev fallback.")
+        base = Application.get_env(:kite_agent_hub, KiteAgentHubWeb.Endpoint)[:secret_key_base] || ""
+        :crypto.hash(:sha256, base)
     end
   end
 end
