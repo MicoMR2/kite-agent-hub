@@ -247,10 +247,29 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
               <.link
+                navigate={~p"/trades"}
+                class="text-xs text-gray-500 hover:text-gray-300 transition-colors font-medium"
+              >
+                Trades
+              </.link>
+              <.link
                 navigate={~p"/agents/new"}
                 class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30"
               >
                 <.icon name="hero-plus" class="w-4 h-4" /> New Agent
+              </.link>
+              <.link
+                navigate={~p"/users/settings"}
+                class="text-xs text-gray-500 hover:text-gray-300 transition-colors font-medium"
+              >
+                {@current_scope.user.email}
+              </.link>
+              <.link
+                href={~p"/users/log-out"}
+                method="delete"
+                class="text-xs text-gray-600 hover:text-gray-400 transition-colors font-medium"
+              >
+                Sign out
               </.link>
             </div>
           </div>
