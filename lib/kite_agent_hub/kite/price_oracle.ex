@@ -38,7 +38,7 @@ defmodule KiteAgentHub.Kite.PriceOracle do
       include_24hr_vol: "true"
     ]
 
-    case Req.get(url, params: params, receive_timeout: 8_000) do
+    case Req.get(url, params: params, receive_timeout: 8_000, retry: false) do
       {:ok, %{status: 200, body: body}} ->
         parse_coingecko(body, coin_id, market)
 

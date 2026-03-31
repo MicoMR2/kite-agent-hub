@@ -24,11 +24,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     selected_agent = List.first(agents)
 
-    edge_scores = if connected?(socket), do: EdgeScorer.score_all(), else: []
+    if connected?(socket) do
+      if selected_agent do
+        Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{selected_agent.id}")
+        fetch_chain_data(selected_agent)
+      end
 
-    if connected?(socket) && selected_agent do
-      Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{selected_agent.id}")
-      fetch_chain_data(selected_agent)
+      send(self(), :load_edge_scores)
     end
 
     socket =
@@ -41,7 +43,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:block_number, nil)
       |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
       |> assign(:active_tab, :overview)
-      |> assign(:edge_scores, edge_scores)
+      |> assign(:edge_scores, [])
+      |> assign(:edge_scores_loading, connected?(socket))
       |> assign(:alpaca_data, nil)
       |> assign(:alpaca_history, [])
       |> assign(:kalshi_data, nil)
@@ -92,12 +95,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
       _             -> :overview
     end
 
-    socket = case tab_atom do
-      :edge_scorer -> assign(socket, :edge_scores, EdgeScorer.score_all())
-      :alpaca      -> load_alpaca_data(socket)
-      :kalshi      -> load_kalshi_data(socket)
-      _            -> socket
-    end
+    socket =
+      case tab_atom do
+        :edge_scorer ->
+          send(self(), :load_edge_scores)
+          assign(socket, :edge_scores_loading, true)
+
+        :alpaca ->
+          send(self(), :load_alpaca)
+          assign(socket, :alpaca_data, :loading)
+
+        :kalshi ->
+          send(self(), :load_kalshi)
+          assign(socket, :kalshi_data, :loading)
+
+        _ ->
+          socket
+      end
 
     {:noreply, assign(socket, :active_tab, tab_atom)}
   end
@@ -200,6 +214,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # Ignore Task :DOWN — chain data is non-critical
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
+
+  # Async edge scorer loading
+  def handle_info(:load_edge_scores, socket) do
+    scores = EdgeScorer.score_all()
+    {:noreply, socket |> assign(:edge_scores, scores) |> assign(:edge_scores_loading, false)}
+  end
+
+  # Async Alpaca data loading
+  def handle_info(:load_alpaca, socket) do
+    {:noreply, load_alpaca_data(socket)}
+  end
+
+  # Async Kalshi data loading
+  def handle_info(:load_kalshi, socket) do
+    {:noreply, load_kalshi_data(socket)}
+  end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -994,6 +1024,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
           <%= if @active_tab == :alpaca do %>
             <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
               <%= case @alpaca_data do %>
+                <% :loading -> %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm animate-pulse">Loading Alpaca account...</p>
+                  </div>
                 <% :not_configured -> %>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
                     <p class="text-gray-500 text-sm mb-3">Alpaca API keys not configured.</p>
@@ -1084,6 +1118,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
           <%= if @active_tab == :kalshi do %>
             <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
               <%= case @kalshi_data do %>
+                <% :loading -> %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm animate-pulse">Loading Kalshi account...</p>
+                  </div>
                 <% :not_configured -> %>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
                     <p class="text-gray-500 text-sm mb-3">Kalshi API keys not configured.</p>
