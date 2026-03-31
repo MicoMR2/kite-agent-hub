@@ -2,9 +2,16 @@ defmodule KiteAgentHub.Repo.Migrations.FixOrgMembershipsUserIdType do
   use Ecto.Migration
 
   def up do
-    # CASCADE drops all policies that depend on current_user_org_ids() automatically,
-    # and all policies that directly reference org_memberships.user_id.
+    # Drop policies that DIRECTLY reference org_memberships.user_id column.
+    # These are not covered by the CASCADE on the function below.
+    execute "DROP POLICY IF EXISTS memberships_owner_insert ON org_memberships"
+    execute "DROP POLICY IF EXISTS memberships_owner_delete ON org_memberships"
+    execute "DROP POLICY IF EXISTS orgs_owner_update ON organizations"
+
+    # DROP FUNCTION CASCADE drops all policies that call current_user_org_ids():
+    # orgs_member_select, memberships_member_select, kite_agents_org_*, trade_records_*
     execute "DROP FUNCTION IF EXISTS current_user_org_ids() CASCADE"
+
     execute "ALTER TABLE org_memberships DROP CONSTRAINT IF EXISTS org_memberships_user_id_fkey"
 
     # Cast column to bigint. Safe: org_memberships is empty (no users/orgs registered yet).
@@ -130,7 +137,9 @@ defmodule KiteAgentHub.Repo.Migrations.FixOrgMembershipsUserIdType do
   end
 
   def down do
-    # Reverse: restore uuid type (only safe when org_memberships is empty)
+    execute "DROP POLICY IF EXISTS memberships_owner_insert ON org_memberships"
+    execute "DROP POLICY IF EXISTS memberships_owner_delete ON org_memberships"
+    execute "DROP POLICY IF EXISTS orgs_owner_update ON organizations"
     execute "DROP FUNCTION IF EXISTS current_user_org_ids() CASCADE"
     execute "ALTER TABLE org_memberships DROP CONSTRAINT IF EXISTS org_memberships_user_id_fkey"
     execute "ALTER TABLE org_memberships ALTER COLUMN user_id TYPE uuid USING user_id::text::uuid"
