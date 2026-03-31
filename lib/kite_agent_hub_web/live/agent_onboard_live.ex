@@ -58,7 +58,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="min-h-screen bg-gray-950 text-gray-100">
         <%!-- Back nav --%>
-        <div class="border-b border-white/5 px-6 py-3">
+        <div class="border-b border-white/[0.10] px-6 py-3">
           <div class="max-w-5xl mx-auto flex items-center gap-3">
             <.link
               navigate={~p"/dashboard"}
@@ -86,7 +86,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
               </div>
             </div>
 
-            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 p-6">
+            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6">
               <.form
                 for={@form}
                 id="agent-form"
@@ -196,7 +196,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                 <p class="text-xs text-gray-500 mt-1 leading-relaxed">
                   Run the onboard script to deploy a TradingAgentVault on Kite testnet. Fund it at faucet.gokite.ai.
                 </p>
-                <code class="mt-2 block text-xs font-mono text-violet-400 bg-gray-900 rounded-lg px-3 py-2 ring-1 ring-white/5">
+                <code class="mt-2 block text-xs font-mono text-violet-400 bg-gray-900 rounded-lg px-3 py-2 ring-1 ring-white/[0.12]">
                   python scripts/agent_onboard.py
                 </code>
               </div>

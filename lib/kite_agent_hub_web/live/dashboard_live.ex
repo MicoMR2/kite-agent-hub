@@ -225,7 +225,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="min-h-screen bg-gray-950 text-gray-100">
         <%!-- Top nav bar --%>
-        <div class="border-b border-white/5 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
+        <div class="border-b border-white/[0.10] bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
           <div class="max-w-7xl mx-auto flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
@@ -282,7 +282,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
             <%!-- Steps --%>
             <div class="grid grid-cols-3 gap-4 mb-10">
-              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 p-6 text-left">
+              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6 text-left">
                 <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center mb-4">
                   <span class="text-lg font-black text-violet-400">1</span>
                 </div>
@@ -291,7 +291,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   Name your agent, set spending limits, and provide your Kite wallet address. Takes 30 seconds.
                 </p>
               </div>
-              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 p-6 text-left">
+              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6 text-left">
                 <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center mb-4">
                   <span class="text-lg font-black text-violet-400">2</span>
                 </div>
@@ -300,7 +300,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   Deploy the TradingAgentVault contract on Kite testnet and fund it from the faucet. Your keys never leave your machine.
                 </p>
               </div>
-              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 p-6 text-left">
+              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6 text-left">
                 <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
                   <span class="text-lg font-black text-emerald-400">3</span>
                 </div>
@@ -339,7 +339,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     @selected_agent && @selected_agent.id == agent.id &&
                       "ring-violet-500/40 bg-gradient-to-br from-violet-500/10 to-purple-500/5 shadow-lg shadow-violet-500/10",
                     (!@selected_agent || @selected_agent.id != agent.id) &&
-                      "ring-white/5 bg-gray-900/60 hover:ring-white/10 hover:bg-gray-900"
+                      "ring-white/[0.12] bg-gray-900/60 hover:ring-white/[0.20] hover:bg-gray-900"
                   ]}
                 >
                   <div class="flex items-start justify-between gap-2 mb-2">
@@ -384,7 +384,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
             <div class="col-span-9 space-y-4">
               <%= if @selected_agent do %>
                 <%!-- Agent header --%>
-                <div class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-900/50 ring-1 ring-white/5 p-5">
+                <div class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-900/50 ring-1 ring-white/[0.12] p-5">
                   <div class="flex items-start justify-between">
                     <div>
                       <div class="flex items-center gap-3 mb-1">
@@ -441,7 +441,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <%!-- Stats row --%>
                 <div class="grid grid-cols-4 gap-3">
                   <%!-- Realized P&L --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/5 px-4 py-4">
+                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
                     <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
                       Realized P&L
                     </p>
@@ -457,7 +457,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
 
                   <%!-- Win Rate --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/5 px-4 py-4">
+                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
                     <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
                       Win Rate
                     </p>
@@ -475,7 +475,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
 
                   <%!-- Open Positions --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/5 px-4 py-4">
+                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
                     <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
                       Open Positions
                     </p>
@@ -488,7 +488,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
 
                   <%!-- Wallet Balance --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/5 px-4 py-4">
+                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
                     <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
                       Wallet Balance
                     </p>
@@ -507,7 +507,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
 
                 <%!-- Spending limits strip --%>
-                <div class="flex items-center gap-3 rounded-xl bg-gray-900/40 ring-1 ring-white/5 px-5 py-3">
+                <div class="flex items-center gap-3 rounded-xl bg-gray-900/40 ring-1 ring-white/[0.12] px-5 py-3">
                   <span class="text-xs text-gray-600 font-medium uppercase tracking-wider mr-2">
                     Limits
                   </span>
@@ -571,8 +571,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% end %>
 
                 <%!-- Live Trade Feed --%>
-                <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 overflow-hidden">
-                  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] overflow-hidden">
+                  <div class="flex items-center justify-between px-5 py-4 border-b border-white/[0.10]">
                     <h3 class="text-sm font-bold text-white">Live Trade Feed</h3>
                     <div class="flex items-center gap-3">
                       <.link
@@ -605,7 +605,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <%= for {id, trade} <- @streams.trades do %>
                       <div
                         id={id}
-                        class="flex items-center gap-4 px-5 py-3.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors"
+                        class="flex items-center gap-4 px-5 py-3.5 border-b border-white/[0.10] last:border-0 hover:bg-white/[0.02] transition-colors"
                       >
                         <span class={[
                           "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wide min-w-16 justify-center",
