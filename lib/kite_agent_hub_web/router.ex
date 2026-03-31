@@ -77,6 +77,7 @@ defmodule KiteAgentHubWeb.Router do
       live "/dashboard", DashboardLive
       live "/agents/new", AgentOnboardLive
       live "/trades", TradesLive
+      live "/api-keys", ApiKeysLive
     end
   end
 
