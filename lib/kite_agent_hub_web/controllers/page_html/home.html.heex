@@ -1,13 +1,6 @@
 <Layouts.flash_group flash={@flash} />
 
-<div class="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden relative">
-  <%!-- Background 3D Pipes Canvas --%>
-  <canvas
-    id="pipes-canvas"
-    class="fixed inset-0 w-full h-full z-0 opacity-20 pointer-events-none mix-blend-screen"
-  >
-  </canvas>
-
+<div class="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden">
   <%!-- Nav --%>
   <header class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-20">
     <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -48,7 +41,7 @@
   </header>
 
   <%!-- Hero --%>
-  <section class="relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 pt-32 pb-24 text-center overflow-hidden">
+  <section class="relative mx-auto w-full px-4 sm:px-6 lg:px-8 pt-32 pb-24 text-center overflow-hidden">
     <%!-- Background glow blobs --%>
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
       <div class="w-[800px] h-[800px] rounded-full bg-white/[0.02] blur-3xl absolute -top-40 left-1/2 -translate-x-1/2">
@@ -139,7 +132,7 @@
   </div>
 
   <%!-- Features grid --%>
-  <section class="relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
+  <section class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
     <div class="text-center mb-20">
       <h2 class="text-4xl md:text-5xl font-black text-white mb-6 tracking-tight">
         Built different. Built to win.
@@ -172,7 +165,7 @@
   </section>
 
   <%!-- How it works --%>
-  <section class="relative z-10 border-t border-white/10 bg-gradient-to-b from-[#0a0a0f] to-white/[0.02]">
+  <section class="border-t border-white/10 bg-gradient-to-b from-[#0a0a0f] to-white/[0.02]">
     <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
       <div class="text-center mb-20">
         <h2 class="text-4xl md:text-5xl font-black text-white tracking-tight mb-6">
@@ -233,7 +226,7 @@
   </section>
 
   <%!-- CTA --%>
-  <section class="relative z-10 border-t border-white/10 bg-[#0a0a0f]">
+  <section class="border-t border-white/10 bg-[#0a0a0f]">
     <div class="mx-auto max-w-4xl w-full px-4 sm:px-6 lg:px-8 py-32 text-center relative overflow-hidden">
       <div class="relative z-10">
         <h2 class="text-5xl md:text-6xl font-black text-white mb-8 tracking-tight">
@@ -256,38 +249,8 @@
     </div>
   </section>
 
-  <section class="h-[60vh] flex flex-col items-center justify-center relative z-10 border-t border-white/5 bg-transparent group">
-    <div class="text-center space-y-4 px-6 opacity-30 group-hover:opacity-100 transition-opacity duration-700 cursor-default">
-      <div class="w-16 h-16 mx-auto rounded-2xl border border-white/10 bg-white/[0.02] flex items-center justify-center backdrop-blur-md shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-        <svg
-          class="h-8 w-8 text-white"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-          />
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-          />
-        </svg>
-      </div>
-      <h2 class="text-xs font-black text-white uppercase tracking-widest">
-        Pipe Observation Deck
-      </h2>
-      <p class="text-[10px] font-mono text-gray-400 uppercase tracking-widest">
-        Sit back and relax
-      </p>
-    </div>
-  </section>
-
-  <footer class="border-t border-white/10 bg-black/40 relative z-10 backdrop-blur-md">
+  <%!-- Footer --%>
+  <footer class="border-t border-white/10 bg-black/20">
     <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 font-mono">
       <div class="flex items-center gap-3">
         <div class="h-6 w-6 rounded-lg border border-white/10 bg-white/[0.05] flex items-center justify-center">
