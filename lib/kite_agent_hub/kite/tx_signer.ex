@@ -35,7 +35,7 @@ defmodule KiteAgentHub.Kite.TxSigner do
 
     with {:ok, priv_key_bytes} <- decode_private_key(private_key_hex),
          {:ok, signing_hash} <- build_signing_hash(tx, chain_id),
-         {:ok, {r, s, v_recovery}} <- ExSecp256k1.sign_compact(signing_hash, priv_key_bytes) do
+         {:ok, {r, s, v_recovery}} <- ExSecp256k1.sign(signing_hash, priv_key_bytes) do
       # EIP-155: v = recovery_id + chain_id * 2 + 35
       v = v_recovery + chain_id * 2 + 35
 

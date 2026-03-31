@@ -3,10 +3,11 @@ defmodule KiteAgentHub.Kite.TxSignerTest do
 
   alias KiteAgentHub.Kite.TxSigner
 
-  # Well-known test key — DO NOT use for real funds
-  # This is the Ethereum Foundation's well-known test private key from the docs
-  @test_private_key "4c0883a69102937d6231471b5dbb6e538eba2ef05b2a5e9a9ee6d5e9bb0cde3d"
-  @expected_address "0x2c7536e3605d9c16a7a3d7b1898e529396a65c23"
+  # Private key k=1 on secp256k1 — well-known test vector.
+  # Expected address verified against k=1 on secp256k1 (G is the base point).
+  # DO NOT use for real funds.
+  @test_private_key "0000000000000000000000000000000000000000000000000000000000000001"
+  @expected_address "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
 
   describe "address_from_private_key/1" do
     test "derives correct Ethereum address from known private key" do
@@ -30,7 +31,7 @@ defmodule KiteAgentHub.Kite.TxSignerTest do
         nonce: 0,
         gas_price: 1_000_000_000,
         gas_limit: 21_000,
-        to: "0x2c7536e3605d9c16a7a3d7b1898e529396a65c23",
+        to: "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
         value: 0,
         data: ""
       }
@@ -46,7 +47,7 @@ defmodule KiteAgentHub.Kite.TxSignerTest do
         nonce: 1,
         gas_price: 2_000_000_000,
         gas_limit: 50_000,
-        to: "0x2c7536e3605d9c16a7a3d7b1898e529396a65c23",
+        to: "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
         value: 0,
         data: ""
       }
