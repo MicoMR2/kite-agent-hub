@@ -39,6 +39,12 @@ defmodule KiteAgentHub.Trading do
     |> Repo.update()
   end
 
+  def update_vault_address(%KiteAgent{} = agent, vault_address) do
+    agent
+    |> KiteAgent.changeset(%{vault_address: vault_address})
+    |> Repo.update()
+  end
+
   # Spending limits are a privileged mutation — separate from general updates
   def update_spending_limits(%KiteAgent{} = agent, attrs) do
     agent

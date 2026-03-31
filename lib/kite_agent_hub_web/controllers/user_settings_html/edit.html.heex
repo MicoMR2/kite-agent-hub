@@ -1,4 +1,12 @@
 <Layouts.app flash={@flash} current_scope={@current_scope}>
+  <div class="mb-6">
+    <.link
+      navigate={~p"/dashboard"}
+      class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
+    >
+      ← Dashboard
+    </.link>
+  </div>
   <div class="text-center">
     <.header>
       Account Settings
