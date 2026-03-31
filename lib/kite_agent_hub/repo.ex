@@ -36,7 +36,7 @@ defmodule KiteAgentHub.Repo do
   """
   def owner_user_id_for_agent(agent_id) do
     case query!("SELECT owner_user_id_for_agent($1::uuid)", [agent_id]) do
-      %{rows: [[user_id]]} -> user_id
+      %{rows: [[user_id]]} -> Ecto.UUID.cast!(user_id)
       _ -> nil
     end
   end
@@ -48,7 +48,9 @@ defmodule KiteAgentHub.Repo do
   def active_agents_with_owners do
     case query!("SELECT agent_id, owner_user_id FROM active_agents_with_owners()", []) do
       %{rows: rows} ->
-        Enum.map(rows, fn [agent_id, owner_user_id] -> {agent_id, owner_user_id} end)
+        Enum.map(rows, fn [agent_id, owner_user_id] ->
+          {Ecto.UUID.cast!(agent_id), Ecto.UUID.cast!(owner_user_id)}
+        end)
     end
   end
 end
