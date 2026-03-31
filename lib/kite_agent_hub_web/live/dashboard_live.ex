@@ -241,9 +241,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
          {key_id, secret} <- credentials,
          {:ok, account} <- AlpacaClient.account(key_id, secret),
          {:ok, positions} <- AlpacaClient.positions(key_id, secret),
-         {:ok, history} <- AlpacaClient.portfolio_history(key_id, secret) do
+         {:ok, history} <- AlpacaClient.portfolio_history(key_id, secret),
+         {:ok, orders} <- AlpacaClient.orders(key_id, secret) do
       socket
-      |> assign(:alpaca_data, %{account: account, positions: positions})
+      |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
       |> assign(:alpaca_history, history)
     else
       nil -> assign(socket, :alpaca_data, :error)
@@ -1121,6 +1122,40 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <td class={"px-4 py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(p.unrealized_pl || 0.0), decimals: 2)}
                               </td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    <% end %>
+                  </div>
+
+                  <%!-- Recent Orders --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
+                    <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Recent Filled Orders</h3>
+                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">via Alpaca Paper</span>
+                    </div>
+                    <%= if data.orders == [] do %>
+                      <p class="px-6 py-8 text-center text-sm text-gray-600">No filled orders yet.</p>
+                    <% else %>
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="border-b border-white/5">
+                            <%= for h <- ~w(Symbol Side Qty Fill\ Price Time) do %>
+                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                            <% end %>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                          <%= for o <- data.orders do %>
+                            <tr class="hover:bg-white/[0.02]">
+                              <td class="px-4 py-3 font-black text-white">{o.symbol}</td>
+                              <td class="px-4 py-3">
+                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", o.side == "buy" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", o.side == "sell" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{o.side}</span>
+                              </td>
+                              <td class="px-4 py-3 tabular-nums text-gray-300 font-mono">{o.filled_qty}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{if o.filled_avg_price, do: "$#{:erlang.float_to_binary(o.filled_avg_price, decimals: 2)}", else: "—"}</td>
+                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">{if o.submitted_at, do: String.slice(o.submitted_at, 0, 16) |> String.replace("T", " "), else: "—"}</td>
                             </tr>
                           <% end %>
                         </tbody>

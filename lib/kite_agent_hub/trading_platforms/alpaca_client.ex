@@ -51,6 +51,18 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     end
   end
 
+  @doc """
+  Fetch recent filled orders. Returns {:ok, [order_map]} or {:error, reason}.
+  Each order: %{id, symbol, side, qty, filled_qty, filled_avg_price, status, submitted_at}
+  """
+  def orders(key_id, secret, limit \\ 20) do
+    case get("/v2/orders?status=filled&limit=#{limit}&direction=desc", key_id, secret) do
+      {:ok, list} when is_list(list) -> {:ok, Enum.map(list, &parse_order/1)}
+      {:ok, _} -> {:ok, []}
+      err -> err
+    end
+  end
+
   # ── Private ───────────────────────────────────────────────────────────────────
 
   defp get(path, key_id, secret) do
@@ -91,6 +103,19 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
       market_value: parse_float(p["market_value"]),
       unrealized_pl: parse_float(p["unrealized_pl"]),
       unrealized_plpc: parse_float(p["unrealized_plpc"])
+    }
+  end
+
+  defp parse_order(o) do
+    %{
+      id: o["id"],
+      symbol: o["symbol"],
+      side: o["side"],
+      qty: parse_float(o["qty"]),
+      filled_qty: parse_float(o["filled_qty"]),
+      filled_avg_price: parse_float(o["filled_avg_price"]),
+      status: o["status"],
+      submitted_at: o["submitted_at"]
     }
   end
 
