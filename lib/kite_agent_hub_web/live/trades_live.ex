@@ -26,7 +26,7 @@ defmodule KiteAgentHubWeb.TradesLive do
     agent = Trading.get_agent!(agent_id)
     status = params["status"] || "all"
 
-    if socket.assigns.selected_agent?.id != agent_id do
+    if is_nil(socket.assigns.selected_agent) or socket.assigns.selected_agent.id != agent_id do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent_id}")
       end
@@ -81,7 +81,7 @@ defmodule KiteAgentHubWeb.TradesLive do
 
   @impl true
   def handle_info({:trade_created, trade}, socket) do
-    if trade.kite_agent_id == socket.assigns.selected_agent?.id do
+    if trade.kite_agent_id == (socket.assigns.selected_agent && socket.assigns.selected_agent.id) do
       {:noreply, assign(socket, :trades, [trade | socket.assigns.trades])}
     else
       {:noreply, socket}
