@@ -38,3 +38,5 @@ npm-debug.log
 # Local env files — never commit secrets
 .env
 .env.*
+.DS_Store
+kite-agent-hub/
