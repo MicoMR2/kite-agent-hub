@@ -4,9 +4,198 @@
   <%!-- Background 3D Pipes Canvas --%>
   <canvas
     id="pipes-canvas"
+    phx-hook=".Pipes"
     class="fixed inset-0 w-full h-full z-0 opacity-20 pointer-events-none mix-blend-screen"
   >
   </canvas>
+  <script :type={Phoenix.LiveView.ColocatedHook} name=".Pipes">
+    export default {
+      mounted() {
+        this.canvas = this.el;
+        this.ctx = this.canvas.getContext('2d');
+        this.pipes = [];
+        this.gridSize = window.innerWidth > 768 ? 40 : 25;
+        this.speed = this.gridSize / 5;
+        this.maxPipes = window.innerWidth > 768 ? 15 : 8;
+        this.fadeRate = 0.005;
+
+        this.colors = [
+          '#22c55e', // Neon Green
+          '#ef4444', // Neon Red
+          '#a855f7', // Purple
+          '#06b6d4', // Cyan
+          '#f59e0b', // Amber
+          '#ec4899', // Pink
+          '#3b82f6', // Bright Blue
+        ];
+
+        this.dirs = [
+          { x: 1, y: 0 },
+          { x: -1, y: 0 },
+          { x: 0, y: 1 },
+          { x: 0, y: -1 }
+        ];
+
+        this.resize = this.resize.bind(this);
+        window.addEventListener('resize', this.resize);
+        this.resize();
+
+        this.initPipes();
+        
+        this.loop = this.loop.bind(this);
+        this.animationFrame = requestAnimationFrame(this.loop);
+      },
+
+      destroyed() {
+        window.removeEventListener('resize', this.resize);
+        cancelAnimationFrame(this.animationFrame);
+      },
+
+      resize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+        this.cols = Math.floor(this.width / this.gridSize);
+        this.rows = Math.floor(this.height / this.gridSize);
+        
+        this.ctx.fillStyle = '#0a0a0f';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+      },
+
+      initPipes() {
+        for (let i = 0; i < this.maxPipes; i++) {
+          this.spawnPipe(true);
+        }
+      },
+
+      spawnPipe(isInitial = false) {
+        const col = Math.floor(Math.random() * this.cols);
+        const row = Math.floor(Math.random() * this.rows);
+        const startX = col * this.gridSize + this.gridSize / 2;
+        const startY = row * this.gridSize + this.gridSize / 2;
+        const baseColor = this.colors[Math.floor(Math.random() * this.colors.length)];
+        const dir = this.dirs[Math.floor(Math.random() * this.dirs.length)];
+
+        let p = {
+          x: startX,
+          y: startY,
+          dir: dir,
+          color: baseColor,
+          length: 0,
+          maxLength: Math.random() * 500 + 100,
+          dead: false
+        };
+
+        if (isInitial) {
+          this.pipes.push(p);
+        } else {
+          let idx = this.pipes.findIndex(pipe => pipe.dead);
+          if(idx !== -1) {
+            this.pipes[idx] = p;
+          }
+        }
+      },
+
+      drawJoint(x, y, color) {
+        const radius = this.gridSize / 2;
+        const grad = this.ctx.createRadialGradient(
+          x - radius * 0.3, y - radius * 0.3, radius * 0.1,
+          x, y, radius
+        );
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.3, color);
+        grad.addColorStop(1, '#000000');
+        
+        this.ctx.fillStyle = grad;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+      },
+
+      drawSegment(oldX, oldY, newX, newY, color, dir) {
+        const radius = this.gridSize / 2;
+        this.ctx.save();
+        
+        let dx = 0;
+        let dy = 0;
+        if (dir.x !== 0) dy = radius;
+        if (dir.y !== 0) dx = radius;
+
+        const grad = this.ctx.createLinearGradient(
+          oldX - dx, oldY - dy,
+          oldX + dx, oldY + dy
+        );
+        grad.addColorStop(0, '#000000');
+        grad.addColorStop(0.2, color);
+        grad.addColorStop(0.8, color);
+        grad.addColorStop(1, '#000000');
+        grad.addColorStop(0.5, '#ffffff');
+
+        this.ctx.strokeStyle = grad;
+        this.ctx.lineWidth = this.gridSize;
+        this.ctx.lineCap = 'butt';
+        this.ctx.lineJoin = 'miter';
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(oldX, oldY);
+        this.ctx.lineTo(newX, newY);
+        this.ctx.stroke();
+
+        this.ctx.restore();
+      },
+
+      update() {
+        this.ctx.fillStyle = `rgba(10, 10, 15, ${this.fadeRate})`;
+        this.ctx.fillRect(0, 0, this.width, this.height);
+
+        for (let p of this.pipes) {
+          if (p.dead) continue;
+
+          let nextX = p.x + (p.dir.x * this.speed);
+          let nextY = p.y + (p.dir.y * this.speed);
+          p.length += this.speed;
+
+          const gridCenterXDelta = nextX % this.gridSize;
+          const gridCenterYDelta = nextY % this.gridSize;
+
+          this.drawSegment(p.x, p.y, nextX, nextY, p.color, p.dir);
+
+          let overBoundary = (nextX < 0 || nextX > this.width || nextY < 0 || nextY > this.height);
+          let timeToTurn = p.length >= p.maxLength;
+
+          let isIntersection = 
+            Math.abs(gridCenterXDelta - this.gridSize / 2) < this.speed &&
+            Math.abs(gridCenterYDelta - this.gridSize / 2) < this.speed;
+
+          if (isIntersection) {
+            nextX = Math.floor(nextX / this.gridSize) * this.gridSize + this.gridSize / 2;
+            nextY = Math.floor(nextY / this.gridSize) * this.gridSize + this.gridSize / 2;
+
+            if (overBoundary) {
+              p.dead = true;
+              this.spawnPipe();
+            } else if (timeToTurn) {
+              this.drawJoint(nextX, nextY, p.color);
+              
+              let possibleDirs = this.dirs.filter(d => d.x !== -p.dir.x || d.y !== -p.dir.y);
+              p.dir = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
+              p.length = 0;
+              p.maxLength = Math.random() * 500 + 50;
+            }
+          }
+
+          p.x = nextX;
+          p.y = nextY;
+        }
+      },
+
+      loop() {
+        this.update();
+        this.animationFrame = requestAnimationFrame(this.loop);
+      }
+    }
+  </script>
 
   <%!-- Nav --%>
   <header class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-20">
