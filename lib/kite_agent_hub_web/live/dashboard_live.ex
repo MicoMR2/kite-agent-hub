@@ -249,7 +249,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       nil -> assign(socket, :alpaca_data, :error)
       {:error, :not_configured} -> assign(socket, :alpaca_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :alpaca_data, :unauthorized)
-      _ -> assign(socket, :alpaca_data, :error)
+      err ->
+        require Logger
+        Logger.error("DashboardLive: Alpaca load failed: #{inspect(err)}")
+        assign(socket, :alpaca_data, :error)
     end
   end
 
@@ -266,7 +269,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       nil -> assign(socket, :kalshi_data, :error)
       {:error, :not_configured} -> assign(socket, :kalshi_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :kalshi_data, :unauthorized)
-      _ -> assign(socket, :kalshi_data, :error)
+      err ->
+        require Logger
+        Logger.error("DashboardLive: Kalshi load failed: #{inspect(err)}")
+        assign(socket, :kalshi_data, :error)
     end
   end
 
