@@ -3,6 +3,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   alias KiteAgentHub.{Orgs, Trading}
   alias KiteAgentHub.Kite.{RPC, EdgeScorer}
+  alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -41,6 +42,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
       |> assign(:active_tab, :overview)
       |> assign(:edge_scores, edge_scores)
+      |> assign(:alpaca_data, nil)
+      |> assign(:alpaca_history, [])
+      |> assign(:kalshi_data, nil)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -80,18 +84,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     tab_atom = case tab do
-      "overview"     -> :overview
-      "wallet"       -> :wallet
-      "edge_scorer"  -> :edge_scorer
-      _              -> :overview
+      "overview"    -> :overview
+      "wallet"      -> :wallet
+      "edge_scorer" -> :edge_scorer
+      "alpaca"      -> :alpaca
+      "kalshi"      -> :kalshi
+      _             -> :overview
     end
 
-    socket =
-      if tab_atom == :edge_scorer do
-        assign(socket, :edge_scores, EdgeScorer.score_all())
-      else
-        socket
-      end
+    socket = case tab_atom do
+      :edge_scorer -> assign(socket, :edge_scores, EdgeScorer.score_all())
+      :alpaca      -> load_alpaca_data(socket)
+      :kalshi      -> load_kalshi_data(socket)
+      _            -> socket
+    end
 
     {:noreply, assign(socket, :active_tab, tab_atom)}
   end
@@ -197,6 +203,58 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
+  defp load_alpaca_data(socket) do
+    org = socket.assigns.organization
+
+    with org when not is_nil(org) <- org,
+         {:ok, credentials} <- credentials_module().fetch_secret(org.id, :alpaca),
+         {key_id, secret} <- credentials,
+         {:ok, account} <- AlpacaClient.account(key_id, secret),
+         {:ok, positions} <- AlpacaClient.positions(key_id, secret),
+         {:ok, history} <- AlpacaClient.portfolio_history(key_id, secret) do
+      socket
+      |> assign(:alpaca_data, %{account: account, positions: positions})
+      |> assign(:alpaca_history, history)
+    else
+      nil -> assign(socket, :alpaca_data, :error)
+      {:error, :not_configured} -> assign(socket, :alpaca_data, :not_configured)
+      {:error, :unauthorized} -> assign(socket, :alpaca_data, :unauthorized)
+      _ -> assign(socket, :alpaca_data, :error)
+    end
+  end
+
+  defp load_kalshi_data(socket) do
+    org = socket.assigns.organization
+
+    with org when not is_nil(org) <- org,
+         {:ok, credentials} <- credentials_module().fetch_secret(org.id, :kalshi),
+         {key_id, pem} <- credentials,
+         {:ok, balance} <- KalshiClient.balance(key_id, pem),
+         {:ok, positions} <- KalshiClient.positions(key_id, pem) do
+      assign(socket, :kalshi_data, %{balance: balance, positions: positions})
+    else
+      nil -> assign(socket, :kalshi_data, :error)
+      {:error, :not_configured} -> assign(socket, :kalshi_data, :not_configured)
+      {:error, :unauthorized} -> assign(socket, :kalshi_data, :unauthorized)
+      _ -> assign(socket, :kalshi_data, :error)
+    end
+  end
+
+  # Credentials module reference — allows PR #24 to be merged independently.
+  # Raises a clear error if Credentials is not yet available.
+  defp credentials_module do
+    if Code.ensure_loaded?(KiteAgentHub.Credentials) do
+      KiteAgentHub.Credentials
+    else
+      __MODULE__.CredentialsStub
+    end
+  end
+
+  # Stub used before PR #24 (API key settings) is merged.
+  defmodule CredentialsStub do
+    def fetch_secret(_org_id, _provider), do: {:error, :not_configured}
+  end
+
   defp fetch_chain_data(agent) do
     wallet = agent.wallet_address
 
@@ -298,7 +356,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
           <nav class="flex gap-1" id="dashboard-tabs">
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}] do %>
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
@@ -932,9 +990,185 @@ defmodule KiteAgentHubWeb.DashboardLive do
           </div>
           <% end %>
 
+          <%!-- Alpaca Tab --%>
+          <%= if @active_tab == :alpaca do %>
+            <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+              <%= case @alpaca_data do %>
+                <% :not_configured -> %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm mb-3">Alpaca API keys not configured.</p>
+                    <.link navigate={~p"/api-keys"} class="text-xs font-bold text-white underline">Add keys in Settings →</.link>
+                  </div>
+                <% :unauthorized -> %>
+                  <div class="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
+                    <p class="text-red-400 text-sm">Alpaca credentials invalid — check your API key in Settings.</p>
+                  </div>
+                <% :error -> %>
+                  <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-center">
+                    <p class="text-yellow-400 text-sm">Could not reach Alpaca API. Try refreshing.</p>
+                  </div>
+                <% nil -> %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm">Click the Alpaca tab to load your paper account.</p>
+                  </div>
+                <% data -> %>
+                  <%!-- Account Summary --%>
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <%= for {label, val, color} <- [
+                      {"Portfolio Value", "$#{:erlang.float_to_binary(data.account.portfolio_value || 0.0, decimals: 2)}", "text-white"},
+                      {"Equity", "$#{:erlang.float_to_binary(data.account.equity || 0.0, decimals: 2)}", "text-emerald-400"},
+                      {"Cash", "$#{:erlang.float_to_binary(data.account.cash || 0.0, decimals: 2)}", "text-gray-300"},
+                      {"Buying Power", "$#{:erlang.float_to_binary(data.account.buying_power || 0.0, decimals: 2)}", "text-blue-400"}
+                    ] do %>
+                      <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">{label}</p>
+                        <p class={"text-lg font-black tabular-nums #{color}"}>{val}</p>
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <%!-- Equity Sparkline --%>
+                  <%= if length(@alpaca_history) > 1 do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Equity Curve (30D)</p>
+                      <svg viewBox="0 0 400 80" class="w-full h-20" preserveAspectRatio="none">
+                        <polyline
+                          points={sparkline_points(@alpaca_history, 400, 80)}
+                          fill="none"
+                          stroke="#22c55e"
+                          stroke-width="1.5"
+                          vector-effect="non-scaling-stroke"
+                        />
+                      </svg>
+                    </div>
+                  <% end %>
+
+                  <%!-- Positions --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
+                    <div class="px-6 py-4 border-b border-white/10">
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Open Positions</h3>
+                    </div>
+                    <%= if data.positions == [] do %>
+                      <p class="px-6 py-8 text-center text-sm text-gray-600">No open positions.</p>
+                    <% else %>
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="border-b border-white/5">
+                            <%= for h <- ~w(Symbol Side Qty Avg\ Entry Current P&L) do %>
+                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                            <% end %>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                          <%= for p <- data.positions do %>
+                            <tr class="hover:bg-white/[0.02]">
+                              <td class="px-4 py-3 font-black text-white">{p.symbol}</td>
+                              <td class="px-4 py-3 text-gray-400">{p.side}</td>
+                              <td class="px-4 py-3 tabular-nums text-gray-300">{p.qty}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}</td>
+                              <td class={"px-4 py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
+                                {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(p.unrealized_pl || 0.0), decimals: 2)}
+                              </td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    <% end %>
+                  </div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <%!-- Kalshi Tab --%>
+          <%= if @active_tab == :kalshi do %>
+            <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+              <%= case @kalshi_data do %>
+                <% :not_configured -> %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm mb-3">Kalshi API keys not configured.</p>
+                    <.link navigate={~p"/api-keys"} class="text-xs font-bold text-white underline">Add keys in Settings →</.link>
+                  </div>
+                <% :unauthorized -> %>
+                  <div class="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
+                    <p class="text-red-400 text-sm">Kalshi credentials invalid — check your API key and PEM in Settings.</p>
+                  </div>
+                <% :error -> %>
+                  <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-center">
+                    <p class="text-yellow-400 text-sm">Could not reach Kalshi API. Try refreshing.</p>
+                  </div>
+                <% nil -> %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm">Click the Kalshi tab to load your demo portfolio.</p>
+                  </div>
+                <% data -> %>
+                  <%!-- Balance --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Available Balance</p>
+                    <p class="text-3xl font-black text-white tabular-nums">
+                      ${:erlang.float_to_binary(data.balance.available_balance, decimals: 2)}
+                    </p>
+                  </div>
+
+                  <%!-- Positions --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
+                    <div class="px-6 py-4 border-b border-white/10">
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Open Positions</h3>
+                    </div>
+                    <%= if data.positions == [] do %>
+                      <p class="px-6 py-8 text-center text-sm text-gray-600">No open positions.</p>
+                    <% else %>
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="border-b border-white/5">
+                            <%= for h <- ~w(Market Side Contracts Avg\ Price Current Value) do %>
+                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                            <% end %>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                          <%= for p <- data.positions do %>
+                            <tr class="hover:bg-white/[0.02]">
+                              <td class="px-4 py-3 text-white text-xs font-mono">{p.title}</td>
+                              <td class="px-4 py-3 text-gray-400">{p.side}</td>
+                              <td class="px-4 py-3 tabular-nums text-gray-300">{p.contracts}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_price, decimals: 2)}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price, decimals: 2)}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-white">${:erlang.float_to_binary(p.value, decimals: 2)}</td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    <% end %>
+                  </div>
+              <% end %>
+            </div>
+          <% end %>
+
         <% end %>
       </div>
     </Layouts.app>
     """
   end
+
+  # ── SVG sparkline helper ───────────────────────────────────────────────────────
+
+  defp sparkline_points(history, width, height) when length(history) > 1 do
+    values = Enum.map(history, & &1.v)
+    min_v = Enum.min(values)
+    max_v = Enum.max(values)
+    range = max(max_v - min_v, 0.01)
+    count = length(history) - 1
+
+    history
+    |> Enum.with_index()
+    |> Enum.map(fn {%{v: v}, i} ->
+      x = i / count * width
+      y = height - (v - min_v) / range * height
+      "#{Float.round(x, 1)},#{Float.round(y, 1)}"
+    end)
+    |> Enum.join(" ")
+  end
+
+  defp sparkline_points(_, _, _), do: ""
 end
