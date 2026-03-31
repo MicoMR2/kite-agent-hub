@@ -11,12 +11,13 @@
       export default {
         mounted() {
           this.canvas = this.el;
-          this.ctx = this.canvas.getContext('2d');
+          // alpha: false opts the canvas into an opaque backing store, improving performance
+          this.ctx = this.canvas.getContext('2d', { alpha: false });
           this.pipes = [];
-          this.gridSize = window.innerWidth > 768 ? 40 : 25;
-          this.speed = this.gridSize / 5;
-          this.maxPipes = window.innerWidth > 768 ? 15 : 8;
-          this.fadeRate = 0.005;
+          this.gridSize = window.innerWidth > 768 ? 32 : 20; // Elegant, slightly thinner
+          this.speed = this.gridSize / 15; // Much slower crawl for a long-lasting, alive feel
+          this.maxPipes = window.innerWidth > 768 ? 4 : 2; // Significantly fewer pipes for clean look
+          this.fadeRate = 0.006; // Very slow fade so pipes exist longer on the screen
 
           this.colors = [
             '#22c55e', // Neon Green
@@ -82,7 +83,7 @@
             dir: dir,
             color: baseColor,
             length: 0,
-            maxLength: Math.random() * 500 + 100,
+            maxLength: Math.random() * 800 + 200, // Longer strokes
             dead: false
           };
 
@@ -96,45 +97,29 @@
           }
         },
 
-        drawJoint(x, y, color) {
-          const radius = this.gridSize / 2;
-          const grad = this.ctx.createRadialGradient(
-            x - radius * 0.3, y - radius * 0.3, radius * 0.1,
-            x, y, radius
-          );
-          grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.3, color);
-          grad.addColorStop(1, '#000000');
-          
-          this.ctx.fillStyle = grad;
-          this.ctx.beginPath();
-          this.ctx.arc(x, y, radius, 0, Math.PI * 2);
-          this.ctx.fill();
-        },
-
         drawSegment(oldX, oldY, newX, newY, color, dir) {
           const radius = this.gridSize / 2;
           this.ctx.save();
           
-          let dx = 0;
-          let dy = 0;
-          if (dir.x !== 0) dy = radius;
-          if (dir.y !== 0) dx = radius;
+          // Ensure gradients scale perfectly perpendicularly across the pipe stroke
+          let dx = dir.y * radius;
+          let dy = dir.x * radius;
 
           const grad = this.ctx.createLinearGradient(
             oldX - dx, oldY - dy,
             oldX + dx, oldY + dy
           );
           grad.addColorStop(0, '#000000');
-          grad.addColorStop(0.2, color);
-          grad.addColorStop(0.8, color);
+          grad.addColorStop(0.15, color);
+          grad.addColorStop(0.5, '#ffffff'); // Tight, bright highlight for realistic tube feel
+          grad.addColorStop(0.85, color);
           grad.addColorStop(1, '#000000');
-          grad.addColorStop(0.5, '#ffffff');
 
           this.ctx.strokeStyle = grad;
           this.ctx.lineWidth = this.gridSize;
-          this.ctx.lineCap = 'butt';
-          this.ctx.lineJoin = 'miter';
+          // By using round caps, frame overlap renders buttery smooth and joints auto-curve beautifully
+          this.ctx.lineCap = 'round';
+          this.ctx.lineJoin = 'round';
 
           this.ctx.beginPath();
           this.ctx.moveTo(oldX, oldY);
@@ -175,12 +160,10 @@
                 p.dead = true;
                 this.spawnPipe();
               } else if (timeToTurn) {
-                this.drawJoint(nextX, nextY, p.color);
-                
                 let possibleDirs = this.dirs.filter(d => d.x !== -p.dir.x || d.y !== -p.dir.y);
                 p.dir = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
                 p.length = 0;
-                p.maxLength = Math.random() * 500 + 50;
+                p.maxLength = Math.random() * 800 + 200;
               }
             }
 
