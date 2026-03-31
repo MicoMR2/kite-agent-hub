@@ -2,7 +2,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
   alias KiteAgentHub.{Orgs, Trading}
-  alias KiteAgentHub.Kite.RPC
+  alias KiteAgentHub.Kite.{RPC, EdgeScorer}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -23,6 +23,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     selected_agent = List.first(agents)
 
+    edge_scores = if connected?(socket), do: EdgeScorer.score_all(), else: []
+
     if connected?(socket) && selected_agent do
       Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{selected_agent.id}")
       fetch_chain_data(selected_agent)
@@ -37,6 +39,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:wallet_balance_eth, nil)
       |> assign(:block_number, nil)
       |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
+      |> assign(:active_tab, :overview)
+      |> assign(:edge_scores, edge_scores)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -72,6 +76,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   # ── Events ────────────────────────────────────────────────────────────────────
+
+  @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    tab_atom = case tab do
+      "overview"     -> :overview
+      "wallet"       -> :wallet
+      "edge_scorer"  -> :edge_scorer
+      _              -> :overview
+    end
+
+    socket =
+      if tab_atom == :edge_scorer do
+        assign(socket, :edge_scores, EdgeScorer.score_all())
+      else
+        socket
+      end
+
+    {:noreply, assign(socket, :active_tab, tab_atom)}
+  end
 
   @impl true
   def handle_event("activate_vault", %{"vault" => %{"vault_address" => vault_address}}, socket) do
@@ -266,6 +289,28 @@ defmodule KiteAgentHubWeb.DashboardLive do
           </div>
         </div>
 
+        <%!-- Tab navigation --%>
+        <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
+          <nav class="flex gap-1" id="dashboard-tabs">
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}] do %>
+              <button
+                id={"tab-#{tab_key}"}
+                phx-click="switch_tab"
+                phx-value-tab={tab_key}
+                class={[
+                  "px-4 py-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2",
+                  if(@active_tab == String.to_atom(tab_key),
+                    do: "border-[#22c55e] text-white",
+                    else: "border-transparent text-gray-500 hover:text-gray-300"
+                  )
+                ]}
+              >
+                {label}
+              </button>
+            <% end %>
+          </nav>
+        </div>
+
         <%= if @agents == [] do %>
           <%!-- ═══════════════ EMPTY STATE — first-time user ═══════════════ --%>
           <div class="w-full px-4 sm:px-6 lg:px-8 py-20 text-center relative overflow-hidden">
@@ -330,6 +375,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
           </div>
         <% else %>
           <%!-- ═══════════════ MAIN DASHBOARD ═══════════════ --%>
+          <%= if @active_tab == :overview do %>
           <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
             <%!-- ── Sidebar: Agent List ── --%>
             <div class="w-full lg:w-72 shrink-0 space-y-4">
@@ -728,6 +774,158 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <% end %>
             </div>
           </div>
+          <% end %>
+
+          <%!-- ═══════════════ KITE WALLET TAB ═══════════════ --%>
+          <%= if @active_tab == :wallet do %>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-3xl">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">Kite Wallet</h2>
+            <%= if @selected_agent do %>
+              <div class="space-y-4">
+                <%!-- Wallet address --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">Wallet Address</p>
+                  <p class="font-mono text-sm text-white break-all">{@selected_agent.wallet_address || "—"}</p>
+                  <%= if @selected_agent.wallet_address do %>
+                    <a
+                      href={"https://testnet.kitescan.ai/address/#{@selected_agent.wallet_address}"}
+                      target="_blank"
+                      class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
+                    >
+                      View on Kitescan ↗
+                    </a>
+                  <% end %>
+                </div>
+                <%!-- Vault address --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">Vault Address</p>
+                  <p class="font-mono text-sm text-white break-all">
+                    {if @selected_agent.vault_address, do: @selected_agent.vault_address, else: "Not set — paste vault address above"}
+                  </p>
+                  <%= if @selected_agent.vault_address do %>
+                    <a
+                      href={"https://testnet.kitescan.ai/address/#{@selected_agent.vault_address}"}
+                      target="_blank"
+                      class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
+                    >
+                      View vault on Kitescan ↗
+                    </a>
+                  <% end %>
+                </div>
+                <%!-- Balance --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">KITE Balance</p>
+                  <p class="text-3xl font-black text-white">
+                    {if @wallet_balance_eth, do: "#{@wallet_balance_eth} KITE", else: "—"}
+                  </p>
+                </div>
+                <%!-- Chain info --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex items-center justify-between">
+                  <div>
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">Network</p>
+                    <p class="text-sm text-white font-mono">Kite Testnet · Chain 2368</p>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">Block</p>
+                    <p class="text-sm text-white font-mono">{@block_number || "—"}</p>
+                  </div>
+                </div>
+              </div>
+            <% else %>
+              <p class="text-gray-500 text-sm">No agent selected.</p>
+            <% end %>
+          </div>
+          <% end %>
+
+          <%!-- ═══════════════ EDGESCORER TAB ═══════════════ --%>
+          <%= if @active_tab == :edge_scorer do %>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">EdgeScorer — Market Signal Scores</h2>
+              <button
+                phx-click="switch_tab"
+                phx-value-tab="edge_scorer"
+                class="text-xs text-gray-500 hover:text-white transition-colors font-mono uppercase tracking-widest"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <%= for score <- @edge_scores do %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 hover:border-white/20 transition-all">
+                  <%!-- Market header --%>
+                  <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm font-black text-white tracking-tight">{score.market}</span>
+                    <span class={[
+                      "text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full border",
+                      score.recommendation == :go   && "text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10",
+                      score.recommendation == :hold  && "text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10",
+                      score.recommendation == :no    && "text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10"
+                    ]}>
+                      {String.upcase(Atom.to_string(score.recommendation))}
+                    </span>
+                  </div>
+                  <%!-- Score bar --%>
+                  <div class="mb-4">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs text-gray-500 font-mono uppercase tracking-widest">Edge Score</span>
+                      <span class="text-2xl font-black text-white">{score.score}</span>
+                    </div>
+                    <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        class={[
+                          "h-full rounded-full transition-all",
+                          score.score >= 75 && "bg-[#22c55e]",
+                          score.score >= 50 && score.score < 75 && "bg-[#f59e0b]",
+                          score.score < 50  && "bg-[#ef4444]"
+                        ]}
+                        style={"width: #{score.score}%"}
+                      >
+                      </div>
+                    </div>
+                  </div>
+                  <%!-- Market data --%>
+                  <div class="space-y-2 text-xs font-mono">
+                    <div class="flex justify-between text-gray-400">
+                      <span>Price</span>
+                      <span class="text-white">${score.price}</span>
+                    </div>
+                    <div class="flex justify-between text-gray-400">
+                      <span>24h Change</span>
+                      <span class={[
+                        score.change_24h >= 0 && "text-[#22c55e]",
+                        score.change_24h < 0  && "text-[#ef4444]"
+                      ]}>
+                        {if score.change_24h >= 0, do: "+", else: ""}{score.change_24h}%
+                      </span>
+                    </div>
+                    <div class="flex justify-between text-gray-400">
+                      <span>Trend</span>
+                      <span class="text-white">{String.replace(score.trend, "_", " ")}</span>
+                    </div>
+                    <div class="flex justify-between text-gray-400">
+                      <span>RSI (approx)</span>
+                      <span class="text-white">{score.rsi}</span>
+                    </div>
+                  </div>
+                  <%!-- Breakdown --%>
+                  <div class="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 gap-2 text-xs font-mono text-gray-500">
+                    <span>Trend: <span class="text-gray-300">{score.breakdown.trend}/40</span></span>
+                    <span>RSI: <span class="text-gray-300">{score.breakdown.rsi}/30</span></span>
+                    <span>Volume: <span class="text-gray-300">{score.breakdown.volume}/20</span></span>
+                    <span>Δ24h: <span class="text-gray-300">{score.breakdown.change}/10</span></span>
+                  </div>
+                </div>
+              <% end %>
+              <%= if @edge_scores == [] do %>
+                <div class="md:col-span-3 text-center py-12 text-gray-500 text-sm">
+                  Fetching market data...
+                </div>
+              <% end %>
+            </div>
+          </div>
+          <% end %>
+
         <% end %>
       </div>
     </Layouts.app>
