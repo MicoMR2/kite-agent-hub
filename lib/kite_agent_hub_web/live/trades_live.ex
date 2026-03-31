@@ -8,7 +8,7 @@ defmodule KiteAgentHubWeb.TradesLive do
   @impl true
   def mount(_params, _session, socket) do
     org = Orgs.get_org_for_user(socket.assigns.current_scope.user.id)
-    agents = Trading.list_agents(org.id)
+    agents = if org, do: Trading.list_agents(org.id), else: []
 
     {:ok,
      socket
