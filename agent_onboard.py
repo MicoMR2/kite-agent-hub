@@ -1,199 +1,227 @@
 #!/usr/bin/env python3
 """
 Kite Agent Hub — Local Onboarding Script
-Generates a new EVM wallet locally (private key never leaves your machine)
-and verifies a TradingAgentVault address on Kite testnet.
+Generates a new EVM wallet locally. Private key never leaves this machine.
 
 Usage:
-  python agent_onboard.py
+  python agent_onboard.py [--rpc-url URL] [--chain-id ID] [--key-file PATH]
 
 Requirements:
   pip install eth-account requests
 """
 
-import os
-import sys
+import argparse
 import json
+import os
+import stat
+import sys
 import time
+
 import requests
+
+FAUCET_URL = "https://faucet.gokite.ai/"
+EXPLORER   = "https://testnet.kitescan.ai/"
+DEFAULT_RPC      = "https://rpc-testnet.gokite.ai/"
+DEFAULT_CHAIN_ID = 2368
+DEFAULT_KEY_FILE = os.path.expanduser("~/.kite/agent_key.json")
+
+
+# ── Safety checks ─────────────────────────────────────────────────────────────
+
+def warn_if_root():
+    if os.name != "nt" and os.geteuid() == 0:
+        print("\n⚠️  WARNING: Running as root. Private key files created as root")
+        print("   are accessible to all root processes. Use a non-root account.")
+        choice = input("   Continue anyway? (y/n): ").strip().lower()
+        if choice != "y":
+            sys.exit(1)
+
 
 def check_deps():
     try:
         from eth_account import Account
         return Account
     except ImportError:
-        print("Missing dependency. Run: pip install eth-account requests")
+        print("Missing dependency. Run:\n  pip install eth-account requests")
         sys.exit(1)
 
+
+# ── Key management ─────────────────────────────────────────────────────────────
+
 def generate_wallet(Account):
-    """Generate a new EVM private key and wallet address locally."""
+    """Generate a new EVM wallet. Returns (private_key_hex, address)."""
     acct = Account.create()
     return acct.key.hex(), acct.address
 
-def get_balance(address, rpc_url):
-    """Check wallet balance via JSON-RPC."""
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "eth_getBalance",
-        "params": [address, "latest"],
-        "id": 1
+
+def load_or_create_wallet(Account, key_file):
+    """Load existing key file or generate a new wallet."""
+    if os.path.exists(key_file):
+        print(f"\n[!] Found existing key file: {key_file}")
+        choice = input("    Use existing wallet? (y/n): ").strip().lower()
+        if choice == "y":
+            try:
+                with open(key_file) as f:
+                    data = json.load(f)
+                acct = Account.from_key(data["private_key"])
+                print(f"    Loaded wallet: {acct.address}")
+                return data["private_key"], acct.address
+            except Exception as e:
+                print(f"    Failed to load key file ({e}) — generating new wallet.")
+
+    print("\n[1] Generating new EVM wallet locally...")
+    private_key, address = generate_wallet(Account)
+    return private_key, address
+
+
+def save_key_file(private_key, wallet_address, key_file):
+    """Write key to ~/.kite/agent_key.json with chmod 600."""
+    key_dir = os.path.dirname(key_file)
+    os.makedirs(key_dir, exist_ok=True)
+
+    data = {
+        "wallet_address": wallet_address,
+        "private_key": private_key,
+        "chain": "kite-testnet",
+        "chain_id": DEFAULT_CHAIN_ID
     }
+    with open(key_file, "w") as f:
+        json.dump(data, f, indent=2)
+
+    # Restrict to owner read/write only (chmod 600)
+    os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
+    return key_file
+
+
+# ── Chain interaction ──────────────────────────────────────────────────────────
+
+def rpc_call(method, params, rpc_url):
+    payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
     try:
         resp = requests.post(rpc_url, json=payload, timeout=10)
-        result = resp.json().get("result", "0x0")
+        return resp.json().get("result")
+    except Exception:
+        return None
+
+
+def get_balance_wei(address, rpc_url):
+    result = rpc_call("eth_getBalance", [address, "latest"], rpc_url)
+    if result is None:
+        return None
+    try:
         return int(result, 16)
-    except Exception:
+    except ValueError:
         return None
 
-def verify_vault(vault_address, rpc_url):
-    """Check that a vault address has deployed contract code on-chain."""
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "eth_getCode",
-        "params": [vault_address, "latest"],
-        "id": 1
-    }
-    try:
-        resp = requests.post(rpc_url, json=payload, timeout=10)
-        code = resp.json().get("result", "0x")
-        return code not in ("0x", "0x0", None, "")
-    except Exception:
-        return None
 
-def save_env(private_key, wallet_address, env_path=".env.agent"):
-    """Write private key to a local .env file (never sent to server)."""
-    with open(env_path, "w") as f:
-        f.write(f"# Kite Agent Hub — local wallet config\n")
-        f.write(f"# KEEP THIS FILE SECRET. Add to .gitignore.\n")
-        f.write(f"AGENT_PRIVATE_KEY={private_key}\n")
-        f.write(f"AGENT_WALLET_ADDRESS={wallet_address}\n")
-    return env_path
+def verify_vault_on_chain(vault_address, rpc_url):
+    """Returns True if contract code exists at address, False if EOA, None on error."""
+    code = rpc_call("eth_getCode", [vault_address, "latest"], rpc_url)
+    if code is None:
+        return None
+    return code not in ("0x", "0x0", "", None)
+
+
+# ── Main flow ──────────────────────────────────────────────────────────────────
 
 def main():
-    TESTNET_RPC = "https://rpc-testnet.gokite.ai/"
-    FAUCET_URL  = "https://faucet.gokite.ai/"
-    EXPLORER    = "https://testnet.kitescan.ai/"
+    parser = argparse.ArgumentParser(description="Kite Agent Hub — local wallet onboarding")
+    parser.add_argument("--rpc-url",  default=DEFAULT_RPC,      help="Kite chain JSON-RPC URL")
+    parser.add_argument("--chain-id", default=DEFAULT_CHAIN_ID, type=int, help="Chain ID")
+    parser.add_argument("--key-file", default=DEFAULT_KEY_FILE, help="Path to store wallet key JSON")
+    args = parser.parse_args()
 
     print("\n" + "="*60)
     print("  Kite Agent Hub — Wallet Onboarding")
     print("="*60)
+    print(f"  RPC  : {args.rpc_url}")
+    print(f"  Chain: {args.chain_id}")
 
+    warn_if_root()
     Account = check_deps()
 
-    # ── Step 1: Check for existing key or generate new one ────────────────────
-    env_path = ".env.agent"
-    existing_key = None
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                if line.startswith("AGENT_PRIVATE_KEY="):
-                    existing_key = line.strip().split("=", 1)[1]
-                    break
+    # ── Step 1: Wallet ────────────────────────────────────────────────────────
+    private_key, wallet_address = load_or_create_wallet(Account, args.key_file)
+    saved_path = save_key_file(private_key, wallet_address, args.key_file)
 
-    if existing_key:
-        print(f"\n[!] Found existing key in {env_path}")
-        choice = input("    Use existing key? (y/n): ").strip().lower()
-        if choice == "y":
-            try:
-                acct = Account.from_key(existing_key)
-                private_key = existing_key
-                wallet_address = acct.address
-                print(f"    Loaded wallet: {wallet_address}")
-            except Exception:
-                print("    Invalid key in .env.agent — generating new one.")
-                private_key, wallet_address = generate_wallet(Account)
-        else:
-            private_key, wallet_address = generate_wallet(Account)
-    else:
-        print("\n[1] Generating new EVM wallet locally...")
-        private_key, wallet_address = generate_wallet(Account)
-
-    env_file = save_env(private_key, wallet_address, env_path)
     print(f"\n✅ Wallet address : {wallet_address}")
-    print(f"✅ Private key saved to {env_file} (never sent to server)")
-    print(f"\n⚠️  Add {env_file} to your .gitignore if not already there.")
+    print(f"✅ Key saved to   : {saved_path}  (chmod 600 — owner only)")
+    print(f"   Private key is NOT printed here and will NOT be logged.")
 
-    # ── Step 2: Check balance ─────────────────────────────────────────────────
+    # ── Step 2: Balance ───────────────────────────────────────────────────────
     print(f"\n[2] Checking balance on Kite testnet...")
-    balance_wei = get_balance(wallet_address, TESTNET_RPC)
+    balance_wei = get_balance_wei(wallet_address, args.rpc_url)
 
     if balance_wei is None:
-        print("    Could not connect to Kite testnet RPC. Check your network.")
+        print(f"    ⚠️  RPC unreachable ({args.rpc_url}). Check your network.")
     elif balance_wei == 0:
         print(f"    Balance: 0 KITE")
         print(f"\n    Fund your wallet from the testnet faucet:")
-        print(f"    {FAUCET_URL}")
-        print(f"    Wallet: {wallet_address}")
-        print(f"\n    View on explorer: {EXPLORER}address/{wallet_address}")
-        print("\n    [Waiting for you to fund the wallet...]")
-        print("    Press Enter once funded (or Ctrl+C to exit and fund later).")
+        print(f"      URL     : {FAUCET_URL}")
+        print(f"      Address : {wallet_address}")
+        print(f"      Explorer: {EXPLORER}address/{wallet_address}")
+        print("\n    Press Enter after funding (or Ctrl+C to exit and fund later).")
         try:
             input()
         except KeyboardInterrupt:
-            print("\n\nExiting. Re-run this script after funding your wallet.")
-            print_summary(wallet_address, None, env_file)
+            print("\n\nExiting. Re-run after funding your wallet.")
+            print_summary(wallet_address, None, saved_path)
             sys.exit(0)
 
-        # Re-check balance
-        for attempt in range(5):
-            balance_wei = get_balance(wallet_address, TESTNET_RPC)
+        for attempt in range(6):
+            balance_wei = get_balance_wei(wallet_address, args.rpc_url)
             if balance_wei and balance_wei > 0:
+                print(f"    Balance: {balance_wei / 1e18:.6f} KITE ✅")
                 break
-            print(f"    Still 0... checking again in 5s ({attempt+1}/5)")
+            print(f"    Still 0... retrying in 5s ({attempt+1}/6)")
             time.sleep(5)
-
-        if not balance_wei or balance_wei == 0:
-            print("    Still showing 0. Proceed anyway (wallet may still be funded).")
         else:
-            kite = balance_wei / 1e18
-            print(f"    Balance: {kite:.6f} KITE ✅")
+            print("    Still showing 0. Continuing — wallet may still be processing.")
     else:
-        kite = balance_wei / 1e18
-        print(f"    Balance: {kite:.6f} KITE ✅")
+        print(f"    Balance: {balance_wei / 1e18:.6f} KITE ✅")
 
     # ── Step 3: Vault address ─────────────────────────────────────────────────
     print("\n[3] TradingAgentVault address")
-    print("    If you have a vault address, enter it now.")
-    print("    If not, press Enter to skip (you can add it later in the dashboard).")
+    print("    Enter vault address if you have one.")
+    print("    Press Enter to skip (you can add it later in the dashboard).")
     vault_address = input("    Vault address (0x...): ").strip()
 
-    verified = None
     if vault_address:
         if not vault_address.startswith("0x") or len(vault_address) != 42:
-            print("    Invalid address format — skipping vault verification.")
+            print("    ⚠️  Invalid address format — skipping vault verification.")
             vault_address = None
         else:
             print(f"    Verifying vault on Kite testnet...")
-            verified = verify_vault(vault_address, TESTNET_RPC)
-            if verified:
-                print(f"    ✅ Vault found on-chain: {vault_address}")
-            elif verified is False:
-                print(f"    ⚠️  No contract found at {vault_address} — may not be deployed yet.")
+            found = verify_vault_on_chain(vault_address, args.rpc_url)
+            if found is True:
+                print(f"    ✅ Contract found on-chain: {vault_address}")
+            elif found is False:
+                print(f"    ⚠️  No contract at {vault_address} — may not be deployed yet.")
+                print(f"       Check: {EXPLORER}address/{vault_address}")
             else:
-                print(f"    Could not verify vault (RPC timeout). Proceeding anyway.")
+                print(f"    ⚠️  Could not verify vault (RPC timeout). Proceeding anyway.")
 
-    # ── Summary ───────────────────────────────────────────────────────────────
-    print_summary(wallet_address, vault_address, env_file)
+    print_summary(wallet_address, vault_address, saved_path)
 
-def print_summary(wallet_address, vault_address, env_file):
+
+def print_summary(wallet_address, vault_address, key_file):
     print("\n" + "="*60)
-    print("  SETUP SUMMARY — paste these into the dashboard")
+    print("  SUMMARY — paste these into the dashboard")
     print("="*60)
     print(f"\n  Wallet address : {wallet_address}")
     if vault_address:
         print(f"  Vault address  : {vault_address}")
     else:
-        print(f"  Vault address  : (not set — add in dashboard later)")
-    print(f"\n  Private key    : stored in {env_file}")
+        print(f"  Vault address  : (add later in dashboard)")
+    print(f"\n  Key file       : {key_file}")
+    print(f"  (Private key is in key file — set as Fly.io secret:)")
+    print(f"  fly secrets set AGENT_PRIVATE_KEY=$(jq -r .private_key {key_file})")
     print(f"\nNext steps:")
-    print("  1. Go to https://kite-agent-hub.fly.dev/users/register")
-    print("  2. Create an account")
-    print("  3. Click 'New Agent' → paste wallet address + vault address")
-    print("  4. Set spending limits (e.g. $10/day, $1/trade)")
-    print("  5. Agent goes live — Claude generates signals, trades execute on Kite chain")
-    print(f"\n  Set AGENT_PRIVATE_KEY in Fly.io secrets or your local server:")
-    print(f"  fly secrets set AGENT_PRIVATE_KEY=<your_key>")
+    print("  1. https://kite-agent-hub.fly.dev/users/register — create account")
+    print("  2. Click 'New Agent' → paste wallet + vault address + set limits")
+    print("  3. Agent activates — Claude signals, trades settle on Kite chain")
     print("\n" + "="*60 + "\n")
+
 
 if __name__ == "__main__":
     main()
