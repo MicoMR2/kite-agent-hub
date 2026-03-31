@@ -20,7 +20,9 @@ defmodule KiteAgentHubWeb.Router do
   scope "/", KiteAgentHubWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live_session :public, on_mount: [{KiteAgentHubWeb.UserAuth, :mount_current_scope}] do
+      live "/", HomeLive
+    end
   end
 
   # External agent API — stateless JSON, auth via Bearer wallet_address
