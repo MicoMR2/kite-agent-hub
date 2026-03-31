@@ -10,7 +10,7 @@ defmodule KiteAgentHub.Orgs.Membership do
   schema "org_memberships" do
     field :role, :string, default: "owner"
 
-    belongs_to :user, KiteAgentHub.Accounts.User
+    belongs_to :user, KiteAgentHub.Accounts.User, type: :integer
     belongs_to :organization, KiteAgentHub.Orgs.Organization
 
     timestamps(type: :utc_datetime)

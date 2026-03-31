@@ -1,5 +1,65 @@
 This is a web application written using the Phoenix web framework.
 
+## Kite Agent Hub Architecture
+
+Multi-tenant agentic trading platform on Kite AI chain. Users sign up, create agents with on-chain vaults, and the platform autonomously generates trade signals, executes them, and logs everything on-chain.
+
+### Core modules
+
+| Module | Path | Purpose |
+|--------|------|---------|
+| **SignalEngine** | `lib/kite_agent_hub/kite/signal_engine.ex` | Calls Anthropic API to generate buy/sell/hold signals from market data |
+| **AgentRunner** | `lib/kite_agent_hub/kite/agent_runner.ex` | Per-agent GenServer that ticks on interval, calls SignalEngine, dispatches trades |
+| **AgentRunnerSupervisor** | `lib/kite_agent_hub/kite/agent_runner_supervisor.ex` | DynamicSupervisor — starts/stops AgentRunners for active agents |
+| **RPC** | `lib/kite_agent_hub/kite/rpc.ex` | EVM JSON-RPC client for Kite chain (testnet: chain 2368, mainnet: chain 2366) |
+| **TxSigner** | `lib/kite_agent_hub/kite/tx_signer.ex` | EIP-155 transaction signing with private key from env |
+| **VaultABI** | `lib/kite_agent_hub/kite/vault_abi.ex` | ABI-encoded calldata for TradingAgentVault (openPosition, closePosition) |
+| **PriceOracle** | `lib/kite_agent_hub/kite/price_oracle.ex` | Market price feeds for signal generation |
+
+### Trading context
+
+| Module | Path | Purpose |
+|--------|------|---------|
+| **KiteAgent** | `lib/kite_agent_hub/trading/kite_agent.ex` | Agent schema — wallet address, vault address, spending limits, status |
+| **TradeRecord** | `lib/kite_agent_hub/trading/trade_record.ex` | Append-only trade log — signal, execution, on-chain tx hash, settlement |
+
+### Oban workers
+
+| Worker | Path | Purpose |
+|--------|------|---------|
+| **TradeExecutionWorker** | `lib/kite_agent_hub/workers/trade_execution_worker.ex` | Executes trades via RPC + TxSigner |
+| **SettlementWorker** | `lib/kite_agent_hub/workers/settlement_worker.ex` | Settles completed trades, updates P&L |
+| **PositionSyncWorker** | `lib/kite_agent_hub/workers/position_sync_worker.ex` | Syncs on-chain vault state with local DB |
+
+### Multi-tenant data flow
+
+```
+User signs up (Phoenix auth)
+  → Creates Organization + Membership (owner role)
+  → Creates KiteAgent (wallet + vault addresses, spending limits)
+  → AgentRunnerSupervisor starts an AgentRunner for the agent
+  → AgentRunner ticks: SignalEngine → TradeExecutionWorker → RPC → Kite chain
+  → TradeRecord logged (append-only) → SettlementWorker settles → P&L updated
+  → All queries scoped by org via RLS (Repo.with_user)
+```
+
+### Kite chain endpoints
+
+- **Testnet RPC**: `https://rpc-testnet.gokite.ai/` (chain ID 2368)
+- **Mainnet RPC**: `https://rpc.gokite.ai/` (chain ID 2366)
+- **Explorer**: `https://testnet.kitescan.ai/`
+
+### Required environment variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `SECRET_KEY_BASE` | Yes | Phoenix session signing |
+| `DATABASE_URL` | Yes | Postgres connection (auto-set on Fly.io) |
+| `ANTHROPIC_API_KEY` | For trading | SignalEngine calls Claude for trade signals |
+| `AGENT_PRIVATE_KEY` | For on-chain | TxSigner signs vault transactions |
+| `WORKOS_API_KEY` | Optional | SSO login (app works without it via email+password) |
+| `WORKOS_CLIENT_ID` | Optional | SSO login |
+
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues

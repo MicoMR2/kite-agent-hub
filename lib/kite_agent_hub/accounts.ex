@@ -81,18 +81,37 @@ defmodule KiteAgentHub.Accounts do
   end
 
   def register_user_with_org(attrs) do
-    alias KiteAgentHub.Orgs
+    alias KiteAgentHub.Orgs.{Organization, Membership}
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:user, User.registration_changeset(%User{}, attrs))
+    |> Ecto.Multi.run(:set_rls_user, fn _repo, %{user: user} ->
+      # Set app.current_user_id LOCAL to this transaction so RLS policies
+      # allow the membership INSERT below.
+      Repo.query("SELECT set_config('app.current_user_id', $1, true)", [
+        Integer.to_string(user.id)
+      ])
+    end)
     |> Ecto.Multi.run(:org, fn _repo, %{user: user} ->
       email_prefix = user.email |> String.split("@") |> List.first()
+      name = "#{email_prefix}'s Org"
+      slug =
+        name
+        |> String.downcase()
+        |> String.replace(~r/[^a-z0-9]+/, "-")
+        |> String.trim("-")
+        |> then(&"#{&1}-#{System.unique_integer([:positive])}")
 
-      Orgs.create_org_for_user(user, %{name: "#{email_prefix}'s Org"})
-      |> case do
-        {:ok, org} -> {:ok, org}
-        {:error, reason} -> {:error, reason}
-      end
+      Repo.insert(Organization.changeset(%Organization{}, %{name: name, slug: slug}))
+    end)
+    |> Ecto.Multi.run(:membership, fn _repo, %{user: user, org: org} ->
+      Repo.insert(
+        Membership.changeset(%Membership{}, %{
+          user_id: user.id,
+          organization_id: org.id,
+          role: "owner"
+        })
+      )
     end)
     |> Repo.transaction()
     |> case do
