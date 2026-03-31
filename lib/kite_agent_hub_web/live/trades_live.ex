@@ -113,18 +113,18 @@ defmodule KiteAgentHubWeb.TradesLive do
     )
   end
 
-  defp status_badge("open"), do: "bg-blue-100 text-blue-800"
-  defp status_badge("settled"), do: "bg-green-100 text-green-800"
-  defp status_badge("failed"), do: "bg-red-100 text-red-800"
-  defp status_badge("cancelled"), do: "bg-gray-100 text-gray-600"
-  defp status_badge(_), do: "bg-gray-100 text-gray-600"
+  defp status_classes("open"), do: "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20"
+  defp status_classes("settled"), do: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+  defp status_classes("failed"), do: "bg-red-500/10 text-red-400 ring-1 ring-red-500/20"
+  defp status_classes("cancelled"), do: "bg-gray-500/10 text-gray-400 ring-1 ring-gray-500/20"
+  defp status_classes(_), do: "bg-gray-500/10 text-gray-500"
 
-  defp pnl_class(nil), do: "text-gray-400"
+  defp pnl_class(nil), do: "text-gray-600"
 
   defp pnl_class(pnl) do
     case Decimal.compare(pnl, Decimal.new(0)) do
-      :gt -> "text-green-600 font-semibold"
-      :lt -> "text-red-500 font-semibold"
+      :gt -> "text-emerald-400 font-bold"
+      :lt -> "text-red-400 font-bold"
       _ -> "text-gray-500"
     end
   end
@@ -145,105 +145,154 @@ defmodule KiteAgentHubWeb.TradesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-gray-950 text-white p-6">
-      <div class="max-w-7xl mx-auto">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <h1 class="text-2xl font-bold tracking-tight">Trade History</h1>
-            <p class="text-gray-400 text-sm mt-1">All trades executed by your agents</p>
-          </div>
-          <.link navigate={~p"/dashboard"} class="text-sm text-gray-400 hover:text-white transition">
-            ← Dashboard
-          </.link>
-        </div>
-
-        <div class="grid grid-cols-12 gap-6">
-          <!-- Agent Sidebar -->
-          <div class="col-span-3">
-            <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
-              <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                Agents
-              </h2>
-              <div class="space-y-1">
-                <%= for agent <- @agents do %>
-                  <button
-                    phx-click="select_agent"
-                    phx-value-id={agent.id}
-                    class={"w-full text-left px-3 py-2 rounded-lg text-sm transition #{if @selected_agent?.id == agent.id, do: "bg-indigo-600 text-white", else: "text-gray-300 hover:bg-gray-800"}"}
-                  >
-                    <div class="font-medium truncate">{agent.name}</div>
-                    <div class={"text-xs mt-0.5 #{if @selected_agent?.id == agent.id, do: "text-indigo-200", else: "text-gray-500"}"}>
-                      {agent.status}
-                    </div>
-                  </button>
-                <% end %>
-              </div>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <div class="min-h-screen bg-gray-950 text-gray-100">
+        <%!-- Nav --%>
+        <div class="border-b border-white/5 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
+          <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <.link
+                navigate={~p"/dashboard"}
+                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <.icon name="hero-arrow-left" class="w-3.5 h-3.5" /> Dashboard
+              </.link>
+              <span class="text-gray-700">/</span>
+              <h1 class="text-sm font-bold text-white">Trade History</h1>
             </div>
-          </div>
-          
-    <!-- Trade Table -->
-          <div class="col-span-9">
-            <!-- Filter tabs -->
-            <div class="flex gap-2 mb-4">
+            <div class="flex gap-1.5">
               <%= for {label, val} <- [{"All", "all"}, {"Open", "open"}, {"Settled", "settled"}, {"Failed", "failed"}] do %>
                 <button
                   phx-click="filter"
                   phx-value-status={val}
-                  class={"px-4 py-1.5 rounded-full text-sm font-medium transition #{if @status_filter == val, do: "bg-indigo-600 text-white", else: "bg-gray-800 text-gray-400 hover:text-white"}"}
+                  class={[
+                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all",
+                    @status_filter == val &&
+                      "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30",
+                    @status_filter != val && "text-gray-500 hover:text-gray-300"
+                  ]}
                 >
                   {label}
                 </button>
               <% end %>
             </div>
+          </div>
+        </div>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-6 py-6 grid grid-cols-12 gap-5">
+          <%!-- Agent Sidebar --%>
+          <div class="col-span-3 space-y-2">
+            <h2 class="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">
+              Agents
+            </h2>
+            <%= for agent <- @agents do %>
+              <button
+                phx-click="select_agent"
+                phx-value-id={agent.id}
+                class={[
+                  "w-full text-left px-4 py-3 rounded-xl ring-1 transition-all",
+                  @selected_agent?.id == agent.id &&
+                    "ring-violet-500/40 bg-violet-500/10",
+                  @selected_agent?.id != agent.id &&
+                    "ring-white/5 bg-gray-900/60 hover:ring-white/10"
+                ]}
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-sm font-semibold text-white truncate">{agent.name}</span>
+                  <span class={[
+                    "w-2 h-2 rounded-full shrink-0",
+                    agent.status == "active" && "bg-emerald-400",
+                    agent.status == "paused" && "bg-yellow-400",
+                    agent.status == "pending" && "bg-gray-500",
+                    agent.status == "error" && "bg-red-400"
+                  ]}>
+                  </span>
+                </div>
+                <p class="text-xs text-gray-600 mt-0.5">{String.capitalize(agent.status)}</p>
+              </button>
+            <% end %>
+          </div>
+
+          <%!-- Trade Table --%>
+          <div class="col-span-9">
+            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 overflow-hidden">
               <table class="w-full text-sm">
                 <thead>
-                  <tr class="border-b border-gray-800">
-                    <th class="text-left px-4 py-3 text-gray-400 font-medium">Market</th>
-                    <th class="text-left px-4 py-3 text-gray-400 font-medium">Action</th>
-                    <th class="text-right px-4 py-3 text-gray-400 font-medium">Contracts</th>
-                    <th class="text-right px-4 py-3 text-gray-400 font-medium">Fill Price</th>
-                    <th class="text-right px-4 py-3 text-gray-400 font-medium">Notional</th>
-                    <th class="text-right px-4 py-3 text-gray-400 font-medium">P&L</th>
-                    <th class="text-center px-4 py-3 text-gray-400 font-medium">Status</th>
-                    <th class="text-left px-4 py-3 text-gray-400 font-medium">Time</th>
+                  <tr class="border-b border-white/5">
+                    <th class="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Market
+                    </th>
+                    <th class="text-left px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Action
+                    </th>
+                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Qty
+                    </th>
+                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Fill
+                    </th>
+                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Notional
+                    </th>
+                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      P&L
+                    </th>
+                    <th class="text-center px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th class="text-right px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Time
+                    </th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-800">
+                <tbody>
                   <%= if @trades == [] do %>
                     <tr>
-                      <td colspan="8" class="px-4 py-12 text-center text-gray-500">
-                        No trades found.
+                      <td colspan="8" class="px-5 py-16 text-center">
+                        <div class="flex flex-col items-center gap-3">
+                          <div class="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                            <.icon
+                              name="hero-arrow-trending-up"
+                              class="w-5 h-5 text-gray-600"
+                            />
+                          </div>
+                          <p class="text-sm text-gray-600">No trades yet</p>
+                        </div>
                       </td>
                     </tr>
                   <% else %>
                     <%= for trade <- @trades do %>
-                      <tr class="hover:bg-gray-800/50 transition">
-                        <td class="px-4 py-3 font-mono text-xs text-gray-200">{trade.market}</td>
-                        <td class="px-4 py-3">
-                          <span class={"font-medium #{if trade.action == "buy", do: "text-green-400", else: "text-red-400"}"}>
-                            {String.upcase(trade.action)}
-                          </span>
-                          <span class="text-gray-500 ml-1 text-xs">{trade.side}</span>
+                      <tr class="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                        <td class="px-5 py-3.5 font-mono text-xs text-gray-300 font-medium">
+                          {trade.market}
                         </td>
-                        <td class="px-4 py-3 text-right tabular-nums">{trade.contracts}</td>
-                        <td class="px-4 py-3 text-right tabular-nums font-mono text-xs">
+                        <td class="px-4 py-3.5">
+                          <span class={[
+                            "inline-flex px-2 py-0.5 rounded text-xs font-black uppercase",
+                            trade.action == "buy" && "bg-emerald-500/10 text-emerald-400",
+                            trade.action == "sell" && "bg-red-500/10 text-red-400"
+                          ]}>
+                            {trade.action}
+                          </span>
+                        </td>
+                        <td class="px-4 py-3.5 text-right tabular-nums text-gray-300 text-xs">
+                          {trade.contracts}
+                        </td>
+                        <td class="px-4 py-3.5 text-right tabular-nums font-mono text-xs text-gray-300">
                           ${trade.fill_price}
                         </td>
-                        <td class="px-4 py-3 text-right tabular-nums text-gray-300">
+                        <td class="px-4 py-3.5 text-right tabular-nums text-xs text-gray-400">
                           {format_notional(trade.notional_usd)}
                         </td>
-                        <td class={"px-4 py-3 text-right tabular-nums #{pnl_class(trade.realized_pnl)}"}>
+                        <td class={"px-4 py-3.5 text-right tabular-nums text-sm #{pnl_class(trade.realized_pnl)}"}>
                           {format_pnl(trade.realized_pnl)}
                         </td>
-                        <td class="px-4 py-3 text-center">
-                          <span class={"px-2 py-0.5 rounded-full text-xs font-medium #{status_badge(trade.status)}"}>
+                        <td class="px-4 py-3.5 text-center">
+                          <span class={"px-2 py-0.5 rounded-lg text-xs font-semibold #{status_classes(trade.status)}"}>
                             {trade.status}
                           </span>
                         </td>
-                        <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                        <td class="px-5 py-3.5 text-right text-xs text-gray-600 tabular-nums whitespace-nowrap font-mono">
                           {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
                         </td>
                       </tr>
@@ -253,10 +302,10 @@ defmodule KiteAgentHubWeb.TradesLive do
               </table>
 
               <%= if @has_more do %>
-                <div class="px-4 py-3 border-t border-gray-800 text-center">
+                <div class="px-5 py-4 border-t border-white/5 text-center">
                   <button
                     phx-click="load_more"
-                    class="text-sm text-indigo-400 hover:text-indigo-300 transition"
+                    class="text-xs text-violet-400 hover:text-violet-300 font-semibold transition-colors"
                   >
                     Load more →
                   </button>
@@ -265,17 +314,17 @@ defmodule KiteAgentHubWeb.TradesLive do
             </div>
 
             <%= if trade = Enum.find(@trades, &(&1.reason)) do %>
-              <div class="mt-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Latest Signal Reason
+              <div class="mt-4 rounded-xl bg-gray-900/60 ring-1 ring-white/5 p-4">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  Latest Signal Reasoning
                 </h3>
-                <p class="text-sm text-gray-300">{trade.reason}</p>
+                <p class="text-sm text-gray-300 leading-relaxed">{trade.reason}</p>
               </div>
             <% end %>
           </div>
         </div>
       </div>
-    </div>
+    </Layouts.app>
     """
   end
 end

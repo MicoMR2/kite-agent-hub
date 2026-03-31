@@ -56,89 +56,166 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center p-6">
-        <div class="w-full max-w-lg">
-          <div class="text-center mb-8">
-            <div class="w-14 h-14 rounded-2xl bg-violet-500/15 flex items-center justify-center mx-auto mb-4">
-              <.icon name="hero-cpu-chip" class="w-7 h-7 text-violet-400" />
+      <div class="min-h-screen bg-gray-950 text-gray-100">
+        <%!-- Back nav --%>
+        <div class="border-b border-white/5 px-6 py-3">
+          <div class="max-w-5xl mx-auto flex items-center gap-3">
+            <.link
+              navigate={~p"/dashboard"}
+              class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              <.icon name="hero-arrow-left" class="w-3.5 h-3.5" /> Dashboard
+            </.link>
+            <span class="text-gray-700">/</span>
+            <span class="text-xs text-gray-400">New Agent</span>
+          </div>
+        </div>
+
+        <div class="max-w-5xl mx-auto px-6 py-10 grid grid-cols-5 gap-8">
+          <%!-- Left: form --%>
+          <div class="col-span-3">
+            <div class="mb-8">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                  <.icon name="hero-cpu-chip" class="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h1 class="text-xl font-black text-white">Configure Your Agent</h1>
+                  <p class="text-xs text-gray-500">Set identity and risk limits</p>
+                </div>
+              </div>
             </div>
-            <h1 class="text-2xl font-bold text-white">Onboard a Trading Agent</h1>
-            <p class="text-sm text-gray-500 mt-2">
-              Configure your agent's identity and spending limits. Deploy the vault after.
+
+            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 p-6">
+              <.form
+                for={@form}
+                id="agent-form"
+                phx-change="validate"
+                phx-submit="save"
+                class="space-y-5"
+              >
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Agent Name
+                  </label>
+                  <.input
+                    field={@form[:name]}
+                    placeholder="e.g. Alpha Scalper, Kite Arb Bot"
+                    class="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Kite Wallet Address
+                  </label>
+                  <.input
+                    field={@form[:wallet_address]}
+                    placeholder="0x..."
+                    class="w-full font-mono"
+                  />
+                  <p class="text-xs text-gray-600 mt-1">
+                    Generate at
+                    <a
+                      href="https://faucet.gokite.ai"
+                      target="_blank"
+                      class="text-violet-500 hover:text-violet-400"
+                    >
+                      faucet.gokite.ai
+                    </a>
+                  </p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Daily Limit (USD)
+                    </label>
+                    <.input field={@form[:daily_limit_usd]} type="number" value="1000" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Per-Trade Limit (USD)
+                    </label>
+                    <.input field={@form[:per_trade_limit_usd]} type="number" value="500" />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Max Open Positions
+                  </label>
+                  <.input field={@form[:max_open_positions]} type="number" value="10" />
+                </div>
+
+                <button
+                  type="submit"
+                  phx-disable-with="Deploying…"
+                  class="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold text-sm transition-all shadow-xl shadow-violet-500/20 hover:shadow-violet-500/30"
+                >
+                  Create Agent →
+                </button>
+              </.form>
+            </div>
+
+            <p class="text-center text-xs text-gray-700 mt-5">
+              🔒 Private keys never stored. Only your public wallet address is saved.
             </p>
           </div>
 
-          <div class="rounded-2xl bg-gray-900 border border-gray-800 p-6">
-            <.form
-              for={@form}
-              id="agent-form"
-              phx-change="validate"
-              phx-submit="save"
-              class="space-y-5"
-            >
-              <.input
-                field={@form[:name]}
-                label="Agent Name"
-                placeholder="e.g. Kalshi Arb Bot"
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none"
-              />
-              <.input
-                field={@form[:wallet_address]}
-                label="Wallet Address"
-                placeholder="0x..."
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white font-mono placeholder-gray-500 focus:border-violet-500 focus:outline-none"
-              />
-              <div class="grid grid-cols-2 gap-4">
-                <.input
-                  field={@form[:daily_limit_usd]}
-                  type="number"
-                  label="Daily Limit (USD)"
-                  value="1000"
-                  class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white focus:border-violet-500 focus:outline-none"
-                />
-                <.input
-                  field={@form[:per_trade_limit_usd]}
-                  type="number"
-                  label="Per-Trade Limit (USD)"
-                  value="500"
-                  class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white focus:border-violet-500 focus:outline-none"
-                />
-              </div>
-              <.input
-                field={@form[:max_open_positions]}
-                type="number"
-                label="Max Open Positions"
-                value="10"
-                class="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-white focus:border-violet-500 focus:outline-none"
-              />
+          <%!-- Right: what happens next --%>
+          <div class="col-span-2 space-y-4 pt-2">
+            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">
+              What happens next
+            </h3>
 
-              <div class="rounded-lg bg-violet-500/10 border border-violet-500/20 p-3 text-xs text-violet-300">
-                <p class="font-medium mb-1">After saving:</p>
-                <ol class="list-decimal list-inside space-y-1 text-violet-400/80">
-                  <li>
-                    Run
-                    <code class="bg-gray-800 px-1 rounded">
-                      python scripts/agent_onboard.py --private-key YOUR_KEY
-                    </code>
-                  </li>
-                  <li>Fund the vault with USDT at faucet.gokite.ai</li>
-                  <li>Paste the vault address to activate your agent</li>
-                </ol>
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div class="w-7 h-7 rounded-full bg-violet-500/20 ring-1 ring-violet-500/30 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-black text-violet-400">1</span>
+                </div>
+                <div class="w-px flex-1 bg-gray-800 mt-2"></div>
               </div>
+              <div class="pb-6">
+                <p class="text-sm font-semibold text-white">Create the agent</p>
+                <p class="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Agent is registered with your spending limits. Status: <span class="text-amber-400">pending</span>.
+                </p>
+              </div>
+            </div>
 
-              <button
-                type="submit"
-                phx-disable-with="Saving..."
-                class="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-medium text-sm transition-colors"
-              >
-                Create Agent
-              </button>
-            </.form>
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div class="w-7 h-7 rounded-full bg-violet-500/20 ring-1 ring-violet-500/30 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-black text-violet-400">2</span>
+                </div>
+                <div class="w-px flex-1 bg-gray-800 mt-2"></div>
+              </div>
+              <div class="pb-6">
+                <p class="text-sm font-semibold text-white">Deploy the vault</p>
+                <p class="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Run the onboard script to deploy a TradingAgentVault on Kite testnet. Fund it at faucet.gokite.ai.
+                </p>
+                <code class="mt-2 block text-xs font-mono text-violet-400 bg-gray-900 rounded-lg px-3 py-2 ring-1 ring-white/5">
+                  python scripts/agent_onboard.py
+                </code>
+              </div>
+            </div>
+
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div class="w-7 h-7 rounded-full bg-emerald-500/20 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-black text-emerald-400">3</span>
+                </div>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-white">Go live</p>
+                <p class="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Paste the vault address on the dashboard. AgentRunner starts ticking. Claude generates signals. Trades execute on-chain.
+                </p>
+              </div>
+            </div>
           </div>
-
-          <p class="text-center text-xs text-gray-600 mt-6">
-            Private keys never leave your machine. The platform only stores your wallet address.
-          </p>
         </div>
       </div>
     </Layouts.app>
