@@ -12,12 +12,19 @@ defmodule KiteAgentHubWeb.WorkOSAuthController do
   Stores a CSRF state token in the session to validate the callback.
   """
   def authorize(conn, _params) do
-    state = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
-    auth_url = WorkOS.authorization_url(state)
+    if WorkOS.configured?() do
+      state = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
+      auth_url = WorkOS.authorization_url(state)
 
-    conn
-    |> put_session(:workos_oauth_state, state)
-    |> redirect(external: auth_url)
+      conn
+      |> put_session(:workos_oauth_state, state)
+      |> redirect(external: auth_url)
+    else
+      conn
+      |> put_flash(:error, "SSO is not configured. Please use email and password to log in.")
+      |> redirect(to: ~p"/users/log-in")
+      |> halt()
+    end
   end
 
   @doc """

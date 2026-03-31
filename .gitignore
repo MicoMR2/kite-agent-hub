@@ -35,3 +35,6 @@ kite_agent_hub-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Local env files — never commit secrets
+.env
+.env.*
