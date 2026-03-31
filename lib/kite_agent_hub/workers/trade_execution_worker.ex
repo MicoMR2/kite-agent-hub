@@ -32,7 +32,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   require Logger
 
   alias KiteAgentHub.{Trading, Repo, Orgs}
-  alias KiteAgentHub.Kite.{RPC, TxSigner, VaultABI}
+  alias KiteAgentHub.Kite.{RPC, TxSigner, VaultABI, GaslessClient}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -82,12 +82,14 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   defp maybe_submit_onchain(trade, agent, args, owner_user_id) do
     signed_tx = args["signed_tx_hex"]
     private_key = Application.get_env(:kite_agent_hub, :agent_private_key, "")
+    network = if agent.chain_id == 2366, do: :mainnet, else: :testnet
 
     cond do
       signed_tx ->
         submit_tx(trade, signed_tx, owner_user_id)
 
       private_key != "" and agent.vault_address ->
+        maybe_gasless_deposit(agent, private_key, network)
         sign_and_submit(trade, agent, private_key, owner_user_id)
 
       true ->
@@ -96,6 +98,21 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         )
 
         :ok
+    end
+  end
+
+  # Attempt a gasless deposit to ensure the vault has funds before the trade.
+  # Non-blocking: logs and continues even if gasless deposit is unavailable.
+  defp maybe_gasless_deposit(agent, private_key, network) do
+    token = GaslessClient.token_info(network)
+    min_deposit = round(1 * :math.pow(10, token.decimals))
+
+    case GaslessClient.transfer(private_key, agent.vault_address, min_deposit, network) do
+      {:ok, tx_hash} ->
+        Logger.info("GaslessClient: vault deposit submitted — tx=#{tx_hash}")
+
+      {:error, reason} ->
+        Logger.debug("GaslessClient: gasless deposit skipped — #{inspect(reason)}")
     end
   end
 
