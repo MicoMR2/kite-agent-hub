@@ -148,7 +148,7 @@ defmodule KiteAgentHubWeb.TradesLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="min-h-screen bg-gray-950 text-gray-100">
         <%!-- Nav --%>
-        <div class="border-b border-white/5 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
+        <div class="border-b border-white/[0.10] bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
           <div class="max-w-7xl mx-auto flex items-center justify-between">
             <div class="flex items-center gap-3">
               <.link
@@ -194,7 +194,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                   @selected_agent?.id == agent.id &&
                     "ring-violet-500/40 bg-violet-500/10",
                   @selected_agent?.id != agent.id &&
-                    "ring-white/5 bg-gray-900/60 hover:ring-white/10"
+                    "ring-white/[0.12] bg-gray-900/60 hover:ring-white/[0.20]"
                 ]}
               >
                 <div class="flex items-center justify-between gap-2">
@@ -215,10 +215,10 @@ defmodule KiteAgentHubWeb.TradesLive do
 
           <%!-- Trade Table --%>
           <div class="col-span-9">
-            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/5 overflow-hidden">
+            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] overflow-hidden">
               <table class="w-full text-sm">
                 <thead>
-                  <tr class="border-b border-white/5">
+                  <tr class="border-b border-white/[0.10]">
                     <th class="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
                       Market
                     </th>
@@ -262,7 +262,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                     </tr>
                   <% else %>
                     <%= for trade <- @trades do %>
-                      <tr class="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                      <tr class="border-b border-white/[0.06] hover:bg-white/[0.02] transition-colors">
                         <td class="px-5 py-3.5 font-mono text-xs text-gray-300 font-medium">
                           {trade.market}
                         </td>
@@ -302,7 +302,7 @@ defmodule KiteAgentHubWeb.TradesLive do
               </table>
 
               <%= if @has_more do %>
-                <div class="px-5 py-4 border-t border-white/5 text-center">
+                <div class="px-5 py-4 border-t border-white/[0.10] text-center">
                   <button
                     phx-click="load_more"
                     class="text-xs text-violet-400 hover:text-violet-300 font-semibold transition-colors"
@@ -314,7 +314,7 @@ defmodule KiteAgentHubWeb.TradesLive do
             </div>
 
             <%= if trade = Enum.find(@trades, &(&1.reason)) do %>
-              <div class="mt-4 rounded-xl bg-gray-900/60 ring-1 ring-white/5 p-4">
+              <div class="mt-4 rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] p-4">
                 <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                   Latest Signal Reasoning
                 </h3>
