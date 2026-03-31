@@ -9,9 +9,22 @@ defmodule KiteAgentHub.WorkOS do
   @base_url "https://api.workos.com"
   @provider "authkit"
 
-  defp client_id, do: Application.fetch_env!(:kite_agent_hub, :workos_client_id)
-  defp api_key, do: Application.fetch_env!(:kite_agent_hub, :workos_api_key)
-  defp redirect_uri, do: Application.fetch_env!(:kite_agent_hub, :workos_redirect_uri)
+  @doc "Returns true if WorkOS credentials are configured."
+  def configured?,
+    do:
+      Application.get_env(:kite_agent_hub, :workos_client_id, "") != "" &&
+        Application.get_env(:kite_agent_hub, :workos_api_key, "") != ""
+
+  defp client_id, do: Application.get_env(:kite_agent_hub, :workos_client_id, "")
+  defp api_key, do: Application.get_env(:kite_agent_hub, :workos_api_key, "")
+
+  defp redirect_uri,
+    do:
+      Application.get_env(
+        :kite_agent_hub,
+        :workos_redirect_uri,
+        "http://localhost:4000/auth/workos/callback"
+      )
 
   @doc """
   Returns the WorkOS authorization URL to redirect the user to.

@@ -1,14 +1,14 @@
 defmodule KiteAgentHubWeb.UserSessionController do
   use KiteAgentHubWeb, :controller
 
-  alias KiteAgentHub.Accounts
+  alias KiteAgentHub.{Accounts, WorkOS}
   alias KiteAgentHubWeb.UserAuth
 
   def new(conn, _params) do
     email = get_in(conn.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
     form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
 
-    render(conn, :new, form: form)
+    render(conn, :new, form: form, workos_enabled: WorkOS.configured?())
   end
 
   # magic link login

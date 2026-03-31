@@ -43,29 +43,31 @@
       </.button>
     </.form>
 
-    <div class="divider">or</div>
+    <%= if @workos_enabled do %>
+      <div class="divider">or</div>
 
-    <.link
-      href={~p"/auth/workos"}
-      id="workos-sso-btn"
-      class="flex items-center justify-center gap-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 hover:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    >
-      <svg
-        class="h-5 w-5 shrink-0"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
+      <.link
+        href={~p"/auth/workos"}
+        id="workos-sso-btn"
+        class="flex items-center justify-center gap-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 hover:border-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
       >
-        <path
-          d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-      Continue with SSO
-    </.link>
+        <svg
+          class="h-5 w-5 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        Continue with SSO
+      </.link>
+    <% end %>
 
     <div class="divider">or continue with email</div>
 
