@@ -249,7 +249,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
       nil -> assign(socket, :alpaca_data, :error)
       {:error, :not_configured} -> assign(socket, :alpaca_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :alpaca_data, :unauthorized)
-      _ -> assign(socket, :alpaca_data, :error)
+      {:error, reason} ->
+        require Logger
+        Logger.warning("DashboardLive: Alpaca load failed: #{inspect(reason)}")
+        assign(socket, :alpaca_data, :error)
+
+      _ ->
+        require Logger
+        Logger.warning("DashboardLive: Alpaca load unexpected result shape")
+        assign(socket, :alpaca_data, :error)
     end
   end
 
@@ -266,7 +274,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
       nil -> assign(socket, :kalshi_data, :error)
       {:error, :not_configured} -> assign(socket, :kalshi_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :kalshi_data, :unauthorized)
-      _ -> assign(socket, :kalshi_data, :error)
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("DashboardLive: Kalshi load failed: #{inspect(reason)}")
+        assign(socket, :kalshi_data, :error)
+
+      _ ->
+        require Logger
+        Logger.warning("DashboardLive: Kalshi load unexpected result shape")
+        assign(socket, :kalshi_data, :error)
     end
   end
 
