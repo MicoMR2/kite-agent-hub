@@ -216,7 +216,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:alpaca_data, %{account: account, positions: positions})
       |> assign(:alpaca_history, history)
     else
-      nil -> assign(socket, :alpaca_data, :no_org)
+      nil -> assign(socket, :alpaca_data, :error)
       {:error, :not_configured} -> assign(socket, :alpaca_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :alpaca_data, :unauthorized)
       _ -> assign(socket, :alpaca_data, :error)
@@ -233,7 +233,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
          {:ok, positions} <- KalshiClient.positions(key_id, pem) do
       assign(socket, :kalshi_data, %{balance: balance, positions: positions})
     else
-      nil -> assign(socket, :kalshi_data, :no_org)
+      nil -> assign(socket, :kalshi_data, :error)
       {:error, :not_configured} -> assign(socket, :kalshi_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :kalshi_data, :unauthorized)
       _ -> assign(socket, :kalshi_data, :error)
