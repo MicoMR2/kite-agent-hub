@@ -23,6 +23,9 @@ config :kite_agent_hub, KiteAgentHubWeb.Endpoint,
   secret_key_base: "CEsrt1MdAtOHadJHlzz/Q/zbieRQKxnjLoSbapGr32XI7WbBUqY4WMyD16OJUGrI",
   server: false
 
+# Run Oban jobs inline during tests (no background DB connections)
+config :kite_agent_hub, Oban, testing: :inline
+
 # In test we don't send emails
 config :kite_agent_hub, KiteAgentHub.Mailer, adapter: Swoosh.Adapters.Test
 
