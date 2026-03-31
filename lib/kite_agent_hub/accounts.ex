@@ -95,6 +95,7 @@ defmodule KiteAgentHub.Accounts do
     |> Ecto.Multi.run(:org, fn _repo, %{user: user} ->
       email_prefix = user.email |> String.split("@") |> List.first()
       name = "#{email_prefix}'s Org"
+
       slug =
         name
         |> String.downcase()

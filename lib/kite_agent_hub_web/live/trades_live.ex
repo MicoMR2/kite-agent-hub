@@ -114,7 +114,10 @@ defmodule KiteAgentHubWeb.TradesLive do
   end
 
   defp status_classes("open"), do: "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20"
-  defp status_classes("settled"), do: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+
+  defp status_classes("settled"),
+    do: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+
   defp status_classes("failed"), do: "bg-red-500/10 text-red-400 ring-1 ring-red-500/20"
   defp status_classes("cancelled"), do: "bg-gray-500/10 text-gray-400 ring-1 ring-gray-500/20"
   defp status_classes(_), do: "bg-gray-500/10 text-gray-500"
@@ -146,30 +149,33 @@ defmodule KiteAgentHubWeb.TradesLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="min-h-screen bg-gray-950 text-gray-100">
+      <div class="min-h-screen bg-[#0a0a0f] text-gray-100">
         <%!-- Nav --%>
-        <div class="border-b border-white/[0.10] bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
-          <div class="max-w-7xl mx-auto flex items-center justify-between">
-            <div class="flex items-center gap-3">
+        <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
+          <div class="w-full flex items-center justify-between">
+            <div class="flex items-center gap-4">
               <.link
                 navigate={~p"/dashboard"}
-                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
               >
                 <.icon name="hero-arrow-left" class="w-3.5 h-3.5" /> Dashboard
               </.link>
-              <span class="text-gray-700">/</span>
-              <h1 class="text-sm font-bold text-white">Trade History</h1>
+              <span class="text-gray-700 hidden sm:block">|</span>
+              <h1 class="text-sm font-black text-white uppercase tracking-widest hidden sm:block">
+                Trade History
+              </h1>
             </div>
-            <div class="flex gap-1.5">
+            <div class="flex flex-wrap gap-2">
               <%= for {label, val} <- [{"All", "all"}, {"Open", "open"}, {"Settled", "settled"}, {"Failed", "failed"}] do %>
                 <button
                   phx-click="filter"
                   phx-value-status={val}
                   class={[
-                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all",
+                    "px-4 py-1.5 rounded-xl border text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all",
                     @status_filter == val &&
-                      "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30",
-                    @status_filter != val && "text-gray-500 hover:text-gray-300"
+                      "bg-white/10 border-white/20 text-white shadow-[0_0_15px_rgba(255,255,255,0.05)]",
+                    @status_filter != val &&
+                      "bg-transparent border-transparent text-gray-500 hover:text-white hover:bg-white/5"
                   ]}
                 >
                   {label}
@@ -179,120 +185,132 @@ defmodule KiteAgentHubWeb.TradesLive do
           </div>
         </div>
 
-        <div class="max-w-7xl mx-auto px-6 py-6 grid grid-cols-12 gap-5">
+        <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
           <%!-- Agent Sidebar --%>
-          <div class="col-span-3 space-y-2">
-            <h2 class="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">
+          <div class="w-full lg:w-72 shrink-0 space-y-4">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest px-2">
               Agents
             </h2>
-            <%= for agent <- @agents do %>
-              <button
-                phx-click="select_agent"
-                phx-value-id={agent.id}
-                class={[
-                  "w-full text-left px-4 py-3 rounded-xl ring-1 transition-all",
-                  @selected_agent?.id == agent.id &&
-                    "ring-violet-500/40 bg-violet-500/10",
-                  @selected_agent?.id != agent.id &&
-                    "ring-white/[0.12] bg-gray-900/60 hover:ring-white/[0.20]"
-                ]}
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-sm font-semibold text-white truncate">{agent.name}</span>
-                  <span class={[
-                    "w-2 h-2 rounded-full shrink-0",
-                    agent.status == "active" && "bg-emerald-400",
-                    agent.status == "paused" && "bg-yellow-400",
-                    agent.status == "pending" && "bg-gray-500",
-                    agent.status == "error" && "bg-red-400"
-                  ]}>
-                  </span>
-                </div>
-                <p class="text-xs text-gray-600 mt-0.5">{String.capitalize(agent.status)}</p>
-              </button>
-            <% end %>
+            <div class="space-y-2">
+              <%= for agent <- @agents do %>
+                <button
+                  phx-click="select_agent"
+                  phx-value-id={agent.id}
+                  class={[
+                    "w-full text-left px-4 py-4 rounded-xl border transition-all group",
+                    @selected_agent?.id == agent.id &&
+                      "border-white/20 bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.02)]",
+                    @selected_agent?.id != agent.id &&
+                      "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
+                  ]}
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <span class={[
+                      "text-sm font-bold truncate tracking-wide transition-colors",
+                      @selected_agent?.id == agent.id && "text-white",
+                      @selected_agent?.id != agent.id && "text-gray-400 group-hover:text-gray-200"
+                    ]}>
+                      {agent.name}
+                    </span>
+                    <span class={[
+                      "w-2 h-2 rounded-full shrink-0",
+                      agent.status == "active" && "bg-[#22c55e] shadow-[0_0_8px_#22c55e]",
+                      agent.status == "paused" && "bg-yellow-400",
+                      agent.status == "pending" && "bg-gray-500",
+                      agent.status == "error" && "bg-[#ef4444]"
+                    ]}>
+                    </span>
+                  </div>
+                  <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-2">
+                    {agent.status}
+                  </p>
+                </button>
+              <% end %>
+            </div>
           </div>
 
           <%!-- Trade Table --%>
-          <div class="col-span-9">
-            <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] overflow-hidden">
+          <div class="flex-1 min-w-0">
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-x-auto">
               <table class="w-full text-sm">
                 <thead>
-                  <tr class="border-b border-white/[0.10]">
-                    <th class="text-left px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <tr class="border-b border-white/10 bg-black/20">
+                    <th class="text-left px-6 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Market
                     </th>
-                    <th class="text-left px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-left px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Action
                     </th>
-                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Qty
                     </th>
-                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Fill
                     </th>
-                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Notional
                     </th>
-                    <th class="text-right px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       P&L
                     </th>
-                    <th class="text-center px-4 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Status
                     </th>
-                    <th class="text-right px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <th class="text-right px-6 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Time
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody class="divide-y divide-white/5">
                   <%= if @trades == [] do %>
                     <tr>
-                      <td colspan="8" class="px-5 py-16 text-center">
-                        <div class="flex flex-col items-center gap-3">
-                          <div class="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                      <td colspan="8" class="px-6 py-20 text-center">
+                        <div class="flex flex-col items-center gap-4">
+                          <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center">
                             <.icon
-                              name="hero-arrow-trending-up"
-                              class="w-5 h-5 text-gray-600"
+                              name="hero-chart-bar"
+                              class="w-6 h-6 text-gray-600"
                             />
                           </div>
-                          <p class="text-sm text-gray-600">No trades yet</p>
+                          <p class="text-sm font-bold text-gray-400">No trades yet</p>
                         </div>
                       </td>
                     </tr>
                   <% else %>
                     <%= for trade <- @trades do %>
-                      <tr class="border-b border-white/[0.06] hover:bg-white/[0.02] transition-colors">
-                        <td class="px-5 py-3.5 font-mono text-xs text-gray-300 font-medium">
+                      <tr class="hover:bg-white/[0.02] transition-colors group">
+                        <td class="px-6 py-4 font-black whitespace-nowrap text-white text-sm tracking-tight">
                           {trade.market}
                         </td>
-                        <td class="px-4 py-3.5">
+                        <td class="px-4 py-4 whitespace-nowrap">
                           <span class={[
-                            "inline-flex px-2 py-0.5 rounded text-xs font-black uppercase",
-                            trade.action == "buy" && "bg-emerald-500/10 text-emerald-400",
-                            trade.action == "sell" && "bg-red-500/10 text-red-400"
+                            "inline-flex px-2 py-1 rounded border text-[10px] font-black uppercase tracking-widest",
+                            trade.action == "buy" &&
+                              "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e] group-hover:bg-[#22c55e]/20",
+                            trade.action == "sell" &&
+                              "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444] group-hover:bg-[#ef4444]/20"
                           ]}>
                             {trade.action}
                           </span>
                         </td>
-                        <td class="px-4 py-3.5 text-right tabular-nums text-gray-300 text-xs">
+                        <td class="px-4 py-4 text-right tabular-nums text-gray-300 font-mono text-sm whitespace-nowrap">
                           {trade.contracts}
                         </td>
-                        <td class="px-4 py-3.5 text-right tabular-nums font-mono text-xs text-gray-300">
+                        <td class="px-4 py-4 text-right tabular-nums font-mono text-sm text-gray-300 whitespace-nowrap">
                           ${trade.fill_price}
                         </td>
-                        <td class="px-4 py-3.5 text-right tabular-nums text-xs text-gray-400">
+                        <td class="px-4 py-4 text-right tabular-nums font-mono text-sm text-gray-500 whitespace-nowrap">
                           {format_notional(trade.notional_usd)}
                         </td>
-                        <td class={"px-4 py-3.5 text-right tabular-nums text-sm #{pnl_class(trade.realized_pnl)}"}>
+                        <td class={"px-4 py-4 text-right tabular-nums text-sm font-mono whitespace-nowrap #{pnl_class(trade.realized_pnl)}"}>
                           {format_pnl(trade.realized_pnl)}
                         </td>
-                        <td class="px-4 py-3.5 text-center">
-                          <span class={"px-2 py-0.5 rounded-lg text-xs font-semibold #{status_classes(trade.status)}"}>
+                        <td class="px-4 py-4 text-center whitespace-nowrap">
+                          <span class={"inline-flex px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest #{status_classes(trade.status)}"}>
                             {trade.status}
                           </span>
                         </td>
-                        <td class="px-5 py-3.5 text-right text-xs text-gray-600 tabular-nums whitespace-nowrap font-mono">
+                        <td class="px-6 py-4 text-right text-xs text-gray-500 tabular-nums whitespace-nowrap font-mono tracking-widest">
                           {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
                         </td>
                       </tr>
@@ -302,23 +320,30 @@ defmodule KiteAgentHubWeb.TradesLive do
               </table>
 
               <%= if @has_more do %>
-                <div class="px-5 py-4 border-t border-white/[0.10] text-center">
+                <div class="px-6 py-5 border-t border-white/10 text-center bg-black/20">
                   <button
                     phx-click="load_more"
-                    class="text-xs text-violet-400 hover:text-violet-300 font-semibold transition-colors"
+                    class="text-xs text-white hover:text-gray-300 font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mx-auto"
                   >
-                    Load more →
+                    Load Older Trades <span>↓</span>
                   </button>
                 </div>
               <% end %>
             </div>
 
             <%= if trade = Enum.find(@trades, &(&1.reason)) do %>
-              <div class="mt-4 rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] p-4">
-                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  Latest Signal Reasoning
-                </h3>
-                <p class="text-sm text-gray-300 leading-relaxed">{trade.reason}</p>
+              <div class="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                <div class="flex items-center gap-3 mb-3">
+                  <div class="h-6 w-6 rounded border border-white/10 bg-white/[0.05] flex items-center justify-center">
+                    <.icon name="hero-cpu-chip" class="w-3.5 h-3.5 text-gray-400" />
+                  </div>
+                  <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                    Latest Signal Reasoning
+                  </h3>
+                </div>
+                <p class="text-sm font-light text-gray-300 leading-relaxed font-mono">
+                  > {trade.reason}
+                </p>
               </div>
             <% end %>
           </div>

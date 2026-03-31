@@ -56,25 +56,45 @@ defmodule KiteAgentHubWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class={[
+        "fixed top-4 right-4 z-50 w-80 sm:w-96 p-4 rounded-xl border backdrop-blur-md shadow-2xl flex items-start gap-4 cursor-pointer transition-all duration-300",
+        @kind == :info && "bg-black/60 border-[#22c55e]/20 shadow-[#22c55e]/5",
+        @kind == :error && "bg-black/60 border-[#ef4444]/20 shadow-[#ef4444]/5"
+      ]}
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "absolute inset-0 rounded-xl bg-gradient-to-br opacity-[0.03] pointer-events-none",
+        @kind == :info && "from-[#22c55e] to-black",
+        @kind == :error && "from-[#ef4444] to-black"
+      ]} />
+
+      <div class={[
+        "mt-0.5 shrink-0 select-none",
+        @kind == :info && "text-[#22c55e] drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]",
+        @kind == :error && "text-[#ef4444] drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]"
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
-        </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
-        </button>
+        <.icon :if={@kind == :info} name="hero-check-circle" class="w-6 h-6" />
+        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="w-6 h-6" />
       </div>
+
+      <div class="flex-1 relative z-10 pt-0.5">
+        <p :if={@title} class="text-sm font-black text-white uppercase tracking-widest mb-1 shadow-sm">
+          {@title}
+        </p>
+        <p class="text-xs text-gray-300 font-medium leading-relaxed">{msg}</p>
+      </div>
+
+      <button
+        type="button"
+        class="group relative z-10 p-1.5 -mr-1.5 -mt-1.5 rounded-lg hover:bg-white/[0.05] transition-colors"
+        aria-label={gettext("close")}
+      >
+        <.icon
+          name="hero-x-mark"
+          class="w-4 h-4 text-gray-400 group-hover:text-white transition-colors"
+        />
+      </button>
     </div>
     """
   end
