@@ -12,9 +12,9 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
     test "renders login page", %{conn: conn} do
       conn = get(conn, ~p"/users/log-in")
       response = html_response(conn, 200)
-      assert response =~ "Log in"
+      assert response =~ "Welcome back"
       assert response =~ ~p"/users/register"
-      assert response =~ "Log in with email"
+      assert response =~ "Sign in"
     end
 
     test "renders login page with email filled in (sudo mode)", %{conn: conn, user: user} do
@@ -24,20 +24,20 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         |> get(~p"/users/log-in")
         |> html_response(200)
 
-      assert html =~ "You need to reauthenticate"
+      assert html =~ "Reauthenticate to continue"
       refute html =~ "Register"
-      assert html =~ "Log in with email"
+      assert html =~ "Sign in"
 
       assert html =~
-               ~s(<input type="email" name="user[email]" id="login_form_magic_email" value="#{user.email}")
+               ~s(<input type="email" name="user[email]" id="login_form_password_email" value="#{user.email}")
     end
 
     test "renders login page (email + password)", %{conn: conn} do
       conn = get(conn, ~p"/users/log-in?mode=password")
       response = html_response(conn, 200)
-      assert response =~ "Log in"
+      assert response =~ "Welcome back"
       assert response =~ ~p"/users/register"
-      assert response =~ "Log in with email"
+      assert response =~ "Sign in"
     end
   end
 
@@ -49,7 +49,7 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         end)
 
       conn = get(conn, ~p"/users/log-in/#{token}")
-      assert html_response(conn, 200) =~ "Confirm and stay logged in"
+      assert html_response(conn, 200) =~ "Go to Dashboard"
     end
 
     test "renders login page for confirmed user", %{conn: conn, user: user} do
@@ -61,7 +61,7 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/users/log-in/#{token}")
       html = html_response(conn, 200)
       refute html =~ "Confirm my account"
-      assert html =~ "Keep me logged in"
+      assert html =~ "Go to Dashboard"
     end
 
     test "raises error for invalid token", %{conn: conn} do
@@ -133,7 +133,7 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         })
 
       response = html_response(conn, 200)
-      assert response =~ "Log in"
+      assert response =~ "Welcome back"
       assert response =~ "Invalid email or password"
     end
   end
