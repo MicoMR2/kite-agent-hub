@@ -28,7 +28,10 @@ defmodule KiteAgentHubWeb.UserSessionController do
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "The link is invalid or it has expired.")
-        |> render(:new, form: Phoenix.Component.to_form(%{}, as: "user"))
+        |> render(:new,
+          form: Phoenix.Component.to_form(%{}, as: "user"),
+          workos_enabled: WorkOS.configured?()
+        )
     end
   end
 
@@ -44,7 +47,7 @@ defmodule KiteAgentHubWeb.UserSessionController do
       # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
       conn
       |> put_flash(:error, "Invalid email or password")
-      |> render(:new, form: form)
+      |> render(:new, form: form, workos_enabled: WorkOS.configured?())
     end
   end
 
