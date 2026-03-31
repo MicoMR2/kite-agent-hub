@@ -314,7 +314,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                           </span>
                         </td>
                         <td class="px-4 py-4 text-center whitespace-nowrap">
-                          <%= if trade.tx_hash do %>
+                          <%= if trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) do %>
                             <a
                               href={"https://testnet.kitescan.ai/tx/#{trade.tx_hash}"}
                               target="_blank"
