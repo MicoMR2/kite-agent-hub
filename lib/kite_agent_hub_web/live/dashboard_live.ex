@@ -199,75 +199,66 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp wei_to_eth(nil), do: nil
 
   defp wei_to_eth(wei) when is_integer(wei) do
-    Float.round(wei / 1_000_000_000_000_000_000, 6)
+    Float.round(wei / 1_000_000_000_000_000_000, 4)
   end
 
-  defp pnl_color(nil), do: "text-gray-400"
-
-  defp pnl_color(val) do
-    cond do
-      Decimal.gt?(val, 0) -> "text-emerald-400"
-      Decimal.lt?(val, 0) -> "text-red-400"
-      true -> "text-gray-400"
-    end
-  end
-
-  defp win_rate(_win, 0), do: "—"
-
-  defp win_rate(win, total) do
-    pct = Float.round(win / total * 100, 1)
-    "#{pct}%"
-  end
+  defp win_rate(_, 0), do: "0%"
+  defp win_rate(wins, total), do: "#{Float.round(wins / total * 100, 1)}%"
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="min-h-screen bg-gray-950 text-gray-100">
+      <div class="min-h-screen bg-[#0a0a0f] text-gray-100">
         <%!-- Top nav bar --%>
-        <div class="border-b border-white/[0.10] bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3">
-          <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
+          <div class="w-full flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+              <div class="h-8 w-8 rounded-lg border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.05)]">
                 <.icon name="hero-bolt" class="w-4 h-4 text-white" />
               </div>
               <div>
-                <span class="text-sm font-bold text-white tracking-tight">Kite Agent Hub</span>
-                <span class="text-gray-600 mx-2">·</span>
-                <span class="text-xs text-gray-500">
+                <span class="text-sm font-black text-white tracking-tight uppercase">
+                  Kite Agent Hub
+                </span>
+                <span class="text-gray-600 mx-2">|</span>
+                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase">
                   {if @organization, do: @organization.name, else: "No workspace"}
                 </span>
               </div>
             </div>
             <div class="flex items-center gap-4">
               <%= if @block_number do %>
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span class="text-xs font-mono text-emerald-400">Block {@block_number}</span>
+                <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+                  </span>
+                  <span class="text-xs font-mono text-gray-300 tracking-wider">
+                    BLOCK {@block_number}
+                  </span>
                 </div>
               <% end %>
               <.link
                 navigate={~p"/trades"}
-                class="text-xs text-gray-500 hover:text-gray-300 transition-colors font-medium"
+                class="text-xs text-gray-400 hover:text-white transition-colors font-semibold uppercase tracking-widest"
               >
                 Trades
               </.link>
               <.link
                 navigate={~p"/agents/new"}
-                class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30"
+                class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold transition-all uppercase tracking-widest"
               >
-                <.icon name="hero-plus" class="w-4 h-4" /> New Agent
+                <.icon name="hero-plus" class="w-3.5 h-3.5" /> New Agent
               </.link>
               <.link
                 navigate={~p"/users/settings"}
-                class="text-xs text-gray-500 hover:text-gray-300 transition-colors font-medium"
+                class="text-xs text-gray-400 hover:text-white transition-colors font-mono hidden sm:block"
               >
                 {@current_scope.user.email}
               </.link>
               <.link
                 href={~p"/users/log-out"}
                 method="delete"
-                class="text-xs text-gray-600 hover:text-gray-400 transition-colors font-medium"
+                class="text-xs text-gray-500 hover:text-gray-300 transition-colors uppercase font-semibold tracking-widest"
               >
                 Sign out
               </.link>
@@ -277,180 +268,190 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         <%= if @agents == [] do %>
           <%!-- ═══════════════ EMPTY STATE — first-time user ═══════════════ --%>
-          <div class="max-w-4xl mx-auto px-6 py-20 text-center">
-            <%!-- Hero --%>
-            <div class="relative mb-12">
-              <div class="absolute inset-0 flex items-center justify-center opacity-10">
-                <div class="w-96 h-96 rounded-full bg-gradient-to-br from-violet-600 to-purple-600 blur-3xl"></div>
-              </div>
-              <div class="relative">
-                <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-violet-500/30">
-                  <.icon name="hero-cpu-chip" class="w-10 h-10 text-white" />
-                </div>
-                <h1 class="text-4xl font-black text-white mb-4 tracking-tight">
-                  Autonomous AI Trading.<br />
-                  <span class="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
-                    On-Chain. Unstoppable.
-                  </span>
-                </h1>
-                <p class="text-lg text-gray-400 max-w-xl mx-auto">
-                  Deploy a trading agent powered by Claude AI. It reads market data, generates signals, and executes trades on Kite chain — around the clock, fully autonomous.
-                </p>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-20 text-center relative overflow-hidden">
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="w-[600px] h-[600px] rounded-full bg-white/[0.02] blur-3xl absolute top-10 left-1/2 -translate-x-1/2">
               </div>
             </div>
+            <div class="relative z-10 max-w-4xl mx-auto">
+              <div class="w-20 h-20 rounded-2xl border border-white/10 bg-white/[0.03] flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(255,255,255,0.05)]">
+                <.icon name="hero-cpu-chip" class="w-10 h-10 text-white" />
+              </div>
+              <h1 class="text-5xl font-black text-white mb-6 tracking-tight">
+                Autonomous AI Trading.<br />
+                <span class="text-gray-400">
+                  On-Chain. Unstoppable.
+                </span>
+              </h1>
+              <p class="text-lg text-gray-500 max-w-xl mx-auto mb-12 font-light">
+                Deploy a trading agent powered by Claude AI. It reads market data, generates signals, and executes trades on Kite chain — around the clock, fully autonomous.
+              </p>
 
-            <%!-- Steps --%>
-            <div class="grid grid-cols-3 gap-4 mb-10">
-              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6 text-left">
-                <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center mb-4">
-                  <span class="text-lg font-black text-violet-400">1</span>
-                </div>
-                <h3 class="text-sm font-bold text-white mb-2">Create an Agent</h3>
-                <p class="text-xs text-gray-500 leading-relaxed">
-                  Name your agent, set spending limits, and provide your Kite wallet address. Takes 30 seconds.
-                </p>
-              </div>
-              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6 text-left">
-                <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center mb-4">
-                  <span class="text-lg font-black text-violet-400">2</span>
-                </div>
-                <h3 class="text-sm font-bold text-white mb-2">Deploy a Vault</h3>
-                <p class="text-xs text-gray-500 leading-relaxed">
-                  Deploy the TradingAgentVault contract on Kite testnet and fund it from the faucet. Your keys never leave your machine.
-                </p>
-              </div>
-              <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] p-6 text-left">
-                <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
-                  <span class="text-lg font-black text-emerald-400">3</span>
-                </div>
-                <h3 class="text-sm font-bold text-white mb-2">Watch It Trade</h3>
-                <p class="text-xs text-gray-500 leading-relaxed">
-                  Activate and the AgentRunner starts ticking. Claude Haiku generates signals. Trades execute and settle on-chain in real time.
-                </p>
-              </div>
-            </div>
-
-            <.link
-              navigate={~p"/agents/new"}
-              class="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-base font-bold transition-all shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40 hover:-translate-y-0.5 transform"
-            >
-              <.icon name="hero-bolt" class="w-5 h-5" /> Launch Your First Agent
-            </.link>
-            <p class="text-xs text-gray-600 mt-4">
-              Running on Kite AI testnet · Chain ID 2368 · Powered by Claude
-            </p>
-          </div>
-        <% else %>
-          <%!-- ═══════════════ MAIN DASHBOARD ═══════════════ --%>
-          <div class="max-w-7xl mx-auto px-6 py-6 grid grid-cols-12 gap-5">
-            <%!-- ── Sidebar: Agent List ── --%>
-            <div class="col-span-3 space-y-3">
-              <div class="flex items-center justify-between mb-1">
-                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Agents</h2>
-                <span class="text-xs text-gray-600">{length(@agents)} total</span>
-              </div>
-
-              <%= for agent <- @agents do %>
-                <.link
-                  patch={~p"/dashboard?agent_id=#{agent.id}"}
-                  class={[
-                    "block rounded-xl p-4 transition-all ring-1 cursor-pointer",
-                    @selected_agent && @selected_agent.id == agent.id &&
-                      "ring-violet-500/40 bg-gradient-to-br from-violet-500/10 to-purple-500/5 shadow-lg shadow-violet-500/10",
-                    (!@selected_agent || @selected_agent.id != agent.id) &&
-                      "ring-white/[0.12] bg-gray-900/60 hover:ring-white/[0.20] hover:bg-gray-900"
-                  ]}
-                >
-                  <div class="flex items-start justify-between gap-2 mb-2">
-                    <span class="text-sm font-semibold text-white truncate leading-tight">
-                      {agent.name}
-                    </span>
-                    <span class={[
-                      "w-2 h-2 rounded-full shrink-0 mt-1",
-                      agent.status == "active" && "bg-emerald-400 shadow-sm shadow-emerald-400/50",
-                      agent.status == "paused" && "bg-yellow-400",
-                      agent.status == "pending" && "bg-gray-500",
-                      agent.status == "error" && "bg-red-400"
-                    ]}>
-                    </span>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 text-left hover:bg-white/[0.04] transition-all">
+                  <div class="w-10 h-10 rounded-xl border border-white/10 bg-black flex items-center justify-center mb-4">
+                    <span class="text-lg font-black text-white">1</span>
                   </div>
-                  <p class="text-xs text-gray-600 font-mono truncate">
-                    {String.slice(agent.wallet_address || "", 0, 12)}…
+                  <h3 class="text-sm font-bold text-white mb-2">Create an Agent</h3>
+                  <p class="text-xs text-gray-400 leading-relaxed font-light">
+                    Name your agent, set spending limits, and provide your Kite wallet address. Takes 30 seconds.
                   </p>
-                  <div class="mt-2 flex items-center gap-1.5">
-                    <span class={[
-                      "text-xs px-1.5 py-0.5 rounded font-medium",
-                      agent.status == "active" && "bg-emerald-500/10 text-emerald-400",
-                      agent.status == "paused" && "bg-yellow-500/10 text-yellow-400",
-                      agent.status == "pending" && "bg-gray-500/10 text-gray-400",
-                      agent.status == "error" && "bg-red-500/10 text-red-400"
-                    ]}>
-                      {String.capitalize(agent.status)}
-                    </span>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 text-left hover:bg-white/[0.04] transition-all">
+                  <div class="w-10 h-10 rounded-xl border border-white/10 bg-black flex items-center justify-center mb-4">
+                    <span class="text-lg font-black text-white">2</span>
                   </div>
-                </.link>
-              <% end %>
+                  <h3 class="text-sm font-bold text-white mb-2">Deploy a Vault</h3>
+                  <p class="text-xs text-gray-400 leading-relaxed font-light">
+                    Deploy the TradingAgentVault contract on Kite testnet. Your keys never leave your machine.
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/[0.05] backdrop-blur-md p-6 text-left shadow-[0_0_15px_rgba(34,197,94,0.1)]">
+                  <div class="w-10 h-10 rounded-xl border border-[#22c55e]/50 bg-black flex items-center justify-center mb-4 text-[#22c55e] shadow-[0_0_10px_rgba(34,197,94,0.2)]">
+                    <span class="text-lg font-black">3</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-white mb-2">Watch It Trade</h3>
+                  <p class="text-xs text-gray-400 leading-relaxed font-light">
+                    Activate the agent. Claude generates signals, and trades execute instantly on-chain.
+                  </p>
+                </div>
+              </div>
 
               <.link
                 navigate={~p"/agents/new"}
-                class="flex items-center justify-center gap-2 w-full rounded-xl py-3 ring-1 ring-dashed ring-white/10 text-gray-600 hover:text-gray-400 hover:ring-white/20 transition-all text-xs font-medium"
+                class="inline-flex items-center gap-2 px-10 py-4 rounded-xl border border-white/10 bg-white/[0.08] hover:bg-white/[0.12] text-white text-base font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.05)] hover:-translate-y-0.5 transform tracking-wide"
               >
-                <.icon name="hero-plus" class="w-3.5 h-3.5" /> Add Agent
+                <.icon name="hero-bolt" class="w-5 h-5" /> Launch Your First Agent
+              </.link>
+              <p class="text-xs text-gray-600 mt-6 font-mono">
+                Chain ID 2368 · Powered by Claude
+              </p>
+            </div>
+          </div>
+        <% else %>
+          <%!-- ═══════════════ MAIN DASHBOARD ═══════════════ --%>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
+            <%!-- ── Sidebar: Agent List ── --%>
+            <div class="w-full lg:w-72 shrink-0 space-y-4">
+              <div class="flex items-center justify-between px-2">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Agents</h2>
+                <span class="text-xs text-gray-600 font-mono tracking-wider">
+                  {length(@agents)} total
+                </span>
+              </div>
+
+              <div class="space-y-2">
+                <%= for agent <- @agents do %>
+                  <.link
+                    patch={~p"/dashboard?agent_id=#{agent.id}"}
+                    class={[
+                      "block rounded-xl p-4 transition-all border group",
+                      @selected_agent && @selected_agent.id == agent.id &&
+                        "border-white/20 bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.02)]",
+                      (!@selected_agent || @selected_agent.id != agent.id) &&
+                        "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
+                    ]}
+                  >
+                    <div class="flex items-start justify-between gap-2 mb-2">
+                      <span class={[
+                        "text-sm font-bold truncate tracking-wide transition-colors",
+                        @selected_agent && @selected_agent.id == agent.id && "text-white",
+                        (!@selected_agent || @selected_agent.id != agent.id) &&
+                          "text-gray-400 group-hover:text-gray-200"
+                      ]}>
+                        {agent.name}
+                      </span>
+                      <span class={[
+                        "w-2 h-2 rounded-full shrink-0 mt-1",
+                        agent.status == "active" && "bg-[#22c55e] shadow-[0_0_8px_#22c55e]",
+                        agent.status == "paused" && "bg-yellow-400",
+                        agent.status == "pending" && "bg-gray-500",
+                        agent.status == "error" && "bg-[#ef4444]"
+                      ]}>
+                      </span>
+                    </div>
+                    <p class="text-xs text-gray-600 font-mono truncate mb-3">
+                      {String.slice(agent.wallet_address || "", 0, 12)}…
+                    </p>
+                    <div class="flex items-center">
+                      <span class={[
+                        "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
+                        agent.status == "active" &&
+                          "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
+                        agent.status == "paused" &&
+                          "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+                        agent.status == "pending" && "bg-gray-500/10 border-gray-500/20 text-gray-400",
+                        agent.status == "error" &&
+                          "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
+                      ]}>
+                        {agent.status}
+                      </span>
+                    </div>
+                  </.link>
+                <% end %>
+              </div>
+
+              <.link
+                navigate={~p"/agents/new"}
+                class="flex items-center justify-center gap-2 w-full rounded-xl py-4 border border-dashed border-white/10 bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/20 text-gray-500 hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
+              >
+                <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
               </.link>
             </div>
 
             <%!-- ── Main Panel ── --%>
-            <div class="col-span-9 space-y-4">
+            <div class="flex-1 space-y-6 min-w-0">
               <%= if @selected_agent do %>
                 <%!-- Agent header --%>
-                <div class="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-900/50 ring-1 ring-white/[0.12] p-5">
-                  <div class="flex items-start justify-between">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                  <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div>
-                      <div class="flex items-center gap-3 mb-1">
-                        <h2 class="text-xl font-black text-white tracking-tight">
+                      <div class="flex items-center gap-4 mb-2">
+                        <h2 class="text-2xl font-black text-white tracking-tight">
                           {@selected_agent.name}
                         </h2>
                         <span class={[
-                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold",
+                          "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] uppercase tracking-widest font-bold",
                           @selected_agent.status == "active" &&
-                            "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
+                            "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
                           @selected_agent.status == "paused" &&
-                            "bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30",
+                            "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
                           @selected_agent.status == "pending" &&
-                            "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30",
+                            "bg-gray-500/10 border-gray-500/20 text-gray-400",
                           @selected_agent.status == "error" &&
-                            "bg-red-500/15 text-red-400 ring-1 ring-red-500/30"
+                            "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
                         ]}>
                           <span class={[
                             "w-1.5 h-1.5 rounded-full",
-                            @selected_agent.status == "active" && "bg-emerald-400 animate-pulse",
+                            @selected_agent.status == "active" &&
+                              "bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse",
                             @selected_agent.status == "paused" && "bg-yellow-400",
-                            @selected_agent.status == "pending" && "bg-amber-400 animate-pulse",
-                            @selected_agent.status == "error" && "bg-red-400"
+                            @selected_agent.status == "pending" && "bg-gray-400 animate-pulse",
+                            @selected_agent.status == "error" && "bg-[#ef4444]"
                           ]}>
                           </span>
-                          {String.capitalize(@selected_agent.status)}
+                          {@selected_agent.status}
                         </span>
                       </div>
-                      <p class="text-xs font-mono text-gray-500">
+                      <p class="text-xs font-mono text-gray-500 select-all">
                         {@selected_agent.wallet_address}
                       </p>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-3 shrink-0">
                       <%= if @selected_agent.status == "active" do %>
                         <button
                           phx-click="pause_agent"
-                          class="px-3 py-1.5 rounded-lg ring-1 ring-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-xs font-semibold transition-all"
+                          class="px-4 py-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-xs font-bold uppercase tracking-widest transition-all"
                         >
-                          ⏸ Pause
+                          Pause
                         </button>
                       <% end %>
                       <%= if @selected_agent.status == "paused" do %>
                         <button
                           phx-click="resume_agent"
-                          class="px-3 py-1.5 rounded-lg ring-1 ring-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-semibold transition-all"
+                          class="px-4 py-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs font-bold uppercase tracking-widest transition-all"
                         >
-                          ▶ Resume
+                          Resume
                         </button>
                       <% end %>
                     </div>
@@ -458,130 +459,163 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
 
                 <%!-- Stats row --%>
-                <div class="grid grid-cols-4 gap-3">
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <%!-- Realized P&L --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
-                    <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 relative overflow-hidden group">
+                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
                       Realized P&L
                     </p>
                     <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                      <p class={["text-3xl font-black tracking-tight", pnl_color(@pnl_stats.total_pnl)]}>
+                      <p class={[
+                        "text-4xl sm:text-5xl font-black tracking-tighter truncate transition-all duration-300",
+                        Decimal.gt?(@pnl_stats.total_pnl, 0) &&
+                          "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]",
+                        Decimal.lt?(@pnl_stats.total_pnl, 0) &&
+                          "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]",
+                        Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
+                      ]}>
                         {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${@pnl_stats.total_pnl}
                       </p>
-                      <p class="text-xs text-gray-600 mt-1">{@pnl_stats.trade_count} settled trades</p>
+                      <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
+                        {@pnl_stats.trade_count} Settled Trades
+                      </p>
                     <% else %>
-                      <p class="text-3xl font-black text-gray-700 tracking-tight">$0.00</p>
-                      <p class="text-xs text-gray-700 mt-1">no trades yet</p>
+                      <p class="text-4xl sm:text-5xl font-black text-gray-700 tracking-tighter">
+                        $0.00
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
+                        No Trades
+                      </p>
                     <% end %>
                   </div>
 
                   <%!-- Win Rate --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
-                    <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
                       Win Rate
                     </p>
                     <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                      <p class="text-3xl font-black text-white tracking-tight">
+                      <p class="text-4xl sm:text-5xl font-black text-white tracking-tighter">
                         {win_rate(@pnl_stats.win_count, @pnl_stats.trade_count)}
                       </p>
-                      <p class="text-xs text-gray-600 mt-1">
-                        {@pnl_stats.win_count}W · {@pnl_stats.loss_count}L
+                      <p class="text-[10px] text-gray-400 mt-2 font-mono tracking-widest">
+                        <span class="text-[#22c55e]">{@pnl_stats.win_count}W</span>
+                        <span class="mx-1 text-gray-700">/</span>
+                        <span class="text-[#ef4444]">{@pnl_stats.loss_count}L</span>
                       </p>
                     <% else %>
-                      <p class="text-3xl font-black text-gray-700 tracking-tight">—</p>
-                      <p class="text-xs text-gray-700 mt-1">no data</p>
+                      <p class="text-4xl sm:text-5xl font-black text-gray-700 tracking-tighter">—</p>
+                      <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
+                        No Data
+                      </p>
                     <% end %>
                   </div>
 
                   <%!-- Open Positions --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
-                    <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
                       Open Positions
                     </p>
-                    <p class="text-3xl font-black text-white tracking-tight">
+                    <p class="text-4xl sm:text-5xl font-black text-white tracking-tighter">
                       {if @pnl_stats, do: @pnl_stats.open_count, else: 0}
                     </p>
-                    <p class="text-xs text-gray-600 mt-1">
-                      max {@selected_agent.max_open_positions}
+                    <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
+                      Max {@selected_agent.max_open_positions} allowed
                     </p>
                   </div>
 
                   <%!-- Wallet Balance --%>
-                  <div class="rounded-xl bg-gray-900/60 ring-1 ring-white/[0.12] px-4 py-4">
-                    <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
                       Wallet Balance
                     </p>
                     <%= if @wallet_balance_eth do %>
-                      <p class="text-3xl font-black text-violet-400 tracking-tight">
+                      <p class="text-3xl sm:text-4xl lg:text-3xl xl:text-4xl font-black text-white tracking-tighter truncate">
                         {@wallet_balance_eth}
                       </p>
-                      <p class="text-xs text-gray-600 mt-1">KITE testnet</p>
+                      <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
+                        ETH (Testnet)
+                      </p>
                     <% else %>
-                      <p class="text-3xl font-black text-gray-700 tracking-tight animate-pulse">
+                      <p class="text-4xl sm:text-5xl font-black text-gray-700 tracking-tighter animate-pulse">
                         …
                       </p>
-                      <p class="text-xs text-gray-700 mt-1">fetching on-chain</p>
+                      <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
+                        Fetching
+                      </p>
                     <% end %>
                   </div>
                 </div>
 
                 <%!-- Spending limits strip --%>
-                <div class="flex items-center gap-3 rounded-xl bg-gray-900/40 ring-1 ring-white/[0.12] px-5 py-3">
-                  <span class="text-xs text-gray-600 font-medium uppercase tracking-wider mr-2">
-                    Limits
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-white/5 bg-white/[0.01] px-6 py-4">
+                  <span class="text-[10px] text-gray-600 font-bold uppercase tracking-widest">
+                    Limits Config
                   </span>
-                  <span class="text-xs text-gray-400">
-                    <span class="text-gray-600">Daily</span> ${@selected_agent.daily_limit_usd}
-                  </span>
-                  <span class="text-gray-700">·</span>
-                  <span class="text-xs text-gray-400">
-                    <span class="text-gray-600">Per Trade</span>
-                    ${@selected_agent.per_trade_limit_usd}
-                  </span>
-                  <span class="text-gray-700">·</span>
-                  <span class="text-xs text-gray-400">
-                    <span class="text-gray-600">Max Positions</span>
-                    {@selected_agent.max_open_positions}
-                  </span>
-                  <span class="text-gray-700">·</span>
-                  <span class="text-xs font-mono text-violet-500 truncate">
-                    Vault: {if @selected_agent.vault_address,
-                      do: String.slice(@selected_agent.vault_address, 0, 18) <> "…",
-                      else: "not deployed"}
-                  </span>
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Daily</span>
+                    <span class="text-sm font-mono text-gray-300">
+                      ${@selected_agent.daily_limit_usd}
+                    </span>
+                  </div>
+                  <div class="hidden sm:block text-gray-800">|</div>
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Per Trade</span>
+                    <span class="text-sm font-mono text-gray-300">
+                      ${@selected_agent.per_trade_limit_usd}
+                    </span>
+                  </div>
+                  <div class="hidden sm:block text-gray-800">|</div>
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Positions</span>
+                    <span class="text-sm font-mono text-gray-300">
+                      {@selected_agent.max_open_positions}
+                    </span>
+                  </div>
+                  <div class="hidden sm:block text-gray-800">|</div>
+                  <div class="flex items-baseline gap-2 min-w-0">
+                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Vault</span>
+                    <span class="text-sm font-mono text-gray-400 truncate select-all">
+                      {if @selected_agent.vault_address,
+                        do: String.slice(@selected_agent.vault_address, 0, 18) <> "…",
+                        else: "Not deployed"}
+                    </span>
+                  </div>
                 </div>
 
                 <%!-- Vault Activation Banner --%>
                 <%= if @selected_agent.status == "pending" do %>
-                  <div class="rounded-2xl ring-1 ring-amber-500/25 bg-gradient-to-br from-amber-500/5 to-amber-900/5 p-5">
-                    <div class="flex items-start gap-4">
-                      <div class="h-10 w-10 rounded-xl bg-amber-500/15 ring-1 ring-amber-500/25 flex items-center justify-center shrink-0">
-                        <.icon name="hero-bolt" class="w-5 h-5 text-amber-400" />
+                  <div class="rounded-2xl border border-gray-600/30 bg-gray-600/5 p-6 backdrop-blur-md">
+                    <div class="flex flex-col md:flex-row items-start md:items-center gap-6">
+                      <div class="h-12 w-12 rounded-xl border border-gray-500/30 bg-gray-500/10 flex items-center justify-center shrink-0">
+                        <.icon name="hero-command-line" class="w-6 h-6 text-gray-300" />
                       </div>
-                      <div class="flex-1 min-w-0">
-                        <h3 class="text-sm font-bold text-amber-300 mb-1">
-                          Vault not deployed — agent is standing by
-                        </h3>
-                        <p class="text-xs text-amber-400/60 mb-4">
-                          Deploy the vault contract, then paste the address below to go live.
-                          <br />
-                          <code class="mt-1 inline-block bg-gray-900 px-2 py-1 rounded text-amber-300 font-mono">
-                            python scripts/agent_onboard.py --private-key YOUR_KEY
-                          </code>
-                        </p>
-                        <.form for={@vault_form} phx-submit="activate_vault" class="flex gap-2">
+                      <div class="flex-1 min-w-0 space-y-3">
+                        <div>
+                          <h3 class="text-base font-bold text-white tracking-tight">
+                            Vault not deployed
+                          </h3>
+                          <p class="text-[11px] text-gray-400 tracking-wide mt-1">
+                            Deploy the vault contract, then paste the address below to go live.
+                          </p>
+                        </div>
+                        <.form
+                          for={@vault_form}
+                          phx-submit="activate_vault"
+                          class="flex flex-col sm:flex-row gap-3"
+                        >
                           <input
                             type="text"
                             name="vault[vault_address]"
                             placeholder="0x vault contract address"
-                            class="flex-1 rounded-lg bg-gray-900 ring-1 ring-white/10 focus:ring-amber-500/50 px-3 py-2 text-white font-mono text-sm placeholder-gray-600 outline-none transition-all"
+                            class="flex-1 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-white font-mono text-sm placeholder-gray-600 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/30 transition-all shadow-inner"
                           />
                           <button
                             type="submit"
                             phx-disable-with="Activating…"
-                            class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-gray-900 font-bold text-sm transition-colors whitespace-nowrap shadow-lg shadow-amber-500/20"
+                            class="px-8 py-3 rounded-xl border border-white/10 bg-white text-black font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                           >
-                            Activate →
+                            Activate Vault
                           </button>
                         </.form>
                       </div>
@@ -590,81 +624,103 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% end %>
 
                 <%!-- Live Trade Feed --%>
-                <div class="rounded-2xl bg-gray-900/60 ring-1 ring-white/[0.12] overflow-hidden">
-                  <div class="flex items-center justify-between px-5 py-4 border-b border-white/[0.10]">
-                    <h3 class="text-sm font-bold text-white">Live Trade Feed</h3>
-                    <div class="flex items-center gap-3">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-hidden">
+                  <div class="flex items-center justify-between px-6 py-5 border-b border-white/10">
+                    <h3 class="text-sm font-black text-white uppercase tracking-widest">
+                      Live Trade Feed
+                    </h3>
+                    <div class="flex items-center gap-4">
                       <.link
                         navigate={~p"/trades"}
-                        class="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                        class="text-[10px] text-gray-500 hover:text-white uppercase tracking-widest font-bold transition-colors"
                       >
-                        View all →
+                        View all ↗
                       </.link>
-                      <span class="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Live
-                      </span>
+                      <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#22c55e]/10 border border-[#22c55e]/20">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+                        </span>
+                        <span class="text-[10px] font-bold text-[#22c55e] uppercase tracking-widest">
+                          Live
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div id="trades" phx-update="stream">
-                    <div class="hidden only:flex flex-col items-center justify-center py-16 gap-3">
-                      <div class="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
-                        <.icon name="hero-arrow-trending-up" class="w-5 h-5 text-gray-600" />
+                  <div id="trades" phx-update="stream" class="divide-y divide-white/5">
+                    <div class="hidden only:flex flex-col items-center justify-center py-20 px-4 text-center">
+                      <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center mb-4">
+                        <.icon name="hero-chart-bar" class="w-6 h-6 text-gray-600" />
                       </div>
-                      <p class="text-sm text-gray-600">No trades yet</p>
-                      <p class="text-xs text-gray-700">
+                      <p class="text-sm font-bold text-gray-400">No trades yet</p>
+                      <p class="text-xs text-gray-600 mt-2 font-mono">
                         <%= if @selected_agent.status == "active" do %>
-                          Agent is live — first signal incoming
+                          Agent is scanning for signals
                         <% else %>
-                          Activate the agent vault to start trading
+                          Deploy vault to initialize trading
                         <% end %>
                       </p>
                     </div>
+
                     <%= for {id, trade} <- @streams.trades do %>
                       <div
                         id={id}
-                        class="flex items-center gap-4 px-5 py-3.5 border-b border-white/[0.10] last:border-0 hover:bg-white/[0.02] transition-colors"
+                        class="flex flex-col sm:flex-row sm:items-center gap-4 px-6 py-4 hover:bg-white/[0.02] transition-colors group"
                       >
-                        <span class={[
-                          "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wide min-w-16 justify-center",
-                          trade.action == "buy" && "bg-emerald-500/15 text-emerald-400",
-                          trade.action == "sell" && "bg-red-500/15 text-red-400"
-                        ]}>
-                          {String.upcase(trade.action || "")}
-                        </span>
+                        <%!-- Action indicator --%>
+                        <div class="shrink-0 flex sm:block items-center justify-between w-full sm:w-16">
+                          <span class={[
+                            "w-full inline-flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest",
+                            trade.action == "buy" &&
+                              "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e] group-hover:bg-[#22c55e]/20",
+                            trade.action == "sell" &&
+                              "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444] group-hover:bg-[#ef4444]/20"
+                          ]}>
+                            {trade.action || "UNKN"}
+                          </span>
+                        </div>
+
+                        <%!-- Market info --%>
                         <div class="flex-1 min-w-0">
-                          <p class="text-sm font-semibold text-white">{trade.market}</p>
-                          <p class="text-xs text-gray-600 font-mono">
+                          <div class="flex items-center gap-2">
+                            <p class="text-base font-black text-white tracking-tight">
+                              {trade.market}
+                            </p>
+                            <span class={[
+                              "text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-bold",
+                              trade.status == "open" &&
+                                "bg-blue-500/10 border-blue-500/20 text-blue-400",
+                              trade.status == "settled" &&
+                                "bg-gray-500/10 border-gray-500/20 text-gray-400",
+                              trade.status == "cancelled" &&
+                                "bg-yellow-500/10 border-yellow-500/20 text-yellow-500",
+                              trade.status == "failed" &&
+                                "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
+                            ]}>
+                              {trade.status}
+                            </span>
+                          </div>
+                          <p class="text-[11px] text-gray-500 font-mono mt-0.5">
                             {trade.contracts}x contracts
                           </p>
                         </div>
-                        <div class="text-right">
-                          <p class="text-sm font-mono text-gray-300">
+
+                        <%!-- Fill & PNL --%>
+                        <div class="flex sm:flex-col items-end justify-between sm:justify-center gap-2 sm:gap-1">
+                          <p class="text-sm font-mono font-bold text-gray-300">
                             ${trade.fill_price}
                           </p>
-                          <span class={[
-                            "text-xs px-1.5 py-0.5 rounded font-medium",
-                            trade.status == "open" && "text-blue-400",
-                            trade.status == "settled" && "text-gray-500",
-                            trade.status == "cancelled" && "text-yellow-500",
-                            trade.status == "failed" && "text-red-500"
-                          ]}>
-                            {trade.status}
-                          </span>
-                        </div>
-                        <%= if trade.realized_pnl do %>
-                          <div class="text-right w-20 shrink-0">
+                          <%= if trade.realized_pnl do %>
                             <p class={[
-                              "text-sm font-bold",
-                              Decimal.gt?(trade.realized_pnl, 0) && "text-emerald-400",
-                              Decimal.lt?(trade.realized_pnl, 0) && "text-red-400",
+                              "text-sm font-bold font-mono",
+                              Decimal.gt?(trade.realized_pnl, 0) && "text-[#22c55e]",
+                              Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
                               Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
                             ]}>
-                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${trade.realized_pnl}
+                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${@trade.realized_pnl ||
+                                trade.realized_pnl}
                             </p>
-                          </div>
-                        <% end %>
+                          <% end %>
+                        </div>
                       </div>
                     <% end %>
                   </div>

@@ -1,21 +1,28 @@
 <Layouts.flash_group flash={@flash} />
 
-<div class="min-h-screen bg-gray-950 text-white overflow-x-hidden">
+<div class="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden">
   <%!-- Nav --%>
-  <header class="border-b border-white/[0.08] bg-gray-950/80 backdrop-blur-md sticky top-0 z-20">
-    <div class="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+  <header class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-20">
+    <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
-        <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
-          <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="h-9 w-9 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.05)]">
+          <svg
+            class="h-5 w-5 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <span class="text-base font-black tracking-tight bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Kite Agent Hub</span>
+        <span class="text-base font-black tracking-tight text-white">Kite Agent Hub</span>
       </div>
-      <nav class="flex items-center gap-3">
-        <div class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span class="text-xs font-mono text-emerald-400">Kite Testnet · Chain 2368</span>
+      <nav class="flex items-center gap-4">
+        <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
+          <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+          </span>
+          <span class="text-xs font-mono text-gray-300">Kite Testnet · Chain 2368</span>
         </div>
         <.link
           navigate={~p"/users/log-in"}
@@ -25,7 +32,7 @@
         </.link>
         <.link
           navigate={~p"/users/register"}
-          class="rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 px-5 py-2 text-sm font-bold transition-all shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40"
+          class="rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] px-5 py-2 text-sm font-bold transition-all shadow-[0_0_15px_rgba(255,255,255,0.05)]"
         >
           Get started →
         </.link>
@@ -34,201 +41,184 @@
   </header>
 
   <%!-- Hero --%>
-  <section class="relative mx-auto max-w-7xl px-6 pt-24 pb-20 text-center overflow-hidden">
+  <section class="relative mx-auto w-full px-4 sm:px-6 lg:px-8 pt-32 pb-24 text-center overflow-hidden">
     <%!-- Background glow blobs --%>
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <div class="w-[600px] h-[600px] rounded-full bg-violet-600/15 blur-3xl absolute -top-40 left-1/2 -translate-x-1/2"></div>
-      <div class="w-80 h-80 rounded-full bg-purple-500/10 blur-3xl absolute top-20 left-1/4"></div>
-      <div class="w-64 h-64 rounded-full bg-indigo-500/10 blur-3xl absolute top-10 right-1/4"></div>
+      <div class="w-[800px] h-[800px] rounded-full bg-white/[0.02] blur-3xl absolute -top-40 left-1/2 -translate-x-1/2">
+      </div>
+      <div class="w-96 h-96 rounded-full bg-[#22c55e]/[0.03] blur-3xl absolute top-40 left-1/4">
+      </div>
+      <div class="w-96 h-96 rounded-full bg-[#ef4444]/[0.03] blur-3xl absolute top-20 right-1/4">
+      </div>
     </div>
 
     <div class="relative">
-      <div class="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-xs font-semibold text-violet-300 mb-8">
-        <span class="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse"></span>
+      <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-4 py-1.5 text-xs font-semibold text-gray-300 mb-8 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.02)]">
+        <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+        </span>
         Powered by Claude AI · Non-custodial · On Kite Chain
       </div>
 
-      <h1 class="text-6xl sm:text-7xl font-black tracking-tight leading-[1.05] mb-8">
-        <span class="text-white">Autonomous AI agents.</span><br />
-        <span class="bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
+      <h1 class="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tight leading-[1.05] mb-8">
+        <span class="text-white">Autonomous AI agents.</span>
+        <br />
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-gray-100 to-gray-500">
           Trade while you sleep.
         </span>
       </h1>
 
-      <p class="text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
+      <p class="text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed font-light">
         Deploy Claude-powered trading agents on Kite chain with configurable spending limits.
-        Real-time P&L tracking. Non-custodial by design. Your keys never leave your machine.
+        Real-time P&L tracking.
+        <span class="text-white font-medium">Non-custodial by design.</span>
+        Your keys never leave your machine.
       </p>
 
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
         <.link
           navigate={~p"/users/register"}
-          class="rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 px-10 py-4 text-base font-bold transition-all shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/50 hover:-translate-y-0.5 transform w-full sm:w-auto text-center"
+          class="rounded-xl border border-white/10 bg-white/[0.08] hover:bg-white/[0.12] px-10 py-4 text-base font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.05)] hover:-translate-y-0.5 transform w-full sm:w-auto text-center backdrop-blur-md"
         >
           Launch Your First Agent →
         </.link>
         <.link
           navigate={~p"/users/log-in"}
-          class="rounded-xl border border-white/[0.12] hover:border-white/25 bg-white/[0.03] hover:bg-white/[0.06] px-8 py-4 text-base font-semibold text-gray-300 hover:text-white transition-all w-full sm:w-auto text-center"
+          class="rounded-xl border border-white/5 bg-transparent hover:bg-white/[0.02] px-8 py-4 text-base font-semibold text-gray-400 hover:text-white transition-all w-full sm:w-auto text-center"
         >
           Sign in to dashboard
         </.link>
       </div>
 
-      <p class="text-xs text-gray-600 mt-6">Free on testnet · No credit card · Keys stay local</p>
+      <p class="text-xs text-gray-600 mt-8 font-mono">
+        Free on testnet · No credit card · Keys stay local
+      </p>
     </div>
   </section>
 
   <%!-- Stats bar --%>
-  <div class="border-y border-white/[0.08] bg-white/[0.02]">
-    <div class="mx-auto max-w-7xl px-6 py-6 grid grid-cols-2 sm:grid-cols-4 gap-6">
-      <div class="text-center">
-        <p class="text-3xl font-black text-white tracking-tight">Claude</p>
-        <p class="text-xs text-gray-500 mt-1">AI Signal Engine</p>
+  <div class="border-y border-white/10 bg-white/[0.01] backdrop-blur-sm">
+    <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-2 sm:grid-cols-4 gap-6">
+      <div class="text-center group">
+        <p class="text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
+          Claude
+        </p>
+        <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          AI Signal Engine
+        </p>
       </div>
-      <div class="text-center">
-        <p class="text-3xl font-black text-violet-400 tracking-tight">On-Chain</p>
-        <p class="text-xs text-gray-500 mt-1">Trade Execution</p>
+      <div class="text-center group">
+        <p class="text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
+          On-Chain
+        </p>
+        <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          Trade Execution
+        </p>
       </div>
-      <div class="text-center">
-        <p class="text-3xl font-black text-emerald-400 tracking-tight">0</p>
-        <p class="text-xs text-gray-500 mt-1">Keys Stored</p>
+      <div class="text-center group">
+        <p class="text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
+          0
+        </p>
+        <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">Keys Stored</p>
       </div>
-      <div class="text-center">
-        <p class="text-3xl font-black text-white tracking-tight">Real-time</p>
-        <p class="text-xs text-gray-500 mt-1">LiveView Feed</p>
+      <div class="text-center group">
+        <p class="text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
+          Real-time
+        </p>
+        <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          LiveView Feed
+        </p>
       </div>
     </div>
   </div>
 
   <%!-- Features grid --%>
-  <section class="mx-auto max-w-7xl px-6 py-24">
-    <div class="text-center mb-16">
-      <h2 class="text-4xl font-black text-white mb-4 tracking-tight">
+  <section class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
+    <div class="text-center mb-20">
+      <h2 class="text-4xl md:text-5xl font-black text-white mb-6 tracking-tight">
         Built different. Built to win.
       </h2>
-      <p class="text-gray-400 max-w-xl mx-auto">
+      <p class="text-lg text-gray-400 max-w-2xl mx-auto font-light">
         Every component designed for autonomous on-chain trading — from signal to settlement.
       </p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-      <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 backdrop-blur-sm p-8 hover:border-violet-500/30 hover:bg-gray-900/80 transition-all group">
-        <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 ring-1 ring-violet-500/25 flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-violet-500/15 transition-all">
-          <svg class="h-6 w-6 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <%= for {title, desc, icon} <- [
+        {"Non-Custodial by Design", "Private keys never touch the server. We store only your wallet address and vault contract address. Your funds, your keys — full stop.", "hero-shield-check"},
+        {"Claude AI Signal Engine", "Each agent runs Claude Haiku on a configurable tick interval. It reads market data, reasons over open positions.", "hero-cpu-chip"},
+        {"Live P&L Dashboard", "Phoenix LiveView streams every trade the instant it executes. Watch P&L, win rate, open positions, and wallet balance update in real time.", "hero-chart-bar"},
+        {"Vault-Enforced Limits", "Set daily USD caps, per-trade limits, and max open positions per agent. Limits live in the smart contract.", "hero-lock-closed"},
+        {"Multi-Agent Workspace", "Run multiple agents in parallel — each with its own wallet, vault, and strategy. Organize under a shared workspace.", "hero-server-stack"},
+        {"Full Trade History", "Every trade is persisted with market, action, fill price, contracts, notional, realized P&L, and AI reasoning.", "hero-clock"}
+      ] do %>
+        <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 hover:border-white/20 hover:bg-white/[0.04] transition-all duration-300 group">
+          <div class="h-12 w-12 rounded-xl border border-white/10 bg-white/[0.05] flex items-center justify-center mb-6 group-hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-all duration-300">
+            <.icon name={icon} class="w-6 h-6 text-white" />
+          </div>
+          <h3 class="text-lg font-bold text-white mb-3 tracking-tight">{title}</h3>
+          <p class="text-gray-400 text-sm leading-relaxed font-light">
+            {desc}
+          </p>
         </div>
-        <h3 class="text-lg font-bold text-white mb-3">Non-Custodial by Design</h3>
-        <p class="text-gray-400 text-sm leading-relaxed">
-          Private keys never touch the server. We store only your wallet address and vault contract address. Your funds, your keys — full stop.
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 backdrop-blur-sm p-8 hover:border-violet-500/30 hover:bg-gray-900/80 transition-all group">
-        <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 ring-1 ring-violet-500/25 flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-violet-500/15 transition-all">
-          <svg class="h-6 w-6 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-bold text-white mb-3">Claude AI Signal Engine</h3>
-        <p class="text-gray-400 text-sm leading-relaxed">
-          Each agent runs Claude Haiku on a configurable tick interval. It reads market data, reasons over open positions, and outputs structured trade signals.
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 backdrop-blur-sm p-8 hover:border-violet-500/30 hover:bg-gray-900/80 transition-all group">
-        <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 ring-1 ring-emerald-500/25 flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-emerald-500/15 transition-all">
-          <svg class="h-6 w-6 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-bold text-white mb-3">Live P&L Dashboard</h3>
-        <p class="text-gray-400 text-sm leading-relaxed">
-          Phoenix LiveView streams every trade the instant it executes. Watch P&L, win rate, open positions, and wallet balance update in real time — no refreshing.
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 backdrop-blur-sm p-8 hover:border-violet-500/30 hover:bg-gray-900/80 transition-all group">
-        <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 ring-1 ring-amber-500/25 flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-amber-500/15 transition-all">
-          <svg class="h-6 w-6 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-bold text-white mb-3">Vault-Enforced Spending Limits</h3>
-        <p class="text-gray-400 text-sm leading-relaxed">
-          Set daily USD caps, per-trade limits, and max open positions per agent. Limits live in the TradingAgentVault smart contract — the agent literally cannot exceed them.
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 backdrop-blur-sm p-8 hover:border-violet-500/30 hover:bg-gray-900/80 transition-all group">
-        <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 ring-1 ring-blue-500/25 flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-blue-500/15 transition-all">
-          <svg class="h-6 w-6 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-bold text-white mb-3">Multi-Agent Workspace</h3>
-        <p class="text-gray-400 text-sm leading-relaxed">
-          Run multiple agents in parallel — each with its own wallet, vault, and strategy. Organize your team under a shared workspace with role-based access.
-        </p>
-      </div>
-
-      <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 backdrop-blur-sm p-8 hover:border-violet-500/30 hover:bg-gray-900/80 transition-all group">
-        <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-pink-500/20 ring-1 ring-fuchsia-500/25 flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-fuchsia-500/15 transition-all">
-          <svg class="h-6 w-6 text-fuchsia-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-          </svg>
-        </div>
-        <h3 class="text-lg font-bold text-white mb-3">Full Trade History</h3>
-        <p class="text-gray-400 text-sm leading-relaxed">
-          Every trade is persisted with market, action, fill price, contracts, notional, realized P&L, and AI reasoning. Filter by status, paginate, and audit the full trail.
-        </p>
-      </div>
+      <% end %>
     </div>
   </section>
 
   <%!-- How it works --%>
-  <section class="border-t border-white/[0.08] bg-gradient-to-b from-transparent to-gray-900/30">
-    <div class="mx-auto max-w-7xl px-6 py-24">
-      <div class="text-center mb-16">
-        <h2 class="text-4xl font-black text-white tracking-tight mb-4">Live in under 10 minutes</h2>
-        <p class="text-gray-400">Three steps from zero to autonomous on-chain trading.</p>
+  <section class="border-t border-white/10 bg-gradient-to-b from-[#0a0a0f] to-white/[0.02]">
+    <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
+      <div class="text-center mb-20">
+        <h2 class="text-4xl md:text-5xl font-black text-white tracking-tight mb-6">
+          Live in under 10 minutes
+        </h2>
+        <p class="text-lg text-gray-400 font-light max-w-2xl mx-auto">
+          Three steps from zero to autonomous on-chain trading.
+        </p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
         <%!-- Connector lines (desktop only) --%>
-        <div class="hidden md:block absolute top-14 left-1/3 right-1/3 h-px bg-gradient-to-r from-violet-500/40 to-violet-500/40" style="width: calc(100% / 3 - 2rem); left: calc(100% / 3 + 1rem);"></div>
-
-        <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 p-8 text-center relative">
-          <div class="w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-xl font-black mx-auto mb-6 shadow-xl shadow-violet-500/30">1</div>
-          <h3 class="text-lg font-bold text-white mb-3">Register & Create Org</h3>
-          <p class="text-gray-400 text-sm leading-relaxed">
-            Sign up with email and password. A workspace is automatically provisioned — invite teammates any time.
-          </p>
-          <div class="mt-6 inline-flex items-center gap-1.5 text-xs text-violet-400 font-semibold">
-            <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span> ~30 seconds
-          </div>
+        <div
+          class="hidden md:block absolute top-[52px] left-1/3 right-1/3 h-px border-t border-dashed border-white/20"
+          style="width: calc(100% / 3 - 2rem); left: calc(100% / 3 + 1rem);"
+        >
         </div>
 
-        <div class="rounded-2xl border border-white/[0.12] bg-gray-900/60 p-8 text-center relative">
-          <div class="w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-xl font-black mx-auto mb-6 shadow-xl shadow-violet-500/30">2</div>
-          <h3 class="text-lg font-bold text-white mb-3">Deploy Vault Contract</h3>
-          <p class="text-gray-400 text-sm leading-relaxed">
+        <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 text-center relative hover:border-white/20 transition-all">
+          <div class="w-14 h-14 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-xl font-black mx-auto mb-8 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
+            1
+          </div>
+          <h3 class="text-xl font-bold text-white mb-4">Register & Create Org</h3>
+          <p class="text-gray-400 text-sm leading-relaxed font-light">
+            Sign up with email and password. A workspace is automatically provisioned — invite teammates any time.
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 text-center relative hover:border-white/20 transition-all">
+          <div class="w-14 h-14 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-xl font-black mx-auto mb-8 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
+            2
+          </div>
+          <h3 class="text-xl font-bold text-white mb-4">Deploy Vault Contract</h3>
+          <p class="text-gray-400 text-sm leading-relaxed font-light">
             Run the onboarding script to generate a wallet, deploy TradingAgentVault on testnet, and fund from the faucet.
           </p>
-          <code class="mt-4 block text-xs font-mono text-violet-300 bg-gray-950 border border-white/[0.08] rounded-lg px-3 py-2">
-            python scripts/agent_onboard.py
+          <code class="mt-6 block text-xs font-mono text-gray-300 bg-black/50 border border-white/10 rounded-lg px-4 py-3 shadow-inner">
+            python agent_onboard.py
           </code>
         </div>
 
-        <div class="rounded-2xl border border-emerald-500/20 bg-emerald-900/10 p-8 text-center">
-          <div class="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-xl font-black mx-auto mb-6 shadow-xl shadow-emerald-500/30">3</div>
-          <h3 class="text-lg font-bold text-white mb-3">Activate & Watch It Go</h3>
-          <p class="text-gray-400 text-sm leading-relaxed">
+        <div class="rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/[0.05] backdrop-blur-md p-8 text-center relative hover:border-[#22c55e]/50 hover:bg-[#22c55e]/[0.08] transition-all">
+          <div class="w-14 h-14 rounded-full border border-[#22c55e]/50 bg-[#0a0a0f] flex items-center justify-center text-xl font-black mx-auto mb-8 shadow-[0_0_25px_rgba(34,197,94,0.2)] text-[#22c55e]">
+            3
+          </div>
+          <h3 class="text-xl font-bold text-white mb-4">Activate & Watch It Go</h3>
+          <p class="text-gray-400 text-sm leading-relaxed font-light">
             Paste your vault address in the dashboard. AgentRunner starts ticking. Claude generates signals. Trades settle on-chain — live.
           </p>
-          <div class="mt-6 inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Fully autonomous
+          <div class="mt-6 inline-flex items-center gap-2 text-xs text-[#22c55e] font-semibold tracking-wider uppercase">
+            <span class="w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+            </span>
+            Fully autonomous
           </div>
         </div>
       </div>
@@ -236,28 +226,23 @@
   </section>
 
   <%!-- CTA --%>
-  <section class="border-t border-white/[0.08]">
-    <div class="mx-auto max-w-4xl px-6 py-28 text-center relative overflow-hidden">
-      <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-        <div class="w-96 h-96 rounded-full bg-violet-600 blur-3xl"></div>
-      </div>
-      <div class="relative">
-        <h2 class="text-5xl font-black text-white mb-6 tracking-tight">
+  <section class="border-t border-white/10 bg-[#0a0a0f]">
+    <div class="mx-auto max-w-4xl w-full px-4 sm:px-6 lg:px-8 py-32 text-center relative overflow-hidden">
+      <div class="relative z-10">
+        <h2 class="text-5xl md:text-6xl font-black text-white mb-8 tracking-tight">
           Ready to deploy your<br />
-          <span class="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">
-            first autonomous agent?
-          </span>
+          <span class="text-gray-400">first autonomous agent?</span>
         </h2>
-        <p class="text-gray-400 mb-10 text-lg max-w-xl mx-auto">
+        <p class="text-gray-400 mb-12 text-lg max-w-xl mx-auto font-light">
           Free on testnet. No credit card. Your keys stay on your machine — always.
         </p>
         <.link
           navigate={~p"/users/register"}
-          class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 px-12 py-5 text-lg font-bold transition-all shadow-2xl shadow-violet-500/40 hover:shadow-violet-500/60 hover:-translate-y-0.5 transform"
+          class="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] px-12 py-5 text-lg font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.05)] hover:-translate-y-0.5 transform backdrop-blur-md"
         >
           Create free account →
         </.link>
-        <p class="text-xs text-gray-600 mt-5">
+        <p class="text-xs text-gray-600 mt-8 font-mono">
           Built for the Kite AI Hackathon 2026 · Kite chain EVM testnet 2368
         </p>
       </div>
@@ -265,19 +250,27 @@
   </section>
 
   <%!-- Footer --%>
-  <footer class="border-t border-white/[0.08] bg-gray-950">
-    <div class="mx-auto max-w-7xl px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600">
-      <div class="flex items-center gap-2.5">
-        <div class="h-6 w-6 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-          <svg class="h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+  <footer class="border-t border-white/10 bg-black/20">
+    <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 font-mono">
+      <div class="flex items-center gap-3">
+        <div class="h-6 w-6 rounded-lg border border-white/10 bg-white/[0.05] flex items-center justify-center">
+          <svg
+            class="h-3 w-3 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <span class="font-semibold text-gray-500">Kite Agent Hub</span>
-        <span class="text-gray-700">·</span>
-        <span>Kite chain EVM testnet 2368</span>
+        <span class="font-bold text-white tracking-widest uppercase text-xs">Kite Agent Hub</span>
+        <span class="text-gray-700">|</span>
+        <span class="text-xs">Chain 2368</span>
       </div>
-      <span>Non-custodial · Keys stay local · Open source</span>
+      <span class="text-xs uppercase tracking-widest opacity-80">
+        Non-custodial | Open source
+      </span>
     </div>
   </footer>
 </div>

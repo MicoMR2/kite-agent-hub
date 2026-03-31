@@ -4,7 +4,13 @@
       <%!-- Logo --%>
       <div class="text-center mb-10">
         <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-2xl shadow-violet-500/30 mb-5">
-          <svg class="h-7 w-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            class="h-7 w-7 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
@@ -74,8 +80,19 @@
             id="workos-sso-btn"
             class="flex items-center justify-center gap-3 w-full rounded-xl border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.06] px-4 py-3 text-sm font-semibold text-gray-300 hover:text-white transition-all"
           >
-            <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <svg
+              class="h-4 w-4 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
             </svg>
             Continue with SSO
           </.link>
@@ -84,7 +101,10 @@
 
       <p class="text-center text-sm text-gray-600 mt-6">
         No account?
-        <.link navigate={~p"/users/register"} class="text-violet-400 hover:text-violet-300 font-semibold transition-colors">
+        <.link
+          navigate={~p"/users/register"}
+          class="text-violet-400 hover:text-violet-300 font-semibold transition-colors"
+        >
           Create one free →
         </.link>
       </p>

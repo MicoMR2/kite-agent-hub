@@ -4,7 +4,13 @@
       <%!-- Logo --%>
       <div class="text-center mb-10">
         <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-2xl shadow-violet-500/30 mb-5">
-          <svg class="h-7 w-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            class="h-7 w-7 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
@@ -70,7 +76,10 @@
 
       <p class="text-center text-sm text-gray-600 mt-6">
         Already have an account?
-        <.link navigate={~p"/users/log-in"} class="text-violet-400 hover:text-violet-300 font-semibold transition-colors">
+        <.link
+          navigate={~p"/users/log-in"}
+          class="text-violet-400 hover:text-violet-300 font-semibold transition-colors"
+        >
           Sign in →
         </.link>
       </p>
