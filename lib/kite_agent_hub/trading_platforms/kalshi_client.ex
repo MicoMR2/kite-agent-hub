@@ -12,6 +12,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     {:ok, {key_id, pem}} = Credentials.fetch_secret(org_id, :kalshi)
     {:ok, balance} = KalshiClient.balance(key_id, pem)
     {:ok, positions} = KalshiClient.positions(key_id, pem)
+    {:ok, order} = KalshiClient.place_order(key_id, pem, "BTCZ-...", "yes", 5, 55)
   """
 
   @demo_base "https://demo-api.kalshi.co/trade-api/v2"
@@ -44,7 +45,70 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     end
   end
 
+  @doc """
+  Place a limit order on Kalshi demo.
+
+  ticker  — market ticker, e.g. "BTCZ-24DEC2031-B80000"
+  side    — "yes" or "no"
+  count   — number of contracts (integer)
+  price   — limit price in cents (integer, 1-99)
+
+  Returns {:ok, %{id, ticker, side, count, status}} or {:error, reason}.
+  """
+  def place_order(key_id, pem, ticker, side, count, price) do
+    body = %{
+      "ticker" => ticker,
+      "action" => "buy",
+      "side" => side,
+      "count" => count,
+      "type" => "limit",
+      "yes_price" => if(side == "yes", do: price, else: 100 - price),
+      "no_price" => if(side == "no", do: price, else: 100 - price)
+    }
+
+    post("/portfolio/orders", body, key_id, pem)
+    |> parse_placed_order()
+  end
+
   # ── Private ───────────────────────────────────────────────────────────────────
+
+  defp post(path, body, key_id, pem) do
+    ts_ms = System.os_time(:millisecond)
+    msg = "#{ts_ms}POST#{path}"
+
+    case sign_request(msg, pem) do
+      {:ok, signature_b64} ->
+        headers = [
+          {"KALSHI-ACCESS-KEY", key_id},
+          {"KALSHI-ACCESS-SIGNATURE", signature_b64},
+          {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
+        ]
+
+        case Req.post(@demo_base <> path, json: body, headers: headers) do
+          {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
+          {:ok, %{status: 401}} -> {:error, :unauthorized}
+          {:ok, %{status: status, body: resp_body}} -> {:error, "kalshi #{status}: #{inspect(resp_body)}"}
+          {:error, reason} -> {:error, "kalshi HTTP: #{inspect(reason)}"}
+        end
+
+      {:error, reason} ->
+        {:error, "kalshi sign failed: #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_placed_order({:ok, %{"order" => o}}) do
+    {:ok,
+     %{
+       id: o["order_id"],
+       ticker: o["ticker"],
+       side: o["side"],
+       count: o["count"],
+       status: o["status"]
+     }}
+  end
+
+  defp parse_placed_order({:ok, _}), do: {:error, "unexpected kalshi order response shape"}
+  defp parse_placed_order(err), do: err
 
   defp get(path, key_id, pem) do
     ts_ms = System.os_time(:millisecond)

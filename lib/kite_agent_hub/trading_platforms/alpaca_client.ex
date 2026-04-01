@@ -63,7 +63,56 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     end
   end
 
+  @doc """
+  Place a market order on Alpaca paper trading.
+
+  symbol  — e.g. "ETHUSD", "BTCUSD", "SPY"
+  qty     — number of shares/units (string or float)
+  side    — "buy" or "sell"
+
+  Returns {:ok, %{id, symbol, side, qty, status}} or {:error, reason}.
+  """
+  def place_order(key_id, secret, symbol, qty, side \\ "buy") do
+    body = %{
+      "symbol" => symbol,
+      "qty" => to_string(qty),
+      "side" => side,
+      "type" => "market",
+      "time_in_force" => "day"
+    }
+
+    post("/v2/orders", body, key_id, secret)
+    |> parse_placed_order()
+  end
+
   # ── Private ───────────────────────────────────────────────────────────────────
+
+  defp post(path, body, key_id, secret) do
+    headers = [
+      {"APCA-API-KEY-ID", key_id},
+      {"APCA-API-SECRET-KEY", secret}
+    ]
+
+    case Req.post(@paper_base <> path, json: body, headers: headers) do
+      {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
+      {:ok, %{status: 401}} -> {:error, :unauthorized}
+      {:ok, %{status: status, body: resp_body}} -> {:error, "alpaca #{status}: #{inspect(resp_body)}"}
+      {:error, reason} -> {:error, "alpaca HTTP: #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_placed_order({:ok, o}) do
+    {:ok,
+     %{
+       id: o["id"],
+       symbol: o["symbol"],
+       side: o["side"],
+       qty: parse_float(o["qty"]),
+       status: o["status"]
+     }}
+  end
+
+  defp parse_placed_order(err), do: err
 
   defp get(path, key_id, secret) do
     headers = [

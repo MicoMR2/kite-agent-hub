@@ -6,8 +6,9 @@ defmodule KiteAgentHub.Trading.TradeRecord do
   @foreign_key_type :binary_id
 
   @statuses ~w(open settled cancelled failed)
-  @sides ~w(yes no)
+  @sides ~w(yes no long short buy sell)
   @actions ~w(buy sell)
+  @platforms ~w(kite alpaca kalshi)
 
   schema "trade_records" do
     field :trade_id_onchain, :string
@@ -22,6 +23,8 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     field :realized_pnl, :decimal
     field :source, :string
     field :reason, :string
+    field :platform, :string, default: "kite"
+    field :platform_order_id, :string
 
     belongs_to :kite_agent, KiteAgentHub.Trading.KiteAgent
 
@@ -44,12 +47,15 @@ defmodule KiteAgentHub.Trading.TradeRecord do
       :realized_pnl,
       :source,
       :reason,
+      :platform,
+      :platform_order_id,
       :kite_agent_id
     ])
     |> validate_required([:market, :side, :action, :contracts, :fill_price, :kite_agent_id])
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:side, @sides)
     |> validate_inclusion(:action, @actions)
+    |> validate_inclusion(:platform, @platforms)
     |> validate_number(:contracts, greater_than: 0)
     |> lock_immutable_fields()
   end
