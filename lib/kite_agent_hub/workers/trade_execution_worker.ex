@@ -1,6 +1,6 @@
 defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   @moduledoc """
-  Oban worker that executes a trade signal on Kite chain.
+  Oban worker that executes a trade signal across platforms.
 
   Enqueue via:
 
@@ -19,9 +19,9 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   1. Loads the agent and verifies it is active and not paused.
   2. Checks per-trade and daily spend limits.
   3. Inserts a TradeRecord in "open" status.
-  4. Broadcasts :trade_created via PubSub for the dashboard.
-  5. Submits the raw signed transaction to Kite chain (if vault is live).
-  6. Updates trade_id_onchain / tx_hash once the chain confirms.
+  4. Routes execution to the correct platform (Kite chain, Alpaca, Kalshi) based on market.
+  5. Submits to Kite chain for settlement proof (always).
+  6. Updates trade_id_onchain / tx_hash / platform_order_id once confirmed.
   """
 
   use Oban.Worker,
@@ -33,6 +33,18 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   alias KiteAgentHub.{Trading, Repo, Orgs}
   alias KiteAgentHub.Kite.{RPC, TxSigner, VaultABI, GaslessClient}
+  alias KiteAgentHub.Credentials
+  alias KiteAgentHub.TradingPlatforms.AlpacaClient
+
+  # Markets routed to Alpaca paper trading (crypto + equities)
+  @alpaca_markets ~w(ETH-USDC BTC-USDC SOL-USDC ETHUSD BTCUSD SOLUSD SPY QQQ AAPL TSLA)
+
+  # Alpaca symbol mapping from Kite market notation
+  @alpaca_symbol_map %{
+    "ETH-USDC" => "ETHUSD",
+    "BTC-USDC" => "BTCUSD",
+    "SOL-USDC" => "SOLUSD"
+  }
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -55,9 +67,12 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   end
 
   defp execute_trade(agent, args, owner_user_id) do
+    market = args["market"] || "ETH-USDC"
+    platform = detect_platform(market)
+
     trade_attrs = %{
       kite_agent_id: agent.id,
-      market: args["market"],
+      market: market,
       side: args["side"],
       action: args["action"],
       contracts: args["contracts"],
@@ -65,12 +80,25 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       notional_usd: compute_notional(args),
       status: "open",
       source: "oban",
-      reason: args["reason"]
+      reason: args["reason"],
+      platform: platform
     }
 
     case Trading.create_trade(trade_attrs) do
       {:ok, trade} ->
-        Logger.info("TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id}")
+        Logger.info("TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id} on #{platform}")
+
+        # Execute on the appropriate platform first
+        platform_order_id = maybe_execute_on_platform(platform, agent, args, owner_user_id)
+
+        # Update with platform order ID if we got one
+        if platform_order_id do
+          trade
+          |> KiteAgentHub.Trading.TradeRecord.changeset(%{platform_order_id: platform_order_id})
+          |> Repo.update()
+        end
+
+        # Always attempt Kite chain settlement proof
         maybe_submit_onchain(trade, agent, args, owner_user_id)
 
       {:error, changeset} ->
@@ -78,6 +106,41 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         {:error, "trade insert failed"}
     end
   end
+
+  # Detect which platform to execute on based on market
+  defp detect_platform(market) when market in @alpaca_markets, do: "alpaca"
+  defp detect_platform(_market), do: "kite"
+
+  # Execute on Alpaca paper trading
+  defp maybe_execute_on_platform("alpaca", agent, args, _owner_user_id) do
+    market = args["market"]
+    symbol = Map.get(@alpaca_symbol_map, market, market)
+    side = normalize_alpaca_side(args["action"])
+    qty = max(1, div(trunc(compute_notional(args) |> Decimal.to_float()), 100))
+
+    case Credentials.fetch_secret(agent.organization_id, :alpaca) do
+      {:ok, {key_id, secret}} ->
+        case AlpacaClient.place_order(key_id, secret, symbol, qty, side) do
+          {:ok, order} ->
+            Logger.info("TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty}")
+            order.id
+
+          {:error, reason} ->
+            Logger.warning("TradeExecutionWorker: Alpaca order failed: #{inspect(reason)}")
+            nil
+        end
+
+      {:error, reason} ->
+        Logger.warning("TradeExecutionWorker: Alpaca credentials unavailable: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  defp maybe_execute_on_platform(_platform, _agent, _args, _owner_user_id), do: nil
+
+  defp normalize_alpaca_side("buy"), do: "buy"
+  defp normalize_alpaca_side("sell"), do: "sell"
+  defp normalize_alpaca_side(_), do: "buy"
 
   defp maybe_submit_onchain(trade, agent, args, owner_user_id) do
     signed_tx = args["signed_tx_hex"]
