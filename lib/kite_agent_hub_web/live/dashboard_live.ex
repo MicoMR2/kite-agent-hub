@@ -1211,7 +1211,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <table class="w-full text-sm">
                         <thead>
                           <tr class="border-b border-white/5">
-                            <%= for h <- ~w(Market Side Contracts Avg\ Price Current Value) do %>
+                            <%= for h <- ["Market", "Side", "Contracts", "Avg Price", "Current", "Value"] do %>
                               <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
