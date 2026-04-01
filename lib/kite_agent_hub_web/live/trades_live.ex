@@ -256,6 +256,9 @@ defmodule KiteAgentHubWeb.TradesLive do
                     <th class="text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Status
                     </th>
+                    <th class="text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                      Chain
+                    </th>
                     <th class="text-right px-6 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Time
                     </th>
@@ -264,7 +267,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                 <tbody class="divide-y divide-white/5">
                   <%= if @trades == [] do %>
                     <tr>
-                      <td colspan="8" class="px-6 py-20 text-center">
+                      <td colspan="9" class="px-6 py-20 text-center">
                         <div class="flex flex-col items-center gap-4">
                           <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center">
                             <.icon
@@ -309,6 +312,20 @@ defmodule KiteAgentHubWeb.TradesLive do
                           <span class={"inline-flex px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest #{status_classes(trade.status)}"}>
                             {trade.status}
                           </span>
+                        </td>
+                        <td class="px-4 py-4 text-center whitespace-nowrap">
+                          <%= if trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) do %>
+                            <a
+                              href={"https://testnet.kitescan.ai/tx/#{trade.tx_hash}"}
+                              target="_blank"
+                              class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest transition-colors"
+                            >
+                              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                              Tx
+                            </a>
+                          <% else %>
+                            <span class="text-[10px] text-gray-700 font-mono">—</span>
+                          <% end %>
                         </td>
                         <td class="px-6 py-4 text-right text-xs text-gray-500 tabular-nums whitespace-nowrap font-mono tracking-widest">
                           {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
