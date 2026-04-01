@@ -78,7 +78,7 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
       "qty" => to_string(qty),
       "side" => side,
       "type" => "market",
-      "time_in_force" => "gtc"
+      "time_in_force" => "day"
     }
 
     post("/v2/orders", body, key_id, secret)
