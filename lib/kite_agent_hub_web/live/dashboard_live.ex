@@ -1106,7 +1106,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <table class="w-full text-sm">
                         <thead>
                           <tr class="border-b border-white/5">
-                            <%= for h <- ~w(Symbol Side Qty Avg\ Entry Current P&L) do %>
+                            <%= for h <- ["Symbol", "Side", "Qty", "Avg Entry", "Current", "P&L"] do %>
                               <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
@@ -1141,7 +1141,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <table class="w-full text-sm">
                         <thead>
                           <tr class="border-b border-white/5">
-                            <%= for h <- ~w(Symbol Side Qty Fill\ Price Time) do %>
+                            <%= for h <- ["Symbol", "Side", "Qty", "Fill Price", "Time"] do %>
                               <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
