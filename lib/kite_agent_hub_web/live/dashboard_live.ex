@@ -48,6 +48,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:alpaca_data, nil)
       |> assign(:alpaca_history, [])
       |> assign(:kalshi_data, nil)
+      |> assign(:wallet_txs, nil)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -100,6 +101,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
         :edge_scorer ->
           send(self(), :load_edge_scores)
           assign(socket, :edge_scores_loading, true)
+
+        :wallet ->
+          send(self(), :load_wallet_txs)
+          assign(socket, :wallet_txs, :loading)
 
         :alpaca ->
           send(self(), :load_alpaca)
@@ -219,6 +224,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_info(:load_edge_scores, socket) do
     scores = EdgeScorer.score_all()
     {:noreply, socket |> assign(:edge_scores, scores) |> assign(:edge_scores_loading, false)}
+  end
+
+  # Async wallet transaction history via Blockscout
+  def handle_info(:load_wallet_txs, socket) do
+    agent = socket.assigns.selected_agent
+
+    txs =
+      if agent && agent.wallet_address do
+        case KiteAgentHub.Kite.Blockscout.transactions(agent.wallet_address, 10) do
+          {:ok, txs} -> txs
+          _ -> []
+        end
+      else
+        []
+      end
+
+    {:noreply, assign(socket, :wallet_txs, txs)}
   end
 
   # Async Alpaca data loading
@@ -941,6 +963,47 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">Block</p>
                     <p class="text-sm text-white font-mono">{@block_number || "—"}</p>
                   </div>
+                </div>
+                <%!-- On-chain transaction history --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">Recent On-Chain Transactions</p>
+                  <%= cond do %>
+                    <% @wallet_txs == :loading -> %>
+                      <div class="flex items-center gap-3 text-gray-500 py-4">
+                        <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+                        <span class="text-xs">Loading transactions from Kitescan...</span>
+                      </div>
+                    <% is_list(@wallet_txs) && @wallet_txs != [] -> %>
+                      <div class="space-y-3">
+                        <%= for tx <- @wallet_txs do %>
+                          <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                            <div class="flex items-center gap-3 min-w-0">
+                              <div class={"w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold #{if tx.from && String.downcase(tx.from) == String.downcase(@selected_agent.wallet_address || ""), do: "bg-red-500/20 text-red-400", else: "bg-green-500/20 text-green-400"}"}>
+                                {if tx.from && String.downcase(tx.from) == String.downcase(@selected_agent.wallet_address || ""), do: "↑", else: "↓"}
+                              </div>
+                              <div class="min-w-0">
+                                <a
+                                  href={"https://testnet.kitescan.ai/tx/#{tx.hash}"}
+                                  target="_blank"
+                                  class="text-xs font-mono text-[#22c55e] hover:underline truncate block max-w-[200px]"
+                                >
+                                  {String.slice(tx.hash || "", 0..13)}...
+                                </a>
+                                <p class="text-[10px] text-gray-600 font-mono">
+                                  {if tx.timestamp, do: String.slice(to_string(tx.timestamp), 0..18), else: "—"}
+                                </p>
+                              </div>
+                            </div>
+                            <div class="text-right">
+                              <p class="text-xs font-mono text-white">{tx.value_eth} KITE</p>
+                              <p class="text-[10px] text-gray-600">{tx.status || "confirmed"}</p>
+                            </div>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% true -> %>
+                      <p class="text-xs text-gray-600 py-4">No on-chain transactions yet. Fund your wallet at faucet.gokite.ai to see activity here.</p>
+                  <% end %>
                 </div>
               </div>
             <% else %>
