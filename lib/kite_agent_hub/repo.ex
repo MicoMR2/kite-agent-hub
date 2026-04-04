@@ -35,7 +35,9 @@ defmodule KiteAgentHub.Repo do
   Bypasses RLS — safe for trusted server processes (Oban workers, GenServers).
   """
   def owner_user_id_for_agent(agent_id) do
-    case query!("SELECT owner_user_id_for_agent($1::uuid)", [agent_id]) do
+    {:ok, uuid_bin} = Ecto.UUID.dump(agent_id)
+
+    case query!("SELECT owner_user_id_for_agent($1::uuid)", [uuid_bin]) do
       %{rows: [[user_id]]} -> user_id
       _ -> nil
     end
