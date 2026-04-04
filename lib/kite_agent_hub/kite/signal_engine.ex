@@ -155,7 +155,14 @@ defmodule KiteAgentHub.Kite.SignalEngine do
   defp parse_signal(text, context) do
     market = context[:market] || "ETH-USDC"
 
-    with {:ok, parsed} <- Jason.decode(String.trim(text)),
+    cleaned =
+      text
+      |> String.trim()
+      |> String.replace(~r/^```(?:json)?\s*/i, "")
+      |> String.replace(~r/\s*```\s*$/, "")
+      |> String.trim()
+
+    with {:ok, parsed} <- Jason.decode(cleaned),
          "hold" <- Map.get(parsed, "action") == "hold" && "hold" do
       {:hold, parsed["reason"] || "no trade signal"}
     else
