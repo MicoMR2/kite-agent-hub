@@ -12,7 +12,8 @@ defmodule KiteAgentHubWeb.DemoController do
 
   use KiteAgentHubWeb, :controller
 
-  alias KiteAgentHub.{Accounts, Orgs, Trading}
+  alias KiteAgentHub.{Accounts, Orgs, Repo, Trading}
+  alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHubWeb.UserAuth
 
   @demo_wallet "0x95fCee8cbdDaa3285DCE7b51EfE196fFE6A3f347"
@@ -62,7 +63,7 @@ defmodule KiteAgentHubWeb.DemoController do
       "daily_limit_usd" => 1000,
       "per_trade_limit_usd" => 500,
       "max_open_positions" => 10,
-      "status" => "active"
+      "status" => "paused"
     }) do
       {:ok, agent} ->
         seed_sample_trades(agent)
@@ -128,13 +129,15 @@ defmodule KiteAgentHubWeb.DemoController do
       }
     ]
 
-    Enum.each(trades, fn trade_attrs ->
-      attrs = Map.merge(trade_attrs, %{
-        kite_agent_id: agent.id,
-        inserted_at: DateTime.add(now, -Enum.random(60..7200), :second)
-      })
+    Enum.with_index(trades)
+    |> Enum.each(fn {trade_attrs, idx} ->
+      historical_ts = DateTime.add(now, -(idx + 1) * 1800, :second) |> DateTime.truncate(:second)
 
-      Trading.create_trade(attrs)
+      %TradeRecord{}
+      |> TradeRecord.changeset(Map.put(trade_attrs, :kite_agent_id, agent.id))
+      |> Ecto.Changeset.force_change(:inserted_at, historical_ts)
+      |> Ecto.Changeset.force_change(:updated_at, historical_ts)
+      |> Repo.insert()
     end)
   end
 end
