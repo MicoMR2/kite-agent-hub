@@ -57,35 +57,34 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="min-h-screen bg-[#0a0a0f] text-gray-100">
-        <%!-- Back nav --%>
+        <%!-- Nav --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center gap-4">
             <.link
               navigate={~p"/dashboard"}
               class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
             >
-              <.icon name="hero-arrow-left" class="w-3.5 h-3.5" /> Dashboard
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              Dashboard
             </.link>
-            <span class="text-gray-700 hidden sm:block">|</span>
-            <span class="text-sm font-black text-white uppercase tracking-widest hidden sm:block">
-              New Agent
-            </span>
+            <span class="text-gray-700">|</span>
+            <h1 class="text-sm font-black text-white uppercase tracking-widest">New Agent</h1>
           </div>
         </div>
 
-        <div class="w-full px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16">
           <%!-- Left: form --%>
           <div class="lg:col-span-3">
-            <div class="mb-10">
-              <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div class="w-12 h-12 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.05)] shrink-0">
-                  <.icon name="hero-cpu-chip" class="w-6 h-6 text-white" />
+            <div class="mb-8">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.05)]">
+                  <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
                 </div>
                 <div>
-                  <h1 class="text-3xl font-black text-white tracking-tight">Configure Your Agent</h1>
-                  <p class="text-sm text-gray-500 mt-1 font-light tracking-wide">
-                    Set identity and risk limits
-                  </p>
+                  <h1 class="text-2xl font-black text-white tracking-tight">Configure Your Agent</h1>
+                  <p class="text-sm text-gray-500 mt-0.5">Set identity, wallet, and risk limits</p>
                 </div>
               </div>
             </div>
@@ -99,141 +98,175 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                 class="space-y-6"
               >
                 <div>
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                     Agent Name
                   </label>
-                  <.input
-                    field={@form[:name]}
+                  <input
+                    id={@form[:name].id}
+                    name={@form[:name].name}
+                    type="text"
+                    value={Phoenix.HTML.Form.input_value(@form, :name)}
                     placeholder="e.g. Alpha Scalper, Kite Arb Bot"
-                    class="w-full rounded-xl border border-white/10 bg-black/50 text-white placeholder-gray-600 focus:border-[#22c55e]/50 focus:ring-[#22c55e]/50 transition-all font-mono"
+                    spellcheck="false"
+                    required
+                    class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                   />
+                  <%= for {msg, _} <- @form[:name].errors do %>
+                    <p class="text-xs text-red-400 mt-1">{msg}</p>
+                  <% end %>
                 </div>
 
                 <div>
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                     Kite Wallet Address
                   </label>
-                  <.input
-                    field={@form[:wallet_address]}
+                  <input
+                    id={@form[:wallet_address].id}
+                    name={@form[:wallet_address].name}
+                    type="text"
+                    value={Phoenix.HTML.Form.input_value(@form, :wallet_address)}
                     placeholder="0x..."
-                    class="w-full rounded-xl border border-white/10 bg-black/50 text-white placeholder-gray-600 focus:border-[#22c55e]/50 focus:ring-[#22c55e]/50 transition-all font-mono"
+                    spellcheck="false"
+                    required
+                    class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                   />
-                  <p class="text-xs text-gray-500 mt-2 font-mono">
-                    Generate at
+                  <p class="text-xs text-gray-600 mt-2">
+                    Get testnet tokens at
                     <a
                       href="https://faucet.gokite.ai"
                       target="_blank"
-                      class="text-[#22c55e] hover:text-white transition-colors border-b border-[#22c55e]/30 hover:border-white"
+                      class="text-[#22c55e] hover:text-white transition-colors"
                     >
                       faucet.gokite.ai
                     </a>
                   </p>
+                  <%= for {msg, _} <- @form[:wallet_address].errors do %>
+                    <p class="text-xs text-red-400 mt-1">{msg}</p>
+                  <% end %>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                       Daily Limit (USD)
                     </label>
-                    <.input
-                      field={@form[:daily_limit_usd]}
+                    <input
+                      id={@form[:daily_limit_usd].id}
+                      name={@form[:daily_limit_usd].name}
                       type="number"
-                      value="1000"
-                      class="w-full rounded-xl border border-white/10 bg-black/50 text-white focus:border-[#22c55e]/50 focus:ring-[#22c55e]/50 transition-all font-mono"
+                      value={Phoenix.HTML.Form.input_value(@form, :daily_limit_usd) || "1000"}
+                      min="1"
+                      class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
                     />
                   </div>
                   <div>
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                       Per-Trade Limit (USD)
                     </label>
-                    <.input
-                      field={@form[:per_trade_limit_usd]}
+                    <input
+                      id={@form[:per_trade_limit_usd].id}
+                      name={@form[:per_trade_limit_usd].name}
                       type="number"
-                      value="500"
-                      class="w-full rounded-xl border border-white/10 bg-black/50 text-white focus:border-[#22c55e]/50 focus:ring-[#22c55e]/50 transition-all font-mono"
+                      value={Phoenix.HTML.Form.input_value(@form, :per_trade_limit_usd) || "500"}
+                      min="1"
+                      class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                     Max Open Positions
                   </label>
-                  <.input
-                    field={@form[:max_open_positions]}
+                  <input
+                    id={@form[:max_open_positions].id}
+                    name={@form[:max_open_positions].name}
                     type="number"
-                    value="10"
-                    class="w-full sm:w-1/2 rounded-xl border border-white/10 bg-black/50 text-white focus:border-[#22c55e]/50 focus:ring-[#22c55e]/50 transition-all font-mono"
+                    value={Phoenix.HTML.Form.input_value(@form, :max_open_positions) || "10"}
+                    min="1"
+                    class="w-full sm:w-1/2 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
                   />
                 </div>
 
-                <div class="pt-4 mt-8 border-t border-white/5">
+                <div class="pt-4 mt-4 border-t border-white/5">
                   <button
                     type="submit"
-                    phx-disable-with="Deploying…"
-                    class="w-full py-4 rounded-xl border border-white/10 bg-white hover:bg-gray-200 text-black font-black uppercase tracking-widest text-sm transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                    phx-disable-with="Creating..."
+                    class="w-full py-3.5 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                   >
-                    Create Agent →
+                    Create Agent
                   </button>
                 </div>
               </.form>
             </div>
 
             <p class="text-center text-[10px] text-gray-600 mt-6 uppercase tracking-widest font-bold">
-              🔒 Private keys never stored. Only your public wallet address is saved.
+              Private keys never stored. Only your public wallet address is saved.
             </p>
           </div>
 
           <%!-- Right: what happens next --%>
-          <div class="lg:col-span-2 space-y-6 pt-2">
-            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-8">
+          <div class="lg:col-span-2 pt-2">
+            <h3 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-8">
               What happens next
             </h3>
 
-            <div class="flex gap-4">
-              <div class="flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full border border-white/20 bg-white/[0.05] flex items-center justify-center shrink-0">
-                  <span class="text-xs font-black text-white">1</span>
+            <div class="space-y-0">
+              <div class="flex gap-4">
+                <div class="flex flex-col items-center">
+                  <div class="w-8 h-8 rounded-full border border-white/20 bg-white/[0.05] flex items-center justify-center shrink-0">
+                    <span class="text-[10px] font-black text-white">1</span>
+                  </div>
+                  <div class="w-px flex-1 bg-white/10 mt-2"></div>
                 </div>
-                <div class="w-px flex-1 bg-white/10 mt-3"></div>
+                <div class="pb-8">
+                  <p class="text-sm font-bold text-white">Create the agent</p>
+                  <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                    Registered with your spending limits. Status:
+                    <span class="text-gray-400 font-mono text-[10px] uppercase bg-white/5 px-1.5 py-0.5 rounded border border-white/10">pending</span>
+                  </p>
+                </div>
               </div>
-              <div class="pb-8">
-                <p class="text-base font-bold text-white tracking-tight">Create the agent</p>
-                <p class="text-sm text-gray-500 mt-2 font-light leading-relaxed">
-                  Agent is registered with your spending limits. Status will be <span class="text-gray-400 font-mono text-xs uppercase bg-white/5 px-1.5 py-0.5 rounded border border-white/10">pending</span>.
-                </p>
+
+              <div class="flex gap-4">
+                <div class="flex flex-col items-center">
+                  <div class="w-8 h-8 rounded-full border border-white/20 bg-white/[0.05] flex items-center justify-center shrink-0">
+                    <span class="text-[10px] font-black text-white">2</span>
+                  </div>
+                  <div class="w-px flex-1 bg-white/10 mt-2"></div>
+                </div>
+                <div class="pb-8">
+                  <p class="text-sm font-bold text-white">Deploy the vault</p>
+                  <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                    Deploy a TradingAgentVault on Kite testnet. Fund it at faucet.gokite.ai.
+                  </p>
+                  <code class="mt-3 block text-[11px] font-mono text-gray-400 bg-black/50 rounded-lg px-4 py-2.5 border border-white/10">
+                    python agent_onboard.py
+                  </code>
+                </div>
+              </div>
+
+              <div class="flex gap-4">
+                <div class="flex flex-col items-center">
+                  <div class="w-8 h-8 rounded-full border border-[#22c55e]/40 bg-[#22c55e]/10 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(34,197,94,0.15)]">
+                    <span class="text-[10px] font-black text-[#22c55e]">3</span>
+                  </div>
+                </div>
+                <div>
+                  <p class="text-sm font-bold text-white">Go live</p>
+                  <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                    Paste the vault address on the dashboard. Claude generates signals. Trades execute on Alpaca + Kite chain.
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div class="flex gap-4">
-              <div class="flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full border border-white/20 bg-white/[0.05] flex items-center justify-center shrink-0">
-                  <span class="text-xs font-black text-white">2</span>
-                </div>
-                <div class="w-px flex-1 bg-white/10 mt-3"></div>
-              </div>
-              <div class="pb-8">
-                <p class="text-base font-bold text-white tracking-tight">Deploy the vault</p>
-                <p class="text-sm text-gray-500 mt-2 font-light leading-relaxed">
-                  Run the onboard script to deploy a TradingAgentVault on Kite testnet. Fund it at faucet.gokite.ai.
-                </p>
-                <code class="mt-4 block text-xs font-mono text-gray-300 bg-black/50 rounded-lg px-4 py-3 border border-white/10 shadow-inner">
-                  python agent_onboard.py
-                </code>
-              </div>
-            </div>
-
-            <div class="flex gap-4">
-              <div class="flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full border border-[#22c55e]/50 bg-[#22c55e]/10 flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(34,197,94,0.2)]">
-                  <span class="text-xs font-black text-[#22c55e]">3</span>
-                </div>
-              </div>
-              <div>
-                <p class="text-base font-bold text-white tracking-tight">Go live</p>
-                <p class="text-sm text-gray-500 mt-2 font-light leading-relaxed">
-                  Paste the vault address on the dashboard. AgentRunner starts ticking. Claude generates signals. Trades execute on-chain.
-                </p>
+            <div class="mt-10 rounded-xl border border-white/5 bg-white/[0.01] p-4">
+              <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-2">Kite Testnet</p>
+              <div class="space-y-1.5 text-xs text-gray-500 font-mono">
+                <p>Chain ID: 2368</p>
+                <p>RPC: rpc-testnet.gokite.ai</p>
+                <p>Explorer: testnet.kitescan.ai</p>
               </div>
             </div>
           </div>
@@ -242,4 +275,5 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
     </Layouts.app>
     """
   end
+
 end
