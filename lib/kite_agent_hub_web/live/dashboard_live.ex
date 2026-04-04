@@ -1167,19 +1167,49 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
 
-                  <%!-- Equity Sparkline --%>
+                  <%!-- Equity Chart --%>
                   <%= if length(@alpaca_history) > 1 do %>
                     <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Equity Curve (30D)</p>
-                      <svg viewBox="0 0 400 80" class="w-full h-20" preserveAspectRatio="none">
+                      <div class="flex items-center justify-between mb-4">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Portfolio Equity (30D)</p>
+                        <div class="flex items-center gap-2">
+                          <% first_val = List.first(@alpaca_history).v %>
+                          <% last_val = List.last(@alpaca_history).v %>
+                          <% pct_change = if first_val > 0, do: Float.round((last_val - first_val) / first_val * 100, 2), else: 0.0 %>
+                          <span class={"text-xs font-mono font-bold #{if pct_change >= 0, do: "text-[#22c55e]", else: "text-red-400"}"}>
+                            {if pct_change >= 0, do: "+", else: ""}{pct_change}%
+                          </span>
+                        </div>
+                      </div>
+                      <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
+                        <%!-- Grid lines --%>
+                        <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
+                        <line x1="0" y1="80" x2="400" y2="80" stroke="white" stroke-opacity="0.05" />
+                        <line x1="0" y1="120" x2="400" y2="120" stroke="white" stroke-opacity="0.05" />
+                        <%!-- Gradient fill --%>
+                        <defs>
+                          <linearGradient id="equity-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#22c55e" stop-opacity="0.2" />
+                            <stop offset="100%" stop-color="#22c55e" stop-opacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        <polygon
+                          points={"#{sparkline_points(@alpaca_history, 400, 150)} 400,150 0,150"}
+                          fill="url(#equity-fill)"
+                        />
+                        <%!-- Line --%>
                         <polyline
-                          points={sparkline_points(@alpaca_history, 400, 80)}
+                          points={sparkline_points(@alpaca_history, 400, 150)}
                           fill="none"
                           stroke="#22c55e"
-                          stroke-width="1.5"
+                          stroke-width="2"
                           vector-effect="non-scaling-stroke"
                         />
                       </svg>
+                      <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
+                        <span>${Float.round(first_val, 0) |> trunc()}</span>
+                        <span>${Float.round(last_val, 0) |> trunc()}</span>
+                      </div>
                     </div>
                   <% end %>
 
