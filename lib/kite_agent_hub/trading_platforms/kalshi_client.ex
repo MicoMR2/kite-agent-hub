@@ -136,21 +136,55 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   defp sign_request(message, pem) do
+    require Logger
+
+    # Normalize PEM: fix escaped newlines, ensure proper line breaks
+    normalized_pem =
+      pem
+      |> String.replace("\\n", "\n")
+      |> String.replace("\r\n", "\n")
+      |> String.trim()
+
     try do
-      [pem_entry] = :public_key.pem_decode(pem)
-      private_key = :public_key.pem_entry_decode(pem_entry)
+      entries = :public_key.pem_decode(normalized_pem)
 
-      signature =
-        :public_key.sign(
-          message,
-          :sha256,
-          private_key,
-          [{:rsa_padding, :rsa_pkcs1_pss_padding}, {:rsa_pss_saltlen, :digest}]
-        )
+      case entries do
+        [pem_entry] ->
+          private_key = :public_key.pem_entry_decode(pem_entry)
 
-      {:ok, Base.encode64(signature)}
+          signature =
+            :public_key.sign(
+              message,
+              :sha256,
+              private_key,
+              [{:rsa_padding, :rsa_pkcs1_pss_padding}, {:rsa_pss_saltlen, :digest}]
+            )
+
+          {:ok, Base.encode64(signature)}
+
+        [] ->
+          Logger.warning("Kalshi: PEM decode returned empty — key may be malformed or missing BEGIN/END headers")
+          {:error, "PEM decode failed: no entries found"}
+
+        entries ->
+          Logger.info("Kalshi: PEM decode found #{length(entries)} entries, using first")
+          pem_entry = List.first(entries)
+          private_key = :public_key.pem_entry_decode(pem_entry)
+
+          signature =
+            :public_key.sign(
+              message,
+              :sha256,
+              private_key,
+              [{:rsa_padding, :rsa_pkcs1_pss_padding}, {:rsa_pss_saltlen, :digest}]
+            )
+
+          {:ok, Base.encode64(signature)}
+      end
     rescue
-      e -> {:error, Exception.message(e)}
+      e ->
+        Logger.warning("Kalshi: sign_request failed: #{Exception.message(e)}")
+        {:error, Exception.message(e)}
     end
   end
 
