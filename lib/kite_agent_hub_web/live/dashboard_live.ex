@@ -258,28 +258,53 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp load_alpaca_data(socket) do
     org = socket.assigns.organization
 
-    with org when not is_nil(org) <- org,
-         {:ok, credentials} <- credentials_module().fetch_secret(org.id, :alpaca),
-         {key_id, secret} <- credentials,
-         {:ok, account} <- AlpacaClient.account(key_id, secret),
-         {:ok, positions} <- AlpacaClient.positions(key_id, secret),
-         {:ok, history} <- AlpacaClient.portfolio_history(key_id, secret),
-         {:ok, orders} <- AlpacaClient.orders(key_id, secret) do
-      socket
-      |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
-      |> assign(:alpaca_history, history)
-    else
-      nil -> assign(socket, :alpaca_data, :error)
-      {:error, :not_configured} -> assign(socket, :alpaca_data, :not_configured)
-      {:error, :unauthorized} -> assign(socket, :alpaca_data, :unauthorized)
-      {:error, reason} ->
-        require Logger
-        Logger.warning("DashboardLive: Alpaca load failed: #{inspect(reason)}")
-        assign(socket, :alpaca_data, :error)
+    require Logger
 
-      _ ->
-        require Logger
-        Logger.warning("DashboardLive: Alpaca load unexpected result shape")
+    case credentials_module().fetch_secret(org.id, :alpaca) do
+      {:ok, {key_id, secret}} ->
+        Logger.info("DashboardLive: Alpaca credentials found, key_prefix=#{String.slice(key_id || "", 0..3)}")
+
+        account_result = AlpacaClient.account(key_id, secret)
+        positions_result = AlpacaClient.positions(key_id, secret)
+        history_result = AlpacaClient.portfolio_history(key_id, secret)
+        orders_result = AlpacaClient.orders(key_id, secret)
+
+        case account_result do
+          {:ok, account} ->
+            positions = case positions_result do
+              {:ok, p} -> p
+              _ -> []
+            end
+
+            history = case history_result do
+              {:ok, h} -> h
+              _ -> []
+            end
+
+            orders = case orders_result do
+              {:ok, o} -> o
+              _ -> []
+            end
+
+            socket
+            |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
+            |> assign(:alpaca_history, history)
+
+          {:error, :unauthorized} ->
+            Logger.warning("DashboardLive: Alpaca unauthorized — keys may be expired")
+            assign(socket, :alpaca_data, :unauthorized)
+
+          {:error, reason} ->
+            Logger.warning("DashboardLive: Alpaca account fetch failed: #{inspect(reason)}")
+            assign(socket, :alpaca_data, :error)
+        end
+
+      {:error, :not_configured} ->
+        Logger.info("DashboardLive: Alpaca credentials not configured for org #{org.id}")
+        assign(socket, :alpaca_data, :not_configured)
+
+      {:error, reason} ->
+        Logger.warning("DashboardLive: Alpaca credential fetch failed: #{inspect(reason)}")
         assign(socket, :alpaca_data, :error)
     end
   end

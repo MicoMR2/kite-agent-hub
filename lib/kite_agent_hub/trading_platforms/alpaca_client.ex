@@ -115,16 +115,38 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   defp parse_placed_order(err), do: err
 
   defp get(path, key_id, secret) do
+    require Logger
+
+    key_prefix = if is_binary(key_id), do: String.slice(key_id, 0..3), else: "nil"
+    has_secret = is_binary(secret) and secret != ""
+    url = @paper_base <> path
+    Logger.info("Alpaca GET #{url} key_prefix=#{key_prefix} has_secret=#{has_secret}")
+
     headers = [
       {"APCA-API-KEY-ID", key_id},
       {"APCA-API-SECRET-KEY", secret}
     ]
 
-    case Req.get(@paper_base <> path, headers: headers) do
-      {:ok, %{status: 200, body: body}} -> {:ok, body}
-      {:ok, %{status: 401}} -> {:error, :unauthorized}
-      {:ok, %{status: status, body: body}} -> {:error, "alpaca #{status}: #{inspect(body)}"}
-      {:error, reason} -> {:error, "alpaca HTTP: #{inspect(reason)}"}
+    case Req.get(url, headers: headers, retry: false) do
+      {:ok, %{status: 200, body: body}} ->
+        Logger.info("Alpaca: 200 OK for #{path}")
+        {:ok, body}
+
+      {:ok, %{status: 401}} ->
+        Logger.warning("Alpaca: 401 Unauthorized for #{path} — key_prefix=#{key_prefix}")
+        {:error, :unauthorized}
+
+      {:ok, %{status: 404}} ->
+        Logger.info("Alpaca: 404 for #{path} — returning empty")
+        {:error, :not_found}
+
+      {:ok, %{status: status}} ->
+        Logger.warning("Alpaca: HTTP #{status} for #{path}")
+        {:error, "alpaca #{status}"}
+
+      {:error, reason} ->
+        Logger.error("Alpaca: request failed for #{path}: #{inspect(reason)}")
+        {:error, "alpaca HTTP: #{inspect(reason)}"}
     end
   end
 
