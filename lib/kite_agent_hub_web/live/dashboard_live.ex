@@ -2,7 +2,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
   alias KiteAgentHub.{Orgs, Trading, Chat}
-  alias KiteAgentHub.Kite.{RPC, EdgeScorer}
+  alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
   @impl true
@@ -46,6 +46,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:active_tab, :overview)
       |> assign(:edge_scores, [])
       |> assign(:edge_scores_loading, connected?(socket))
+      |> assign(:portfolio_scores, nil)
       |> assign(:alpaca_data, nil)
       |> assign(:alpaca_history, [])
       |> assign(:kalshi_data, nil)
@@ -241,7 +242,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Async edge scorer loading
   def handle_info(:load_edge_scores, socket) do
     scores = EdgeScorer.score_all()
-    {:noreply, socket |> assign(:edge_scores, scores) |> assign(:edge_scores_loading, false)}
+
+    portfolio = if socket.assigns.organization do
+      PortfolioEdgeScorer.score_portfolio(socket.assigns.organization.id)
+    else
+      nil
+    end
+
+    {:noreply,
+     socket
+     |> assign(:edge_scores, scores)
+     |> assign(:portfolio_scores, portfolio)
+     |> assign(:edge_scores_loading, false)}
   end
 
   # Async wallet transaction history via Blockscout
@@ -1111,9 +1123,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- ═══════════════ EDGESCORER TAB ═══════════════ --%>
           <%= if @active_tab == :edge_scorer do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-            <div class="flex items-center justify-between mb-6">
-              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">EdgeScorer — Market Signal Scores</h2>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">EdgeScorer — Portfolio Analysis</h2>
               <button
                 phx-click="switch_tab"
                 phx-value-tab="edge_scorer"
@@ -1122,95 +1134,118 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 ↻ Refresh
               </button>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <%= for score <- @edge_scores do %>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 hover:border-white/20 transition-all">
-                  <%!-- Market header --%>
-                  <div class="flex items-center justify-between mb-4">
-                    <span class="text-sm font-black text-white tracking-tight">{score.market}</span>
-                    <span class={[
-                      "text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full border",
-                      score.recommendation == :go   && "text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10",
-                      score.recommendation == :hold  && "text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10",
-                      score.recommendation == :no    && "text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10"
-                    ]}>
-                      {String.upcase(Atom.to_string(score.recommendation))}
-                    </span>
-                  </div>
-                  <%!-- Score bar --%>
-                  <div class="mb-4">
-                    <div class="flex items-center justify-between mb-1">
-                      <span class="text-xs text-gray-500 font-mono uppercase tracking-widest">Edge Score</span>
-                      <span class="text-2xl font-black text-white">{score.score}</span>
-                    </div>
-                    <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        class={[
-                          "h-full rounded-full transition-all",
-                          score.score >= 75 && "bg-[#22c55e]",
-                          score.score >= 50 && score.score < 75 && "bg-[#f59e0b]",
-                          score.score < 50  && "bg-[#ef4444]"
-                        ]}
-                        style={"width: #{score.score}%"}
-                      >
+
+            <%= if @edge_scores_loading do %>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                <p class="text-gray-500 text-sm animate-pulse">Scoring positions...</p>
+              </div>
+            <% else %>
+              <%= if @portfolio_scores do %>
+                <% all_scores = (@portfolio_scores.alpaca_scores || []) ++ (@portfolio_scores.kalshi_scores || []) %>
+
+                <%!-- Position Scores --%>
+                <%= if all_scores != [] do %>
+                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <%= for score <- all_scores do %>
+                      <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 hover:border-white/20 transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                          <div>
+                            <span class="text-sm font-black text-white tracking-tight">{score[:ticker] || score[:title]}</span>
+                            <span class={["ml-2 text-[10px] font-bold px-2 py-0.5 rounded border uppercase",
+                              score.platform == :alpaca && "text-blue-400 border-blue-500/20 bg-blue-500/10",
+                              score.platform == :kalshi && "text-purple-400 border-purple-500/20 bg-purple-500/10"
+                            ]}>{score.platform}</span>
+                          </div>
+                          <span class={["text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border",
+                            score.recommendation == :strong_hold && "text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10",
+                            score.recommendation == :hold && "text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10",
+                            score.recommendation == :watch && "text-orange-400 border-orange-500/30 bg-orange-500/10",
+                            score.recommendation == :exit && "text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10"
+                          ]}>{String.replace(Atom.to_string(score.recommendation), "_", " ")}</span>
+                        </div>
+                        <%!-- Score bar --%>
+                        <div class="mb-3">
+                          <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Edge</span>
+                            <span class="text-xl font-black text-white">{score.score}</span>
+                          </div>
+                          <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div class={["h-full rounded-full",
+                              score.score >= 75 && "bg-[#22c55e]",
+                              score.score >= 60 && score.score < 75 && "bg-[#f59e0b]",
+                              score.score >= 40 && score.score < 60 && "bg-orange-500",
+                              score.score < 40 && "bg-[#ef4444]"
+                            ]} style={"width: #{score.score}%"}></div>
+                          </div>
+                        </div>
+                        <%!-- Position data --%>
+                        <div class="space-y-1.5 text-xs font-mono">
+                          <div class="flex justify-between text-gray-400">
+                            <span>Side</span>
+                            <span class="text-white">{score.side}</span>
+                          </div>
+                          <div class="flex justify-between text-gray-400">
+                            <span>P&L</span>
+                            <span class={[score.pnl_pct >= 0 && "text-[#22c55e]", score.pnl_pct < 0 && "text-[#ef4444]"]}>
+                              {if score.pnl_pct >= 0, do: "+", else: ""}{score.pnl_pct}%
+                            </span>
+                          </div>
+                        </div>
+                        <%!-- Breakdown --%>
+                        <div class="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-1.5 text-[10px] font-mono text-gray-500">
+                          <span>Entry: <span class="text-gray-300">{score.breakdown.entry_quality}/30</span></span>
+                          <span>Momentum: <span class="text-gray-300">{score.breakdown.momentum}/25</span></span>
+                          <span>R:R: <span class="text-gray-300">{score.breakdown.risk_reward}/25</span></span>
+                          <span>Liquidity: <span class="text-gray-300">{score.breakdown.liquidity}/20</span></span>
+                        </div>
                       </div>
+                    <% end %>
+                  </div>
+                <% end %>
+
+                <%!-- Suggestions --%>
+                <%= if @portfolio_scores.suggestions != [] do %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+                    <div class="px-6 py-4 border-b border-white/10">
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Suggestions</h3>
+                    </div>
+                    <div class="divide-y divide-white/5">
+                      <%= for sug <- @portfolio_scores.suggestions do %>
+                        <div class="px-6 py-3 flex items-center justify-between">
+                          <div class="flex items-center gap-3">
+                            <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase",
+                              sug.action == :exit && "text-red-400 border-red-500/20 bg-red-500/10",
+                              sug.action == :hold && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
+                            ]}>{sug.action}</span>
+                            <span class="text-xs text-white font-bold">{sug.ticker}</span>
+                            <span class="text-[10px] text-gray-500">{sug.platform}</span>
+                          </div>
+                          <span class="text-xs text-gray-400">{sug.reason}</span>
+                        </div>
+                      <% end %>
                     </div>
                   </div>
-                  <%!-- Market data --%>
-                  <div class="space-y-2 text-xs font-mono">
-                    <div class="flex justify-between text-gray-400">
-                      <span>Price</span>
-                      <span class="text-white">${score.price}</span>
-                    </div>
-                    <div class="flex justify-between text-gray-400">
-                      <span>24h Change</span>
-                      <span class={[
-                        score.change_24h >= 0 && "text-[#22c55e]",
-                        score.change_24h < 0  && "text-[#ef4444]"
-                      ]}>
-                        {if score.change_24h >= 0, do: "+", else: ""}{score.change_24h}%
-                      </span>
-                    </div>
-                    <div class="flex justify-between text-gray-400">
-                      <span>Trend</span>
-                      <span class="text-white">{String.replace(score.trend, "_", " ")}</span>
-                    </div>
-                    <div class="flex justify-between text-gray-400">
-                      <span>RSI (approx)</span>
-                      <span class="text-white">{score.rsi}</span>
-                    </div>
+                <% end %>
+
+                <%= if all_scores == [] do %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                    <p class="text-gray-500 text-sm">No open positions to score. Open trades on the Alpaca or Kalshi tabs first.</p>
                   </div>
-                  <%!-- Breakdown --%>
-                  <div class="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 gap-2 text-xs font-mono text-gray-500">
-                    <span>Trend: <span class="text-gray-300">{score.breakdown.trend}/40</span></span>
-                    <span>RSI: <span class="text-gray-300">{score.breakdown.rsi}/30</span></span>
-                    <span>Volume: <span class="text-gray-300">{score.breakdown.volume}/20</span></span>
-                    <span>Δ24h: <span class="text-gray-300">{score.breakdown.change}/10</span></span>
-                  </div>
+                <% end %>
+              <% else %>
+                <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-10 text-center space-y-3">
+                  <p class="text-yellow-400 text-sm font-bold">Could not load portfolio data</p>
+                  <p class="text-gray-500 text-xs">Check API keys in Settings, then try refreshing.</p>
+                  <button
+                    phx-click="switch_tab"
+                    phx-value-tab="edge_scorer"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold uppercase tracking-widest transition-all"
+                  >
+                    ↻ Retry
+                  </button>
                 </div>
               <% end %>
-              <%= if @edge_scores == [] do %>
-                <div class="md:col-span-3">
-                  <%= if @edge_scores_loading do %>
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
-                      <p class="text-gray-500 text-sm animate-pulse">Fetching market data...</p>
-                    </div>
-                  <% else %>
-                    <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-10 text-center space-y-3">
-                      <p class="text-yellow-400 text-sm font-bold">No market data available</p>
-                      <p class="text-gray-500 text-xs">The PriceOracle API may be down or unreachable. Try refreshing.</p>
-                      <button
-                        phx-click="switch_tab"
-                        phx-value-tab="edge_scorer"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold uppercase tracking-widest transition-all"
-                      >
-                        ↻ Retry
-                      </button>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
+            <% end %>
           </div>
           <% end %>
 
