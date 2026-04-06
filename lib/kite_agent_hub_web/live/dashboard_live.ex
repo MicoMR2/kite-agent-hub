@@ -987,30 +987,36 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <% end %>
             </div>
 
-            <%!-- MCP Setup + Agent Token --%>
+            <%!-- Developer Tools (collapsed by default) --%>
             <%= if @selected_agent do %>
-              <div class="w-full mt-6 space-y-4">
-                <%!-- Agent Token --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                  <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Token</h3>
-                    <span class="text-[10px] text-gray-600 uppercase tracking-widest">Secret — do not share</span>
+              <div class="w-full mt-6">
+                <details class="group">
+                  <summary class="flex items-center justify-between cursor-pointer rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-4 hover:border-white/20 transition-all">
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs font-black text-white uppercase tracking-widest">Developer Tools</span>
+                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">Agent Token + MCP Setup</span>
+                    </div>
+                    <svg class="w-4 h-4 text-gray-500 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </summary>
+                  <div class="mt-2 space-y-4">
+                    <%!-- Agent Token --%>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                      <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token</h3>
+                        <span class="text-[10px] text-gray-600 uppercase tracking-widest">Secret</span>
+                      </div>
+                      <code class="block bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono truncate">
+                        {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
+                      </code>
+                    </div>
+                    <%!-- MCP Config --%>
+                    <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                      <h3 class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-2">Claude Desktop Config</h3>
+                      <pre class="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-32 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
+                      <p class="text-[10px] text-gray-600 mt-2">Add to claude_desktop_config.json, run <code class="text-gray-400">npm install</code> in mcp-server/.</p>
+                    </div>
                   </div>
-                  <div class="flex items-center gap-3">
-                    <code class="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-emerald-400 font-mono truncate">
-                      {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
-                    </code>
-                  </div>
-                  <p class="text-[10px] text-gray-600 mt-2">Use this token to connect Claude Desktop or paste into an LLM as the Bearer auth key.</p>
-                </div>
-
-                <%!-- MCP Setup --%>
-                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6">
-                  <h3 class="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">Connect Claude Desktop (MCP)</h3>
-                  <p class="text-xs text-gray-400 mb-4">Add this to your Claude Desktop config to get native trading tools:</p>
-                  <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-[11px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed"><%= mcp_config_json(@selected_agent) %></pre>
-                  <p class="text-[10px] text-gray-600 mt-3">Clone the repo, run <code class="text-gray-400">npm install</code> in mcp-server/, then restart Claude Desktop.</p>
-                </div>
+                </details>
               </div>
             <% end %>
           </div>
