@@ -1199,8 +1199,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
               <%= if @edge_scores == [] do %>
-                <div class="md:col-span-3 text-center py-12 text-gray-500 text-sm">
-                  Fetching market data...
+                <div class="md:col-span-3">
+                  <%= if @edge_scores_loading do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                      <p class="text-gray-500 text-sm animate-pulse">Fetching market data...</p>
+                    </div>
+                  <% else %>
+                    <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-10 text-center space-y-3">
+                      <p class="text-yellow-400 text-sm font-bold">No market data available</p>
+                      <p class="text-gray-500 text-xs">The PriceOracle API may be down or unreachable. Try refreshing.</p>
+                      <button
+                        phx-click="switch_tab"
+                        phx-value-tab="edge_scorer"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold uppercase tracking-widest transition-all"
+                      >
+                        ↻ Retry
+                      </button>
+                    </div>
+                  <% end %>
                 </div>
               <% end %>
             </div>
