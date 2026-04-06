@@ -1,6 +1,7 @@
 defmodule KiteAgentHubWeb.ChatComponent do
   use KiteAgentHubWeb, :live_component
 
+  require Logger
   alias KiteAgentHub.Chat
 
   def update(assigns, socket) do
@@ -34,11 +35,33 @@ defmodule KiteAgentHubWeb.ChatComponent do
   def handle_event("send_message", %{"text" => text}, socket) do
     text = String.trim(text)
 
-    if text != "" && socket.assigns.org_id && socket.assigns.user do
-      Chat.send_user_message(socket.assigns.org_id, socket.assigns.user, text)
-    end
+    if text != "" && socket.assigns[:org_id] && socket.assigns[:user] do
+      case Chat.send_user_message(socket.assigns.org_id, socket.assigns.user, text) do
+        {:ok, _msg} ->
+          messages = Chat.list_messages(socket.assigns.org_id, limit: 50)
+          {:noreply, socket |> assign(:chat_input, "") |> assign(:messages, messages)}
 
-    {:noreply, assign(socket, :chat_input, "")}
+        {:error, reason} ->
+          Logger.warning("Chat send failed: #{inspect(reason)}")
+          {:noreply, assign(socket, :chat_input, "")}
+      end
+    else
+      Logger.warning("Chat send skipped: org_id=#{inspect(socket.assigns[:org_id])}, user=#{inspect(socket.assigns[:user] != nil)}")
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("connect_agent", _params, socket) do
+    agent = socket.assigns[:agent]
+    org_id = socket.assigns[:org_id]
+
+    if agent && org_id do
+      Chat.send_system_message(org_id, "#{agent.name} connected to chat. Agent is ready to receive instructions.")
+      messages = Chat.list_messages(org_id, limit: 50)
+      {:noreply, assign(socket, :messages, messages)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def render(assigns) do
@@ -64,15 +87,39 @@ defmodule KiteAgentHubWeb.ChatComponent do
               <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Chat</h3>
             </div>
-            <button phx-click="toggle_chat" phx-target={@myself} class="text-gray-500 hover:text-white transition-colors">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-            </button>
+            <div class="flex items-center gap-2">
+              <%= if @agent do %>
+                <button
+                  phx-click="connect_agent"
+                  phx-target={@myself}
+                  class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest transition-colors"
+                >
+                  + {@agent.name}
+                </button>
+              <% end %>
+              <button phx-click="toggle_chat" phx-target={@myself} class="text-gray-500 hover:text-white transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+            </div>
           </div>
 
           <%!-- Messages --%>
           <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3" phx-hook="ScrollBottom">
             <%= if @messages == [] do %>
-              <p class="text-center text-gray-600 text-xs mt-10">No messages yet. Say hello to your agent!</p>
+              <div class="text-center mt-10 space-y-2">
+                <p class="text-gray-600 text-xs">No messages yet.</p>
+                <%= if @agent do %>
+                  <button
+                    phx-click="connect_agent"
+                    phx-target={@myself}
+                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/10 transition-all"
+                  >
+                    Connect {@agent.name}
+                  </button>
+                <% else %>
+                  <p class="text-gray-700 text-[10px]">Select an agent on the dashboard first.</p>
+                <% end %>
+              </div>
             <% end %>
             <%= for msg <- @messages do %>
               <div class={["flex flex-col", msg.sender_type == "user" && "items-end"]}>
