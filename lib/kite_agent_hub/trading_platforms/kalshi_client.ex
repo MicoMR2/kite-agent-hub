@@ -15,7 +15,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     {:ok, order} = KalshiClient.place_order(key_id, pem, "BTCZ-...", "yes", 5, 55)
   """
 
-  @demo_base "https://demo-api.kalshi.co/trade-api/v2"
+  @demo_host "https://demo-api.kalshi.co"
+  @api_prefix "/trade-api/v2"
 
   @doc "Fetch portfolio balance — available_balance, portfolio_value."
   def balance(key_id, pem) do
@@ -74,7 +75,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   defp post(path, body, key_id, pem) do
     ts_ms = System.os_time(:millisecond)
-    msg = "#{ts_ms}POST#{path}"
+    full_path = @api_prefix <> path
+    msg = "#{ts_ms}POST#{full_path}"
 
     case sign_request(msg, pem) do
       {:ok, signature_b64} ->
@@ -84,9 +86,9 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
           {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
         ]
 
-        case Req.post(@demo_base <> path, json: body, headers: headers) do
+        case Req.post(@demo_host <> full_path, json: body, headers: headers) do
           {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
-          {:ok, %{status: 401}} -> {:error, :unauthorized}
+          {:ok, %{status: 401, body: resp_body}} -> {:error, "kalshi 401: #{inspect(resp_body)}"}
           {:ok, %{status: status, body: resp_body}} -> {:error, "kalshi #{status}: #{inspect(resp_body)}"}
           {:error, reason} -> {:error, "kalshi HTTP: #{inspect(reason)}"}
         end
@@ -112,7 +114,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   defp get(path, key_id, pem) do
     ts_ms = System.os_time(:millisecond)
-    clean_path = String.split(path, "?") |> List.first()
+    full_path = @api_prefix <> path
+    clean_path = String.split(full_path, "?") |> List.first()
     msg = "#{ts_ms}GET#{clean_path}"
 
     case sign_request(msg, pem) do
@@ -123,9 +126,9 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
           {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
         ]
 
-        case Req.get(@demo_base <> path, headers: headers) do
+        case Req.get(@demo_host <> full_path, headers: headers) do
           {:ok, %{status: 200, body: body}} -> {:ok, body}
-          {:ok, %{status: 401}} -> {:error, :unauthorized}
+          {:ok, %{status: 401, body: body}} -> {:error, "kalshi 401: #{inspect(body)}"}
           {:ok, %{status: status, body: body}} -> {:error, "kalshi #{status}: #{inspect(body)}"}
           {:error, reason} -> {:error, "kalshi HTTP: #{inspect(reason)}"}
         end
