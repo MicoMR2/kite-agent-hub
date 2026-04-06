@@ -2,6 +2,8 @@ defmodule KiteAgentHub.Repo.Migrations.AddApiTokenToKiteAgents do
   use Ecto.Migration
 
   def change do
+    execute "CREATE EXTENSION IF NOT EXISTS pgcrypto", ""
+
     alter table(:kite_agents) do
       add :api_token, :string
     end
