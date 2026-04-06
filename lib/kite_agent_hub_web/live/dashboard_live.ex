@@ -985,11 +985,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 </div>
               <% end %>
-            </div>
 
-            <%!-- Developer Tools (collapsed by default) --%>
-            <%= if @selected_agent do %>
-              <div class="w-full mt-6">
+                <%!-- Developer Tools (collapsed, at bottom of main panel) --%>
                 <details class="group">
                   <summary class="flex items-center justify-between cursor-pointer rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-4 hover:border-white/20 transition-all">
                     <div class="flex items-center gap-3">
@@ -999,7 +996,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <svg class="w-4 h-4 text-gray-500 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                   </summary>
                   <div class="mt-2 space-y-4">
-                    <%!-- Agent Token --%>
                     <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                       <div class="flex items-center justify-between mb-2">
                         <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token</h3>
@@ -1009,7 +1005,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
                       </code>
                     </div>
-                    <%!-- MCP Config --%>
                     <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
                       <h3 class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-2">Claude Desktop Config</h3>
                       <pre class="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-32 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
@@ -1017,8 +1012,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                   </div>
                 </details>
-              </div>
-            <% end %>
+            </div>
           </div>
           <% end %>
 
