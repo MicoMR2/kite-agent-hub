@@ -16,6 +16,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :per_trade_limit_usd, :integer, default: 500
     field :max_open_positions, :integer, default: 10
     field :status, :string, default: "pending"
+    field :api_token, :string
 
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     has_many :trade_records, KiteAgentHub.Trading.TradeRecord
@@ -42,7 +43,9 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
     |> validate_spending_limits()
+    |> maybe_generate_api_token()
     |> unique_constraint(:wallet_address)
+    |> unique_constraint(:api_token)
   end
 
   # Name-only update — spending limits never touched
@@ -74,5 +77,14 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_number(:daily_limit_usd, greater_than: 0)
     |> validate_number(:per_trade_limit_usd, greater_than: 0)
     |> validate_number(:max_open_positions, greater_than: 0)
+  end
+
+  defp maybe_generate_api_token(changeset) do
+    if get_field(changeset, :api_token) do
+      changeset
+    else
+      token = "kite_" <> Base.encode16(:crypto.strong_rand_bytes(24), case: :lower)
+      put_change(changeset, :api_token, token)
+    end
   end
 end

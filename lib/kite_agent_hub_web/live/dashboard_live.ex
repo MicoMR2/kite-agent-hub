@@ -49,6 +49,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:alpaca_history, [])
       |> assign(:kalshi_data, nil)
       |> assign(:wallet_txs, nil)
+      |> assign(:show_agent_context, false)
+      |> assign(:agent_context_text, nil)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -174,6 +176,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not resume agent.")}
     end
+  end
+
+  def handle_event("show_agent_context", _params, socket) do
+    agent = socket.assigns.selected_agent
+
+    if agent do
+      context = KiteAgentHub.Trading.AgentContext.generate(agent)
+      {:noreply, socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+    else
+      {:noreply, put_flash(socket, :error, "No agent selected.")}
+    end
+  end
+
+  def handle_event("close_agent_context", _params, socket) do
+    {:noreply, assign(socket, :show_agent_context, false)}
   end
 
   # ── PubSub / async messages ───────────────────────────────────────────────────
@@ -459,6 +476,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
               >
                 <.icon name="hero-key" class="w-3.5 h-3.5" /> API Keys
               </.link>
+              <%= if @selected_agent do %>
+                <button
+                  phx-click="show_agent_context"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 text-xs font-bold uppercase tracking-widest text-emerald-400 hover:text-emerald-300 transition-all"
+                >
+                  <.icon name="hero-document-text" class="w-3.5 h-3.5" /> Agent Context
+                </button>
+              <% end %>
               <.link
                 navigate={~p"/users/settings"}
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
@@ -1498,6 +1523,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         <% end %>
       </div>
+
+      <%!-- Agent Context Modal --%>
+      <%= if @show_agent_context do %>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" phx-click="close_agent_context">
+          <div class="relative w-full max-w-3xl max-h-[80vh] mx-4 rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl overflow-hidden" phx-click-away="close_agent_context">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
+              <h2 class="text-xs font-black text-white uppercase tracking-widest">Agent Context — Copy to Claude/GPT</h2>
+              <button phx-click="close_agent_context" class="text-gray-500 hover:text-white transition-colors">
+                <.icon name="hero-x-mark" class="w-5 h-5" />
+              </button>
+            </div>
+            <div class="p-6 overflow-y-auto max-h-[60vh]">
+              <pre class="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-black/40 rounded-xl p-4 border border-white/5">{@agent_context_text}</pre>
+            </div>
+            <div class="px-6 py-4 border-t border-white/10 flex items-center justify-between">
+              <p class="text-[10px] text-gray-600 uppercase tracking-widest">Paste into Claude Code, ChatGPT, or any LLM</p>
+              <button
+                id="copy-context-btn"
+                phx-hook="CopyToClipboard"
+                data-text={@agent_context_text}
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-widest transition-colors"
+              >
+                <.icon name="hero-clipboard-document" class="w-4 h-4" /> Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        </div>
+      <% end %>
     </Layouts.app>
     """
   end
