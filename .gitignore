@@ -40,3 +40,4 @@ npm-debug.log
 .env.*
 .DS_Store
 kite-agent-hub/
+mcp-server/node_modules/
