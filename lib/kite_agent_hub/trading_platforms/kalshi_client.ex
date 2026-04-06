@@ -71,6 +71,48 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     |> parse_placed_order()
   end
 
+  @doc "Fetch recent fills (trade history). Returns list of fill maps."
+  def fills(key_id, pem, limit \\ 20) do
+    case get("/portfolio/fills?limit=#{limit}", key_id, pem) do
+      {:ok, %{"fills" => list}} when is_list(list) ->
+        {:ok, Enum.map(list, &parse_fill/1)}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      err ->
+        err
+    end
+  end
+
+  @doc "Fetch recent orders. Returns list of order maps."
+  def orders(key_id, pem, limit \\ 20) do
+    case get("/portfolio/orders?limit=#{limit}", key_id, pem) do
+      {:ok, %{"orders" => list}} when is_list(list) ->
+        {:ok, Enum.map(list, &parse_order/1)}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      err ->
+        err
+    end
+  end
+
+  @doc "Fetch settlements. Returns list of settlement maps."
+  def settlements(key_id, pem, limit \\ 20) do
+    case get("/portfolio/settlements?limit=#{limit}", key_id, pem) do
+      {:ok, %{"settlements" => list}} when is_list(list) ->
+        {:ok, Enum.map(list, &parse_settlement/1)}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      err ->
+        err
+    end
+  end
+
   # ── Private ───────────────────────────────────────────────────────────────────
 
   defp post(path, body, key_id, pem) do
@@ -196,6 +238,41 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       current_price: (p["last_price"] || 0) / 100.0,
       value: ((p["position"] || 0) * (p["last_price"] || 0)) / 100.0,
       settled: p["settled"] || false
+    }
+  end
+
+  defp parse_fill(f) do
+    %{
+      trade_id: f["trade_id"],
+      ticker: f["ticker"],
+      side: f["side"],
+      action: f["action"],
+      count: f["count"] || 0,
+      price: (f["yes_price"] || f["no_price"] || 0) / 100.0,
+      created_time: f["created_time"]
+    }
+  end
+
+  defp parse_order(o) do
+    %{
+      order_id: o["order_id"],
+      ticker: o["ticker"],
+      side: o["side"],
+      action: o["action"],
+      type: o["type"],
+      count: o["remaining_count"] || o["count"] || 0,
+      price: (o["yes_price"] || o["no_price"] || 0) / 100.0,
+      status: o["status"],
+      created_time: o["created_time"]
+    }
+  end
+
+  defp parse_settlement(s) do
+    %{
+      ticker: s["ticker"],
+      market_result: s["market_result"],
+      revenue: (s["revenue"] || 0) / 100.0,
+      settled_time: s["settled_time"]
     }
   end
 end
