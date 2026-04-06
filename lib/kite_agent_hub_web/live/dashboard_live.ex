@@ -433,9 +433,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
               </.link>
               <.link
                 navigate={~p"/users/settings"}
-                class="text-xs text-gray-400 hover:text-white transition-colors font-mono hidden sm:block"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
               >
-                {@current_scope.user.email}
+                <.icon name="hero-cog-6-tooth" class="w-3.5 h-3.5" /> Settings
               </.link>
               <.link
                 href={~p"/users/log-out"}
