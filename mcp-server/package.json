@@ -1,0 +1,13 @@
+{
+  "name": "kah-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Kite Agent Hub — trading tools for Claude Desktop",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "kah-mcp": "./index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
