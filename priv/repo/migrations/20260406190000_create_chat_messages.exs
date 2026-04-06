@@ -9,7 +9,7 @@ defmodule KiteAgentHub.Repo.Migrations.CreateChatMessages do
       add :sender_name, :string, null: false
       add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all), null: false
       add :kite_agent_id, references(:kite_agents, type: :binary_id, on_delete: :nilify_all)
-      add :user_id, references(:users, type: :binary_id, on_delete: :nilify_all)
+      add :user_id, references(:users, type: :bigint, on_delete: :nilify_all)
 
       timestamps(type: :utc_datetime)
     end
