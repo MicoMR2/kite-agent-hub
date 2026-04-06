@@ -1008,7 +1008,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6">
                   <h3 class="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">Connect Claude Desktop (MCP)</h3>
                   <p class="text-xs text-gray-400 mb-4">Add this to your Claude Desktop config to get native trading tools:</p>
-                  <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-[11px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed">{"mcpServers": {"kah": {"command": "node", "args": ["mcp-server/index.js"], "env": {"KAH_AGENT_TOKEN": "{if @selected_agent.api_token, do: @selected_agent.api_token, else: "YOUR_TOKEN"}", "KAH_BASE_URL": "https://kite-agent-hub.fly.dev"}}}}</pre>
+                  <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-[11px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed"><%= mcp_config_json(@selected_agent) %></pre>
                   <p class="text-[10px] text-gray-600 mt-3">Clone the repo, run <code class="text-gray-400">npm install</code> in mcp-server/, then restart Claude Desktop.</p>
                 </div>
               </div>
@@ -1648,4 +1648,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_fill_sparkline(_, _, _), do: ""
+
+  defp mcp_config_json(agent) do
+    token = if agent && agent.api_token, do: agent.api_token, else: "YOUR_TOKEN"
+
+    Jason.encode!(%{
+      "mcpServers" => %{
+        "kah" => %{
+          "command" => "node",
+          "args" => ["mcp-server/index.js"],
+          "env" => %{
+            "KAH_AGENT_TOKEN" => token,
+            "KAH_BASE_URL" => "https://kite-agent-hub.fly.dev"
+          }
+        }
+      }
+    }, pretty: true)
+  end
 end
