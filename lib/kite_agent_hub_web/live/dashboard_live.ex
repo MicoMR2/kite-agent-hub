@@ -1,7 +1,7 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Orgs, Trading}
+  alias KiteAgentHub.{Orgs, Trading, Chat}
   alias KiteAgentHub.Kite.{RPC, EdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
@@ -30,6 +30,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         fetch_chain_data(selected_agent)
       end
 
+      if org, do: Chat.subscribe(org.id)
       send(self(), :load_edge_scores)
     end
 
@@ -1551,8 +1552,30 @@ defmodule KiteAgentHubWeb.DashboardLive do
           </div>
         </div>
       <% end %>
+
+      <%!-- Chat Popup --%>
+      <%= if @organization do %>
+        <.live_component
+          module={KiteAgentHubWeb.ChatComponent}
+          id="chat-popup"
+          org_id={@organization.id}
+          user={@current_scope.user}
+          agent={@selected_agent}
+        />
+      <% end %>
     </Layouts.app>
     """
+  end
+
+  # ── Chat PubSub handler ─────────────────────────────────────────────────────
+
+  def handle_info({:chat_message, _message}, socket) do
+    if socket.assigns.organization do
+      messages = Chat.list_messages(socket.assigns.organization.id, limit: 50)
+      send_update(KiteAgentHubWeb.ChatComponent, id: "chat-popup", messages: messages)
+    end
+
+    {:noreply, socket}
   end
 
   # ── SVG sparkline helper ───────────────────────────────────────────────────────
