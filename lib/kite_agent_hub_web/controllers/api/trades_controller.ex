@@ -113,8 +113,9 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   defp authenticate(conn) do
     case get_req_header(conn, "authorization") do
-      ["Bearer " <> wallet_address] ->
-        case Trading.get_agent_by_wallet(wallet_address) do
+      ["Bearer " <> token] ->
+        # Try api_token first (secure), fall back to wallet_address (legacy)
+        case Trading.get_agent_by_token(token) || Trading.get_agent_by_wallet(token) do
           nil -> {:error, :unauthorized}
           agent -> {:ok, agent}
         end
@@ -131,6 +132,14 @@ defmodule KiteAgentHubWeb.API.TradesController do
     contracts = params["contracts"]
     fill_price = params["fill_price"]
 
+    # Compute notional value for limit checks
+    notional = if is_number(contracts) and is_number(fill_price),
+      do: contracts * fill_price,
+      else: 0
+
+    # Check daily spend
+    daily_spent = Trading.daily_spend(agent.id)
+
     cond do
       is_nil(market) ->
         {:error, "market is required"}
@@ -146,6 +155,12 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
       is_nil(fill_price) ->
         {:error, "fill_price is required"}
+
+      notional > agent.per_trade_limit_usd ->
+        {:error, "trade exceeds per-trade limit ($#{agent.per_trade_limit_usd}). Requested: $#{Float.round(notional / 1, 2)}"}
+
+      daily_spent + notional > agent.daily_limit_usd ->
+        {:error, "trade would exceed daily limit ($#{agent.daily_limit_usd}). Already spent: $#{Float.round(daily_spent / 1, 2)}"}
 
       true ->
         {:ok,
