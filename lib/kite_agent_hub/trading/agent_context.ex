@@ -32,7 +32,8 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
     ## API Access
     Base URL: #{base_url}/api/v1
-    Auth: Bearer token (your wallet address)
+    Auth: Bearer #{agent.api_token}
+    IMPORTANT: This token is SECRET. Never share it or post it in chat.
 
     ### Endpoints
     - POST /api/v1/trades — execute a trade
