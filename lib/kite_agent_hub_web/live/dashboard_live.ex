@@ -317,11 +317,39 @@ defmodule KiteAgentHubWeb.DashboardLive do
          {key_id, pem} <- credentials,
          {:ok, balance} <- KalshiClient.balance(key_id, pem),
          {:ok, positions} <- KalshiClient.positions(key_id, pem) do
-      assign(socket, :kalshi_data, %{balance: balance, positions: positions})
+      # Fetch fills and orders separately — don't fail the whole tab if these error
+      fills = case KalshiClient.fills(key_id, pem, 50) do
+        {:ok, f} -> f
+        _ -> []
+      end
+
+      orders = case KalshiClient.orders(key_id, pem, 20) do
+        {:ok, o} -> o
+        _ -> []
+      end
+
+      settlements = case KalshiClient.settlements(key_id, pem, 20) do
+        {:ok, s} -> s
+        _ -> []
+      end
+
+      portfolio_value = Enum.reduce(positions, 0.0, fn p, acc -> acc + p.value end)
+      total_settled_pnl = Enum.reduce(settlements, 0.0, fn s, acc -> acc + s.revenue end)
+
+      assign(socket, :kalshi_data, %{
+        balance: balance,
+        positions: positions,
+        fills: fills,
+        orders: orders,
+        settlements: settlements,
+        portfolio_value: portfolio_value,
+        total_settled_pnl: total_settled_pnl
+      })
     else
       nil -> assign(socket, :kalshi_data, :error)
       {:error, :not_configured} -> assign(socket, :kalshi_data, :not_configured)
       {:error, :unauthorized} -> assign(socket, :kalshi_data, :unauthorized)
+      {:error, "kalshi 401:" <> _} -> assign(socket, :kalshi_data, :unauthorized)
 
       {:error, reason} ->
         require Logger
@@ -1310,15 +1338,59 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <p class="text-gray-500 text-sm">Click the Kalshi tab to load your demo portfolio.</p>
                   </div>
                 <% data -> %>
-                  <%!-- Balance --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                    <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Available Balance</p>
-                    <p class="text-3xl font-black text-white tabular-nums">
-                      ${:erlang.float_to_binary(data.balance.available_balance, decimals: 2)}
-                    </p>
+                  <%!-- Account Summary Cards --%>
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <%= for {label, val, color} <- [
+                      {"Available Balance", "$#{:erlang.float_to_binary(data.balance.available_balance, decimals: 2)}", "text-white"},
+                      {"Portfolio Value", "$#{:erlang.float_to_binary(data.portfolio_value, decimals: 2)}", "text-emerald-400"},
+                      {"Settled P&L", "#{if data.total_settled_pnl >= 0, do: "+", else: ""}$#{:erlang.float_to_binary(abs(data.total_settled_pnl), decimals: 2)}", if(data.total_settled_pnl >= 0, do: "text-emerald-400", else: "text-red-400")},
+                      {"Open Positions", "#{length(data.positions)}", "text-blue-400"}
+                    ] do %>
+                      <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">{label}</p>
+                        <p class={"text-lg font-black tabular-nums #{color}"}>{val}</p>
+                      </div>
+                    <% end %>
                   </div>
 
-                  <%!-- Positions --%>
+                  <%!-- Trade Activity Chart (from fills) --%>
+                  <%= if length(data.fills) > 1 do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                      <div class="flex items-center justify-between mb-4">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Recent Trade Activity</p>
+                        <span class="text-xs font-mono text-gray-500">{length(data.fills)} fills</span>
+                      </div>
+                      <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
+                        <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
+                        <line x1="0" y1="80" x2="400" y2="80" stroke="white" stroke-opacity="0.05" />
+                        <line x1="0" y1="120" x2="400" y2="120" stroke="white" stroke-opacity="0.05" />
+                        <defs>
+                          <linearGradient id="kalshi-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.2" />
+                            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        <% fill_points = kalshi_fill_sparkline(data.fills, 400, 150) %>
+                        <polygon
+                          points={"#{fill_points} 400,150 0,150"}
+                          fill="url(#kalshi-fill)"
+                        />
+                        <polyline
+                          points={fill_points}
+                          fill="none"
+                          stroke="#3b82f6"
+                          stroke-width="2"
+                          vector-effect="non-scaling-stroke"
+                        />
+                      </svg>
+                      <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
+                        <span>Oldest</span>
+                        <span>Latest</span>
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <%!-- Open Positions --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                     <div class="px-6 py-4 border-b border-white/10">
                       <h3 class="text-xs font-black text-white uppercase tracking-widest">Open Positions</h3>
@@ -1338,10 +1410,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
                               <td class="px-4 py-3 text-white text-xs font-mono">{p.title}</td>
-                              <td class="px-4 py-3 text-gray-400">{p.side}</td>
+                              <td class="px-4 py-3">
+                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", p.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{p.side}</span>
+                              </td>
                               <td class="px-4 py-3 tabular-nums text-gray-300">{p.contracts}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_price, decimals: 2)}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price, decimals: 2)}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-400">{:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(p.current_price * 100, decimals: 0)}¢</td>
                               <td class="px-4 py-3 tabular-nums font-mono text-white">${:erlang.float_to_binary(p.value, decimals: 2)}</td>
                             </tr>
                           <% end %>
@@ -1349,6 +1423,75 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </table>
                     <% end %>
                   </div>
+
+                  <%!-- Recent Fills --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
+                    <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Recent Fills</h3>
+                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">via Kalshi Demo</span>
+                    </div>
+                    <%= if data.fills == [] do %>
+                      <p class="px-6 py-8 text-center text-sm text-gray-600">No fills yet.</p>
+                    <% else %>
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="border-b border-white/5">
+                            <%= for h <- ["Market", "Side", "Action", "Contracts", "Price", "Time"] do %>
+                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                            <% end %>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                          <%= for f <- Enum.take(data.fills, 10) do %>
+                            <tr class="hover:bg-white/[0.02]">
+                              <td class="px-4 py-3 font-black text-white text-xs font-mono">{f.ticker}</td>
+                              <td class="px-4 py-3">
+                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", f.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", f.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{f.side}</span>
+                              </td>
+                              <td class="px-4 py-3">
+                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", f.action == "buy" && "text-blue-400 border-blue-500/20 bg-blue-500/10", f.action == "sell" && "text-orange-400 border-orange-500/20 bg-orange-500/10"]}>{f.action}</span>
+                              </td>
+                              <td class="px-4 py-3 tabular-nums text-gray-300 font-mono">{f.count}</td>
+                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(f.price * 100, decimals: 0)}¢</td>
+                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">{if f.created_time, do: String.slice(f.created_time, 0, 16) |> String.replace("T", " "), else: "—"}</td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    <% end %>
+                  </div>
+
+                  <%!-- Settlements --%>
+                  <%= if data.settlements != [] do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
+                      <div class="px-6 py-4 border-b border-white/10">
+                        <h3 class="text-xs font-black text-white uppercase tracking-widest">Settlements</h3>
+                      </div>
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="border-b border-white/5">
+                            <%= for h <- ["Market", "Result", "Revenue", "Settled"] do %>
+                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                            <% end %>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                          <%= for s <- Enum.take(data.settlements, 10) do %>
+                            <tr class="hover:bg-white/[0.02]">
+                              <td class="px-4 py-3 font-black text-white text-xs font-mono">{s.ticker}</td>
+                              <td class="px-4 py-3">
+                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", s.market_result == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", s.market_result == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{s.market_result || "—"}</span>
+                              </td>
+                              <td class={"px-4 py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
+                                {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(s.revenue), decimals: 2)}
+                              </td>
+                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">{if s.settled_time, do: String.slice(s.settled_time, 0, 16) |> String.replace("T", " "), else: "—"}</td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    </div>
+                  <% end %>
               <% end %>
             </div>
           <% end %>
@@ -1379,4 +1522,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp sparkline_points(_, _, _), do: ""
+
+  defp kalshi_fill_sparkline(fills, width, height) when length(fills) > 1 do
+    # Plot cumulative fill value over time (reversed since fills come newest-first)
+    reversed = Enum.reverse(fills)
+    values = reversed
+    |> Enum.scan(0.0, fn f, acc -> acc + f.count * f.price end)
+
+    min_v = Enum.min(values)
+    max_v = Enum.max(values)
+    range = max(max_v - min_v, 0.01)
+    count = length(values) - 1
+
+    values
+    |> Enum.with_index()
+    |> Enum.map(fn {v, i} ->
+      x = i / count * width
+      y = height - (v - min_v) / range * height
+      "#{Float.round(x, 1)},#{Float.round(y, 1)}"
+    end)
+    |> Enum.join(" ")
+  end
+
+  defp kalshi_fill_sparkline(_, _, _), do: ""
 end
