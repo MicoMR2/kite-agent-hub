@@ -25,6 +25,11 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/kite_agent_hub"
 import topbar from "../vendor/topbar"
 
+const ScrollBottom = {
+  mounted() { this.el.scrollTop = this.el.scrollHeight },
+  updated() { this.el.scrollTop = this.el.scrollHeight }
+}
+
 const CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", () => {
@@ -42,7 +47,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, CopyToClipboard},
+  hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard},
 })
 
 // Show progress bar on live navigation and form submits
