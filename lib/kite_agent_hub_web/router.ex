@@ -33,6 +33,7 @@ defmodule KiteAgentHubWeb.Router do
     get "/trades", TradesController, :index
     get "/trades/:id", TradesController, :show
     get "/agents/me", TradesController, :agent_me
+    post "/chat", ChatController, :create
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
