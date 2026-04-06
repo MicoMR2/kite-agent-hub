@@ -986,6 +986,33 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
             </div>
+
+            <%!-- MCP Setup + Agent Token --%>
+            <%= if @selected_agent do %>
+              <div class="w-full mt-6 space-y-4">
+                <%!-- Agent Token --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Token</h3>
+                    <span class="text-[10px] text-gray-600 uppercase tracking-widest">Secret — do not share</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <code class="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-emerald-400 font-mono truncate">
+                      {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
+                    </code>
+                  </div>
+                  <p class="text-[10px] text-gray-600 mt-2">Use this token to connect Claude Desktop or paste into an LLM as the Bearer auth key.</p>
+                </div>
+
+                <%!-- MCP Setup --%>
+                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6">
+                  <h3 class="text-xs font-black text-emerald-400 uppercase tracking-widest mb-3">Connect Claude Desktop (MCP)</h3>
+                  <p class="text-xs text-gray-400 mb-4">Add this to your Claude Desktop config to get native trading tools:</p>
+                  <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-[11px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed">{"mcpServers": {"kah": {"command": "node", "args": ["mcp-server/index.js"], "env": {"KAH_AGENT_TOKEN": "{if @selected_agent.api_token, do: @selected_agent.api_token, else: "YOUR_TOKEN"}", "KAH_BASE_URL": "https://kite-agent-hub.fly.dev"}}}}</pre>
+                  <p class="text-[10px] text-gray-600 mt-3">Clone the repo, run <code class="text-gray-400">npm install</code> in mcp-server/, then restart Claude Desktop.</p>
+                </div>
+              </div>
+            <% end %>
           </div>
           <% end %>
 

@@ -50,10 +50,10 @@
         </.form>
       </div>
 
-      <%!-- Password --%>
+      <%!-- Password (Optional) --%>
       <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
-        <h2 class="text-sm font-black text-white uppercase tracking-widest mb-1">Password</h2>
-        <p class="text-xs text-gray-500 mb-5">Choose a new password for your account.</p>
+        <h2 class="text-sm font-black text-white uppercase tracking-widest mb-1">Change Password</h2>
+        <p class="text-xs text-gray-500 mb-5">Optional — only fill this out if you want to change your password.</p>
 
         <.form :let={f} for={@password_changeset} action={~p"/users/settings"} id="update_password">
           <input type="hidden" name="action" value="update_password" />
