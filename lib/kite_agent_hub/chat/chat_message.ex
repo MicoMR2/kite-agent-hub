@@ -14,7 +14,7 @@ defmodule KiteAgentHub.Chat.ChatMessage do
 
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     belongs_to :kite_agent, KiteAgentHub.Trading.KiteAgent
-    belongs_to :user, KiteAgentHub.Accounts.User
+    belongs_to :user, KiteAgentHub.Accounts.User, type: :integer
 
     timestamps(type: :utc_datetime)
   end
