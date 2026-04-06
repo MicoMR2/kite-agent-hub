@@ -171,7 +171,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
               message,
               :sha256,
               private_key,
-              [{:rsa_padding, :rsa_pkcs1_pss_padding}, {:rsa_pss_saltlen, :digest}]
+              [{:rsa_padding, :rsa_pkcs1_pss_padding}, {:rsa_pss_saltlen, 32}]
             )
 
           {:ok, Base.encode64(signature)}
