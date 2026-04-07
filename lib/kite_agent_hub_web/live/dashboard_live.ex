@@ -918,7 +918,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
 
                   <div id="trades" phx-update="stream" class="divide-y divide-white/5">
-                    <div class="hidden only:flex flex-col items-center justify-center py-20 px-4 text-center">
+                    <div id="trades-empty-state" class="hidden only:flex flex-col items-center justify-center py-20 px-4 text-center">
                       <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center mb-4">
                         <.icon name="hero-chart-bar" class="w-6 h-6 text-gray-600" />
                       </div>
