@@ -169,6 +169,12 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
             >
               API Keys
             </.link>
+            <.link
+              navigate={~p"/users/settings/workspace"}
+              class="px-4 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-white border-b-2 border-transparent hover:border-white/20 transition-all"
+            >
+              Workspace
+            </.link>
           </nav>
         </div>
 
