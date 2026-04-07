@@ -140,43 +140,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="min-h-screen bg-[#0a0a0f] text-gray-100">
-        <%!-- Nav --%>
-        <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
-          <div class="w-full flex items-center gap-4">
-            <.link
-              navigate={~p"/dashboard"}
-              class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
-            >
-              <.icon name="hero-arrow-left" class="w-3.5 h-3.5" /> Dashboard
-            </.link>
-            <span class="text-gray-700">|</span>
-            <h1 class="text-sm font-black text-white uppercase tracking-widest">Settings</h1>
-          </div>
-        </div>
-
-        <%!-- Tabs --%>
-        <div class="border-b border-white/10 bg-[#0a0a0f]/60 px-4 sm:px-6 lg:px-8">
-          <nav class="flex gap-1 max-w-2xl mx-auto">
-            <.link
-              navigate={~p"/users/settings"}
-              class="px-4 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-white border-b-2 border-transparent hover:border-white/20 transition-all"
-            >
-              Account
-            </.link>
-            <.link
-              navigate={~p"/users/settings/api-keys"}
-              class="px-4 py-3 text-xs font-black uppercase tracking-widest text-white border-b-2 border-white"
-            >
-              API Keys
-            </.link>
-            <.link
-              navigate={~p"/users/settings/workspace"}
-              class="px-4 py-3 text-xs font-black uppercase tracking-widest text-gray-500 hover:text-white border-b-2 border-transparent hover:border-white/20 transition-all"
-            >
-              Workspace
-            </.link>
-          </nav>
-        </div>
+        <KiteAgentHubWeb.SettingsNav.render active={:api_keys} />
 
         <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
           <%!-- Agent Addresses --%>
