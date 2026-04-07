@@ -1,4 +1,22 @@
 defmodule KiteAgentHubWeb.ChatComponent do
+  @moduledoc """
+  Floating chat popup LiveComponent for the dashboard.
+
+  Displays messages from the current organization's chat stream and
+  allows the logged-in user to send messages or connect an agent to
+  the thread. All reads and writes are scoped to `:org_id` so
+  chat is isolated per workspace.
+
+  Subscribes to `KiteAgentHub.Chat` PubSub on first update for
+  real-time message delivery, then re-fetches the last 50 messages
+  on each send to keep the list consistent without relying on
+  cross-component PubSub push.
+
+  Required assigns:
+    * `:org_id` — current organization id
+    * `:user` — current user struct (for `send_user_message/3`)
+    * `:agent` — optionally selected agent (enables the "+" connect button)
+  """
   use KiteAgentHubWeb, :live_component
 
   require Logger

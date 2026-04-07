@@ -11,9 +11,16 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
   @doc """
   Build a copy-paste ready system prompt for the given agent.
+
   Includes: identity, platform access, trading strategies, API endpoints,
   risk limits, and the QRB edge scoring methodology.
+
+  ## Options
+
+    * `:base_url` — KAH API base URL (default: `"https://kite-agent-hub.fly.dev"`)
+    * `:platforms` — list of platforms to include (default: `[:alpaca, :kalshi]`)
   """
+  @spec generate(KiteAgent.t(), keyword()) :: String.t()
   def generate(%KiteAgent{} = agent, opts \\ []) do
     base_url = Keyword.get(opts, :base_url, "https://kite-agent-hub.fly.dev")
     platforms = Keyword.get(opts, :platforms, [:alpaca, :kalshi])
