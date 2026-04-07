@@ -998,22 +998,61 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
 
-                <%!-- Agent Token + MCP Setup (at bottom) --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-                  <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token</h3>
-                    <span class="text-[10px] text-gray-600 uppercase tracking-widest">Secret — do not share</span>
+                <%!-- Connect Your LLM (at bottom) --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
+                  <div>
+                    <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">How to Connect Your LLM</h3>
+                    <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
+                      <li>Copy your Agent Token below (secret — do not share)</li>
+                      <li>Choose your LLM: Claude Code (terminal) or Claude Desktop (MCP)</li>
+                      <li>Paste the matching block — your LLM now trades on KAH</li>
+                    </ol>
                   </div>
-                  <code class="block bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono truncate">
-                    {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
-                  </code>
-                  <p class="text-[10px] text-gray-600 mt-2">Use this token to connect Claude Desktop or paste into an LLM.</p>
-                </div>
 
-                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-                  <h3 class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-2">Claude Desktop Config (MCP)</h3>
-                  <pre class="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
-                  <p class="text-[10px] text-gray-600 mt-2">Add to claude_desktop_config.json, run <code class="text-gray-400">npm install</code> in mcp-server/.</p>
+                  <%!-- Agent Token --%>
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token</span>
+                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">Secret</span>
+                    </div>
+                    <code class="block bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono truncate">
+                      {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
+                    </code>
+                  </div>
+
+                  <%!-- Claude Code / Terminal paste block --%>
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Option A — Claude Code / Terminal</span>
+                      <button
+                        id={"copy-claude-code-#{@selected_agent.id}"}
+                        phx-hook="CopyToClipboard"
+                        data-text={claude_code_prompt(@selected_agent)}
+                        class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
+                    <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat.</p>
+                  </div>
+
+                  <%!-- Claude Desktop MCP config --%>
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Option B — Claude Desktop (MCP)</span>
+                      <button
+                        id={"copy-mcp-#{@selected_agent.id}"}
+                        phx-hook="CopyToClipboard"
+                        data-text={mcp_config_json(@selected_agent)}
+                        class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
+                    <p class="text-[10px] text-gray-600 mt-1">Add to claude_desktop_config.json, then restart Claude Desktop.</p>
+                  </div>
                 </div>
             </div>
           </div>
@@ -1690,6 +1729,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_fill_sparkline(_, _, _), do: ""
+
+  defp claude_code_prompt(agent) do
+    token = if agent && agent.api_token, do: agent.api_token, else: "YOUR_TOKEN"
+
+    """
+    You are a trading agent connected to Kite Agent Hub (KAH).
+    API base: https://kite-agent-hub.fly.dev/api/v1
+    Auth header: Authorization: Bearer #{token}
+
+    Endpoints:
+    - GET /agents/me — your profile + spending limits
+    - GET /trades — recent trade history
+    - POST /trades — execute a trade {market, side, action, contracts, fill_price, reason}
+    - POST /chat — post a message to the KAH chat thread {text}
+
+    Use the QRB edge scoring methodology (trend + signal + liquidity + R:R = 0-100).
+    Only trade when edge score >= 75. Respect your daily_limit_usd and per_trade_limit_usd.
+    """
+  end
 
   defp mcp_config_json(agent) do
     token = if agent && agent.api_token, do: agent.api_token, else: "YOUR_TOKEN"
