@@ -45,8 +45,10 @@ defmodule KiteAgentHub.Kite.SignalEngine do
   def generate(%KiteAgent{} = agent, context) do
     case Application.get_env(:kite_agent_hub, :anthropic_api_key, "") do
       "" ->
-        Logger.warning("SignalEngine: ANTHROPIC_API_KEY not set, returning hold")
-        {:hold, "api_key_not_configured"}
+        # BYO-LLM mode: no internal signal generation. Agents receive
+        # trading decisions from external LLMs (Claude Code, etc.) via
+        # the REST API using their api_token.
+        {:hold, "byo_llm_mode"}
 
       api_key ->
         prompt = build_prompt(agent, context)
