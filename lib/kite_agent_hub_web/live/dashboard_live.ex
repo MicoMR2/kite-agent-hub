@@ -483,12 +483,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
               >
                 <.icon name="hero-plus" class="w-3.5 h-3.5" /> New Agent
               </.link>
-              <.link
-                navigate={~p"/api-keys"}
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
-              >
-                <.icon name="hero-key" class="w-3.5 h-3.5" /> API Keys
-              </.link>
               <%= if @selected_agent do %>
                 <button
                   phx-click="show_agent_context"
