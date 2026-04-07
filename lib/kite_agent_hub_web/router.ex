@@ -79,6 +79,7 @@ defmodule KiteAgentHubWeb.Router do
       live "/agents/new", AgentOnboardLive
       live "/trades", TradesLive
       live "/api-keys", ApiKeysLive
+      live "/users/settings/api-keys", ApiKeysLive, :settings
     end
   end
 
