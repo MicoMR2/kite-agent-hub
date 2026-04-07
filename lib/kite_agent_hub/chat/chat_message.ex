@@ -1,4 +1,15 @@
 defmodule KiteAgentHub.Chat.ChatMessage do
+  @moduledoc """
+  Schema for messages in the in-platform agent chat.
+
+  Scoped to an organization (workspace) and optionally tied to a
+  user (for user-sent messages) or a kite_agent (for agent-sent).
+
+  The changeset strips sensitive patterns from message text before
+  insertion so PEM blocks, `sk-*` keys, `swm_*` tokens, and
+  `kite_*` agent tokens never reach the database, even if an agent
+  tries to echo a credential back to the user.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

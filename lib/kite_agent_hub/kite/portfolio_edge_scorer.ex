@@ -16,10 +16,35 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   alias KiteAgentHub.{Credentials, Orgs}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
+  @type recommendation :: :strong_hold | :hold | :watch | :exit
+  @type position_score :: %{
+          platform: :alpaca | :kalshi,
+          score: non_neg_integer(),
+          recommendation: recommendation(),
+          pnl_pct: float(),
+          breakdown: %{
+            entry_quality: non_neg_integer(),
+            momentum: non_neg_integer(),
+            risk_reward: non_neg_integer(),
+            liquidity: non_neg_integer()
+          }
+        }
+  @type suggestion :: %{action: :exit | :hold, ticker: String.t(), platform: atom(), reason: String.t(), score: non_neg_integer()}
+  @type portfolio_scores :: %{
+          alpaca_scores: [position_score()],
+          kalshi_scores: [position_score()],
+          suggestions: [suggestion()],
+          timestamp: DateTime.t()
+        }
+
   @doc """
-  Score all positions for the given org. Returns:
-    %{alpaca_scores: [...], kalshi_scores: [...], suggestions: [...]}
+  Score all positions for the given org.
+
+  Fetches current Alpaca and Kalshi positions, runs each through the
+  QRB edge scorer, and surfaces up to 5 actionable exit/hold
+  suggestions based on the scores.
   """
+  @spec score_portfolio(Ecto.UUID.t()) :: portfolio_scores()
   def score_portfolio(org_id) do
     alpaca_scores = score_alpaca_positions(org_id)
     kalshi_scores = score_kalshi_positions(org_id)

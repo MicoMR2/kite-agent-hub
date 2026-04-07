@@ -1,4 +1,14 @@
 defmodule KiteAgentHubWeb.WorkspaceLive do
+  @moduledoc """
+  Workspace management tab for the Settings area.
+
+  Lists the authenticated user's workspaces (organizations) and provides
+  a form to create new ones. Wires the web UI up to the existing
+  `KiteAgentHub.Orgs.create_org_for_user/2` backend which was
+  previously only callable from seeds/console.
+
+  Mounted at `/users/settings/workspace` — authenticated route.
+  """
   use KiteAgentHubWeb, :live_view
 
   alias KiteAgentHub.Orgs
