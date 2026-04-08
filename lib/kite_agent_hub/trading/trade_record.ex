@@ -25,6 +25,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     field :reason, :string
     field :platform, :string, default: "kite"
     field :platform_order_id, :string
+    field :attestation_tx_hash, :string
 
     belongs_to :kite_agent, KiteAgentHub.Trading.KiteAgent
 
@@ -65,6 +66,16 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     record
     |> cast(%{status: "settled", realized_pnl: pnl}, [:status, :realized_pnl])
     |> validate_inclusion(:status, @statuses)
+  end
+
+  # Attestation-only changeset — only attestation_tx_hash can change.
+  # Used by KiteAttestationWorker after submitting the settlement
+  # transfer to the Kite chain relayer. Insert-once, immutable after.
+  def attestation_changeset(record, tx_hash) when is_binary(tx_hash) do
+    record
+    |> cast(%{attestation_tx_hash: tx_hash}, [:attestation_tx_hash])
+    |> validate_required([:attestation_tx_hash])
+    |> lock_field(:attestation_tx_hash)
   end
 
   # tx_hash and trade_id_onchain cannot be changed after insert
