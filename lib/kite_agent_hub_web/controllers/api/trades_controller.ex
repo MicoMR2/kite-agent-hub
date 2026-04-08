@@ -130,7 +130,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
   end
 
   defp validate_trade_params(params, agent) do
-    market = params["market"]
+    market = TradeExecutionWorker.normalize_market(params["market"])
     side = params["side"]
     action = params["action"]
     contracts = params["contracts"]
@@ -165,6 +165,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
          }}
     end
   end
+
 
   defp serialize_trade(trade) do
     %{

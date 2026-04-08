@@ -161,12 +161,23 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
       "qty" => to_string(qty),
       "side" => side,
       "type" => "market",
-      "time_in_force" => "day"
+      "time_in_force" => time_in_force_for(symbol)
     }
 
     post("/v2/orders", body, key_id, secret, env)
     |> parse_placed_order()
   end
+
+  # Alpaca's crypto venue rejects time_in_force=day with
+  # `code=42210000 "invalid crypto time_in_force"`. Crypto only accepts
+  # gtc or ioc. Equities accept day, gtc, or ioc. Use gtc for crypto so
+  # the order survives across the (always-open) crypto session and day
+  # for equities so it expires at market close like a normal stock
+  # order. Symbol list mirrors the @alpaca_markets canonical no-dash
+  # crypto names — KAH-side dashed forms (BTC-USDC etc.) get mapped to
+  # these via @alpaca_symbol_map before reaching place_order/6.
+  defp time_in_force_for(symbol) when symbol in ["BTCUSD", "ETHUSD", "SOLUSD"], do: "gtc"
+  defp time_in_force_for(_symbol), do: "day"
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
