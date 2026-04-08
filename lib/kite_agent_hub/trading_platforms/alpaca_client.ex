@@ -14,6 +14,9 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
 
   @paper_base "https://paper-api.alpaca.markets"
   @live_base "https://api.alpaca.markets"
+  # Market data API is the same host for paper + live — Alpaca only
+  # splits the trading endpoints by env, not the data endpoints.
+  @data_base "https://data.alpaca.markets"
 
   # Pick the Alpaca REST base URL for a given env.
   # Default "paper" matches the pre-env-toggle behavior so callers
@@ -68,6 +71,61 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
       {:ok, _} -> {:ok, []}
       err -> err
     end
+  end
+
+  @doc """
+  Fetch recent OHLCV bars for a symbol from the Alpaca Market Data API.
+
+  symbol     — e.g. "AAPL", "SPY", "TSLA"
+  timeframe  — Alpaca bar timeframe ("1Day", "1Hour", "15Min", etc.). Default "1Day".
+  limit      — number of bars (max 10000). Default 50.
+
+  The data API host is shared between paper and live, so this does NOT
+  take an env arg — the same key authenticates both. Returns:
+    {:ok, [%{t: iso8601, o: float, h: float, l: float, c: float, v: integer}]}
+  or {:error, reason}. Empty list if Alpaca returns no bars.
+  """
+  def bars(key_id, secret, symbol, timeframe \\ "1Day", limit \\ 50) do
+    require Logger
+
+    path = "/v2/stocks/#{symbol}/bars?timeframe=#{timeframe}&limit=#{limit}"
+    url = @data_base <> path
+
+    headers = [
+      {"APCA-API-KEY-ID", key_id},
+      {"APCA-API-SECRET-KEY", secret}
+    ]
+
+    case Req.get(url, headers: headers, retry: false) do
+      {:ok, %{status: 200, body: %{"bars" => bars}}} when is_list(bars) ->
+        {:ok, Enum.map(bars, &parse_bar/1)}
+
+      {:ok, %{status: 200, body: _}} ->
+        {:ok, []}
+
+      {:ok, %{status: 401}} ->
+        Logger.warning("Alpaca data API: 401 for #{symbol}")
+        {:error, :unauthorized}
+
+      {:ok, %{status: status}} ->
+        Logger.warning("Alpaca data API: HTTP #{status} for #{symbol}")
+        {:error, "alpaca data #{status}"}
+
+      {:error, reason} ->
+        Logger.error("Alpaca data API: request failed for #{symbol}: #{inspect(reason)}")
+        {:error, "alpaca data HTTP: #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_bar(b) do
+    %{
+      t: b["t"],
+      o: parse_float(b["o"]),
+      h: parse_float(b["h"]),
+      l: parse_float(b["l"]),
+      c: parse_float(b["c"]),
+      v: b["v"] || 0
+    }
   end
 
   @doc """
