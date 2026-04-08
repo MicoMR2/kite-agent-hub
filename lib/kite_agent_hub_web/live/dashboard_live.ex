@@ -49,6 +49,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:portfolio_scores, nil)
       |> assign(:alpaca_data, nil)
       |> assign(:alpaca_history, [])
+      |> assign(:alpaca_period, "1M")
       |> assign(:kalshi_data, nil)
       |> assign(:wallet_txs, nil)
       |> assign(:show_agent_context, false)
@@ -195,6 +196,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, assign(socket, :show_agent_context, false)}
   end
 
+  def handle_event("alpaca_period", %{"period" => period}, socket)
+      when period in ~w(1D 3D 1W 1M 3M 6M 1Y 2Y 3Y All) do
+    send(self(), {:load_alpaca, period})
+
+    {:noreply,
+     socket
+     |> assign(:alpaca_period, period)
+     |> assign(:alpaca_data, :loading)}
+  end
+
   # ── PubSub / async messages ───────────────────────────────────────────────────
 
   @impl true
@@ -278,6 +289,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, load_alpaca_data(socket)}
   end
 
+  def handle_info({:load_alpaca, period}, socket) do
+    {:noreply, load_alpaca_data(socket, period)}
+  end
+
   # Async Kalshi data loading
   def handle_info(:load_kalshi, socket) do
     {:noreply, load_kalshi_data(socket)}
@@ -285,18 +300,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
-  defp load_alpaca_data(socket) do
+  defp load_alpaca_data(socket, period \\ nil) do
     org = socket.assigns.organization
+    period = period || socket.assigns[:alpaca_period] || "1M"
 
     require Logger
 
     case credentials_module().fetch_secret(org.id, :alpaca) do
       {:ok, {key_id, secret}} ->
-        Logger.info("DashboardLive: Alpaca credentials found, key_prefix=#{String.slice(key_id || "", 0..3)}")
+        Logger.info("DashboardLive: Alpaca credentials found, period=#{period}, key_prefix=#{String.slice(key_id || "", 0..3)}")
+
+        {api_period, api_timeframe} = alpaca_period_to_api(period)
 
         account_result = AlpacaClient.account(key_id, secret)
         positions_result = AlpacaClient.positions(key_id, secret)
-        history_result = AlpacaClient.portfolio_history(key_id, secret)
+        history_result = AlpacaClient.portfolio_history(key_id, secret, api_period, api_timeframe)
         orders_result = AlpacaClient.orders(key_id, secret)
 
         case account_result do
@@ -319,6 +337,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
             socket
             |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
             |> assign(:alpaca_history, history)
+            |> assign(:alpaca_period, period)
 
           {:error, :unauthorized} ->
             Logger.warning("DashboardLive: Alpaca unauthorized — keys may be expired")
@@ -1324,19 +1343,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
 
                   <%!-- Equity Chart --%>
-                  <%= if length(@alpaca_history) > 1 do %>
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                      <div class="flex items-center justify-between mb-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Portfolio Equity (30D)</p>
-                        <div class="flex items-center gap-2">
-                          <% first_val = List.first(@alpaca_history).v %>
-                          <% last_val = List.last(@alpaca_history).v %>
-                          <% pct_change = if first_val > 0, do: Float.round((last_val - first_val) / first_val * 100, 2), else: 0.0 %>
-                          <span class={"text-xs font-mono font-bold #{if pct_change >= 0, do: "text-[#22c55e]", else: "text-red-400"}"}>
-                            {if pct_change >= 0, do: "+", else: ""}{pct_change}%
-                          </span>
-                        </div>
-                      </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Portfolio Equity ({@alpaca_period})</p>
+                      <%= if length(@alpaca_history) > 1 do %>
+                        <% first_val = List.first(@alpaca_history).v %>
+                        <% last_val = List.last(@alpaca_history).v %>
+                        <% pct_change = if first_val > 0, do: Float.round((last_val - first_val) / first_val * 100, 2), else: 0.0 %>
+                        <span class={"text-xs font-mono font-bold #{if pct_change >= 0, do: "text-[#22c55e]", else: "text-red-400"}"}>
+                          {if pct_change >= 0, do: "+", else: ""}{pct_change}%
+                        </span>
+                      <% end %>
+                    </div>
+
+                    <%!-- Range buttons --%>
+                    <div class="flex flex-wrap gap-1 mb-4">
+                      <%= for range <- ~w(1D 3D 1W 1M 3M 6M 1Y 2Y 3Y All) do %>
+                        <button
+                          phx-click="alpaca_period"
+                          phx-value-period={range}
+                          class={[
+                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
+                            @alpaca_period == range && "bg-white text-black border-white",
+                            @alpaca_period != range && "bg-white/[0.02] text-gray-500 border-white/10 hover:text-white hover:border-white/20"
+                          ]}
+                        >
+                          {range}
+                        </button>
+                      <% end %>
+                    </div>
+
+                    <%= if length(@alpaca_history) > 1 do %>
                       <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
                         <%!-- Grid lines --%>
                         <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
@@ -1366,8 +1403,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <span>${Float.round(first_val, 0) |> trunc()}</span>
                         <span>${Float.round(last_val, 0) |> trunc()}</span>
                       </div>
-                    </div>
-                  <% end %>
+                    <% else %>
+                      <p class="text-center text-gray-600 text-xs py-10">No equity history for this range.</p>
+                    <% end %>
+                  </div>
 
                   <%!-- Positions --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
@@ -1741,6 +1780,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_fill_sparkline(_, _, _), do: ""
+
+  # Map the UI range label to Alpaca's portfolio_history {period, timeframe} params.
+  # Alpaca period syntax: <n>(D|W|M|A), e.g. "3D", "1W", "1M", "1A" (1 year).
+  # Timeframe grain: 15Min / 1H / 1D. We pick a grain that gives a useful
+  # number of points without blowing past Alpaca's response limits.
+  defp alpaca_period_to_api("1D"), do: {"1D", "15Min"}
+  defp alpaca_period_to_api("3D"), do: {"3D", "1H"}
+  defp alpaca_period_to_api("1W"), do: {"1W", "1H"}
+  defp alpaca_period_to_api("1M"), do: {"1M", "1D"}
+  defp alpaca_period_to_api("3M"), do: {"3M", "1D"}
+  defp alpaca_period_to_api("6M"), do: {"6M", "1D"}
+  defp alpaca_period_to_api("1Y"), do: {"1A", "1D"}
+  defp alpaca_period_to_api("2Y"), do: {"2A", "1D"}
+  defp alpaca_period_to_api("3Y"), do: {"3A", "1D"}
+  defp alpaca_period_to_api("All"), do: {"10A", "1D"}
+  defp alpaca_period_to_api(_), do: {"1M", "1D"}
 
   defp claude_code_prompt(agent) do
     token = if agent && agent.api_token, do: agent.api_token, else: "YOUR_TOKEN"
