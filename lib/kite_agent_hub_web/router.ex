@@ -97,6 +97,13 @@ defmodule KiteAgentHubWeb.Router do
     get "/users/log-in/:token", UserSessionController, :confirm
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
+
+    # Aliases — Phoenix.gen.auth historically used `log_in`/`log_out`
+    # with underscores. Stale browser bookmarks and any external link
+    # using the old form land on a 404 today. Redirect them to the
+    # canonical hyphen form so old links keep working.
+    get "/users/log_in", LoginAliasController, :show
+    delete "/users/log_out", LoginAliasController, :delete
   end
 
   # WorkOS OAuth — open to all (unauthenticated users initiate here)
