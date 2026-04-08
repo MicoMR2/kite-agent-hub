@@ -830,9 +830,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <p class="text-4xl sm:text-5xl font-black text-white tracking-tighter">
                       {if @pnl_stats, do: @pnl_stats.open_count, else: 0}
                     </p>
-                    <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
-                      Max {@selected_agent.max_open_positions} allowed
-                    </p>
                   </div>
 
                   <%!-- Wallet Balance --%>
@@ -858,34 +855,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 </div>
 
-                <%!-- Spending limits strip --%>
+                <%!-- Vault address strip --%>
                 <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-white/5 bg-white/[0.01] px-6 py-4">
                   <span class="text-[10px] text-gray-600 font-bold uppercase tracking-widest">
-                    Limits Config
+                    Vault
                   </span>
-                  <div class="flex items-baseline gap-2">
-                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Daily</span>
-                    <span class="text-sm font-mono text-gray-300">
-                      ${@selected_agent.daily_limit_usd}
-                    </span>
-                  </div>
-                  <div class="hidden sm:block text-gray-800">|</div>
-                  <div class="flex items-baseline gap-2">
-                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Per Trade</span>
-                    <span class="text-sm font-mono text-gray-300">
-                      ${@selected_agent.per_trade_limit_usd}
-                    </span>
-                  </div>
-                  <div class="hidden sm:block text-gray-800">|</div>
-                  <div class="flex items-baseline gap-2">
-                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Positions</span>
-                    <span class="text-sm font-mono text-gray-300">
-                      {@selected_agent.max_open_positions}
-                    </span>
-                  </div>
-                  <div class="hidden sm:block text-gray-800">|</div>
                   <div class="flex items-baseline gap-2 min-w-0">
-                    <span class="text-[10px] text-gray-500 uppercase tracking-widest">Vault</span>
                     <span class="text-sm font-mono text-gray-400 truncate select-all">
                       {if @selected_agent.vault_address,
                         do: String.slice(@selected_agent.vault_address, 0, 18) <> "…",
@@ -1849,7 +1824,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
     3. On 200: process each message. For each message not from yourself, reason and respond via POST /chat. Advance last_seen_id.
     4. On 204: reconnect immediately (step 2).
     5. Before any trade: GET /edge-scores — only execute if composite edge is >= 75 on the target position.
-    6. Never exceed daily_limit_usd or per_trade_limit_usd — these are enforced server-side too.
 
     ## Edge scoring (QRB)
     Every position is scored 0-100 across: entry_quality (0-30) + momentum (0-25) + risk_reward (0-25) + liquidity (0-20).

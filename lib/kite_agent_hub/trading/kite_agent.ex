@@ -12,9 +12,6 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :wallet_address, :string
     field :vault_address, :string
     field :chain_id, :integer, default: 2368
-    field :daily_limit_usd, :integer, default: 1000
-    field :per_trade_limit_usd, :integer, default: 500
-    field :max_open_positions, :integer, default: 10
     field :status, :string, default: "pending"
     field :api_token, :string
 
@@ -32,9 +29,6 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :wallet_address,
       :vault_address,
       :chain_id,
-      :daily_limit_usd,
-      :per_trade_limit_usd,
-      :max_open_positions,
       :status,
       :organization_id
     ])
@@ -42,24 +36,16 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_inclusion(:status, @statuses)
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
-    |> validate_spending_limits()
     |> maybe_generate_api_token()
     |> unique_constraint(:wallet_address)
     |> unique_constraint(:api_token)
   end
 
-  # Name-only update — spending limits never touched
+  # Name-only update
   def name_changeset(agent, attrs) do
     agent
     |> cast(attrs, [:name])
     |> validate_required([:name])
-  end
-
-  # Privileged — spending limits require explicit mutation, not general form update
-  def spending_limits_changeset(agent, attrs) do
-    agent
-    |> cast(attrs, [:daily_limit_usd, :per_trade_limit_usd, :max_open_positions])
-    |> validate_spending_limits()
   end
 
   defp validate_evm_address(changeset, field) do
@@ -70,13 +56,6 @@ defmodule KiteAgentHub.Trading.KiteAgent do
         [{field, "must be a valid EVM address (0x + 40 hex chars)"}]
       end
     end)
-  end
-
-  defp validate_spending_limits(changeset) do
-    changeset
-    |> validate_number(:daily_limit_usd, greater_than: 0)
-    |> validate_number(:per_trade_limit_usd, greater_than: 0)
-    |> validate_number(:max_open_positions, greater_than: 0)
   end
 
   defp maybe_generate_api_token(changeset) do

@@ -102,9 +102,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
           name: agent.name,
           status: agent.status,
           wallet_address: agent.wallet_address,
-          vault_address: agent.vault_address,
-          per_trade_limit_usd: agent.per_trade_limit_usd,
-          daily_limit_usd: agent.daily_limit_usd
+          vault_address: agent.vault_address
         },
         stats: stats
       })
@@ -138,14 +136,6 @@ defmodule KiteAgentHubWeb.API.TradesController do
     contracts = params["contracts"]
     fill_price = params["fill_price"]
 
-    # Compute notional value for limit checks
-    notional = if is_number(contracts) and is_number(fill_price),
-      do: contracts * fill_price,
-      else: 0
-
-    # Check daily spend
-    daily_spent = Trading.daily_spend(agent.id)
-
     cond do
       is_nil(market) ->
         {:error, "market is required"}
@@ -161,12 +151,6 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
       is_nil(fill_price) ->
         {:error, "fill_price is required"}
-
-      notional > agent.per_trade_limit_usd ->
-        {:error, "trade exceeds per-trade limit ($#{agent.per_trade_limit_usd}). Requested: $#{Float.round(notional / 1, 2)}"}
-
-      daily_spent + notional > agent.daily_limit_usd ->
-        {:error, "trade would exceed daily limit ($#{agent.daily_limit_usd}). Already spent: $#{Float.round(daily_spent / 1, 2)}"}
 
       true ->
         {:ok,
