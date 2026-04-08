@@ -1429,7 +1429,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-4 py-3 tabular-nums text-gray-300 font-mono">{o.filled_qty}</td>
                               <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{if o.filled_avg_price, do: "$#{:erlang.float_to_binary(o.filled_avg_price, decimals: 2)}", else: "—"}</td>
-                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">{if o.submitted_at, do: String.slice(o.submitted_at, 0, 16) |> String.replace("T", " "), else: "—"}</td>
+                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">
+                                <%= if o.submitted_at do %>
+                                  <span id={"alpaca-order-time-#{o.id || o.symbol}"} phx-hook="LocalTime" data-iso={o.submitted_at} data-format="datetime">
+                                    {String.slice(o.submitted_at, 0, 16) |> String.replace("T", " ")}
+                                  </span>
+                                <% else %>—<% end %>
+                              </td>
                             </tr>
                           <% end %>
                         </tbody>
@@ -1581,7 +1587,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-4 py-3 tabular-nums text-gray-300 font-mono">{f.count}</td>
                               <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(f.price * 100, decimals: 0)}¢</td>
-                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">{if f.created_time, do: String.slice(f.created_time, 0, 16) |> String.replace("T", " "), else: "—"}</td>
+                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">
+                                <%= if f.created_time do %>
+                                  <span id={"kalshi-fill-time-#{f.trade_id || f.ticker}"} phx-hook="LocalTime" data-iso={f.created_time} data-format="datetime">
+                                    {String.slice(f.created_time, 0, 16) |> String.replace("T", " ")}
+                                  </span>
+                                <% else %>—<% end %>
+                              </td>
                             </tr>
                           <% end %>
                         </tbody>
@@ -1613,7 +1625,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <td class={"px-4 py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(s.revenue), decimals: 2)}
                               </td>
-                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">{if s.settled_time, do: String.slice(s.settled_time, 0, 16) |> String.replace("T", " "), else: "—"}</td>
+                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">
+                                <%= if s.settled_time do %>
+                                  <span id={"kalshi-settle-time-#{s.ticker}"} phx-hook="LocalTime" data-iso={s.settled_time} data-format="datetime">
+                                    {String.slice(s.settled_time, 0, 16) |> String.replace("T", " ")}
+                                  </span>
+                                <% else %>—<% end %>
+                              </td>
                             </tr>
                           <% end %>
                         </tbody>

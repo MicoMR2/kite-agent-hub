@@ -30,6 +30,34 @@ const ScrollBottom = {
   updated() { this.el.scrollTop = this.el.scrollHeight }
 }
 
+// LocalTime — render a server-provided UTC ISO timestamp in the viewer's
+// local timezone. The server puts the raw ISO string in data-iso and an
+// optional data-format of "time" (HH:mm) or "datetime" (Mon d HH:mm).
+// Keeps UTC as the single source of truth server-side; only the display
+// layer localizes.
+const LocalTime = {
+  mounted() { this.render() },
+  updated() { this.render() },
+  render() {
+    const iso = this.el.dataset.iso
+    if (!iso) return
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return
+    const fmt = this.el.dataset.format || "time"
+    if (fmt === "datetime") {
+      const month = d.toLocaleString("en-US", { month: "short" })
+      const day = d.getDate()
+      const hh = String(d.getHours()).padStart(2, "0")
+      const mm = String(d.getMinutes()).padStart(2, "0")
+      this.el.textContent = `${month} ${day} ${hh}:${mm}`
+    } else {
+      const hh = String(d.getHours()).padStart(2, "0")
+      const mm = String(d.getMinutes()).padStart(2, "0")
+      this.el.textContent = `${hh}:${mm}`
+    }
+  }
+}
+
 const CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", () => {
@@ -47,7 +75,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard},
+  hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard, LocalTime},
 })
 
 // Show progress bar on live navigation and form submits

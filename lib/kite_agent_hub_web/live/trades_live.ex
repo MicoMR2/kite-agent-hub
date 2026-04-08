@@ -328,7 +328,14 @@ defmodule KiteAgentHubWeb.TradesLive do
                           <% end %>
                         </td>
                         <td class="px-6 py-4 text-right text-xs text-gray-500 tabular-nums whitespace-nowrap font-mono tracking-widest">
-                          {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
+                          <span
+                            id={"trade-time-#{trade.id}"}
+                            phx-hook="LocalTime"
+                            data-iso={DateTime.to_iso8601(trade.inserted_at)}
+                            data-format="datetime"
+                          >
+                            {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
+                          </span>
                         </td>
                       </tr>
                     <% end %>
