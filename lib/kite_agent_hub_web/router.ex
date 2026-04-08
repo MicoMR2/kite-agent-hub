@@ -37,6 +37,7 @@ defmodule KiteAgentHubWeb.Router do
     get "/chat", ChatController, :index
     get "/chat/wait", ChatController, :wait
     get "/edge-scores", EdgeScoresController, :index
+    get "/score", ScoreController, :show
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
