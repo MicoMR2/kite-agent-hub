@@ -80,7 +80,16 @@ config :kite_agent_hub, Oban,
   queues: [
     trade_execution: 5,
     settlement: 10,
-    position_sync: 2
+    position_sync: 2,
+    maintenance: 1
+  ],
+  plugins: [
+    {Oban.Plugins.Cron,
+     crontab: [
+       # Prune stale chat messages every 6 hours — keeps at least the last
+       # 100 per org, deletes anything older than 24h beyond that.
+       {"0 */6 * * *", KiteAgentHub.Workers.MessagePrunerWorker}
+     ]}
   ]
 
 # Import environment specific config. This must remain at the bottom
