@@ -20,7 +20,30 @@ defmodule KiteAgentHubWeb.DashboardLive do
         # KiteAgentHub.Trading.BrokerStats. Per-agent split is not meaningful
         # for these brokers because they track orders by account, not by
         # KAH agent, so all agents under the same org show the same numbers.
-        stats = KiteAgentHub.Trading.BrokerStats.live_stats(org.id)
+        # Wrapped in try/rescue so a broker API timeout / 500 / unexpected
+        # shape can't crash the entire dashboard mount and dump the
+        # LiveView socket assigns into prod logs (see PR #95 for the
+        # incident that triggered this).
+        stats =
+          try do
+            KiteAgentHub.Trading.BrokerStats.live_stats(org.id)
+          rescue
+            e ->
+              require Logger
+
+              Logger.warning(
+                "DashboardLive.mount: BrokerStats.live_stats failed — #{Exception.message(e)}, falling back to empty stats"
+              )
+
+              %{
+                total_pnl: Decimal.new(0),
+                win_count: 0,
+                loss_count: 0,
+                trade_count: 0,
+                open_count: 0
+              }
+          end
+
         {agents, trades, stats}
       else
         {[], [], nil}
@@ -68,7 +91,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_params(%{"agent_id" => agent_id}, _uri, socket) do
     agent = Trading.get_agent!(agent_id)
     trades = Trading.list_trades(agent.id, limit: 20)
-    stats = KiteAgentHub.Trading.BrokerStats.live_stats(agent.organization_id)
+    stats = safe_broker_stats(agent.organization_id, socket.assigns[:pnl_stats])
 
     if connected?(socket) do
       if socket.assigns.selected_agent do
@@ -230,7 +253,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_info({:trade_created, trade}, socket) do
     stats =
       case socket.assigns[:organization] do
-        %{id: org_id} -> KiteAgentHub.Trading.BrokerStats.live_stats(org_id)
+        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
         _ -> socket.assigns[:pnl_stats]
       end
 
@@ -243,7 +266,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_info({:trade_updated, trade}, socket) do
     stats =
       case socket.assigns[:organization] do
-        %{id: org_id} -> KiteAgentHub.Trading.BrokerStats.live_stats(org_id)
+        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
         _ -> socket.assigns[:pnl_stats]
       end
 
@@ -554,6 +577,31 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp win_rate(_, 0), do: "0%"
   defp win_rate(wins, total), do: "#{Float.round(wins / total * 100, 1)}%"
+
+  # Wrap BrokerStats.live_stats in a try/rescue so a broker API failure
+  # (timeout, 500, unexpected response shape) can't crash the LiveView
+  # and dump the entire socket assigns into prod logs. Falls back to
+  # the previous stats on the socket if available, or the empty map if
+  # this is the first call. Same defensive pattern as PR #95 mount fix.
+  defp safe_broker_stats(org_id, fallback) do
+    KiteAgentHub.Trading.BrokerStats.live_stats(org_id)
+  rescue
+    e ->
+      require Logger
+
+      Logger.warning(
+        "DashboardLive: BrokerStats.live_stats failed — #{Exception.message(e)}, using fallback"
+      )
+
+      fallback ||
+        %{
+          total_pnl: Decimal.new(0),
+          win_count: 0,
+          loss_count: 0,
+          trade_count: 0,
+          open_count: 0
+        }
+  end
 
   @impl true
   def render(assigns) do
