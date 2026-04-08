@@ -11,43 +11,26 @@ defmodule KiteAgentHubWeb.DashboardLive do
     orgs = Orgs.list_orgs_for_user(user.id)
     org = List.first(orgs)
 
-    {agents, trades, stats} =
+    {agents, trades} =
       if org do
         agents = Trading.list_agents(org.id)
         selected = List.first(agents)
         trades = if selected, do: Trading.list_trades(selected.id, limit: 20), else: []
-        # Stats are pulled live from Alpaca + Kalshi at the org level — see
-        # KiteAgentHub.Trading.BrokerStats. Per-agent split is not meaningful
-        # for these brokers because they track orders by account, not by
-        # KAH agent, so all agents under the same org show the same numbers.
-        # Wrapped in try/rescue so a broker API timeout / 500 / unexpected
-        # shape can't crash the entire dashboard mount and dump the
-        # LiveView socket assigns into prod logs (see PR #95 for the
-        # incident that triggered this).
-        stats =
-          try do
-            KiteAgentHub.Trading.BrokerStats.live_stats(org.id)
-          rescue
-            e ->
-              require Logger
-
-              Logger.warning(
-                "DashboardLive.mount: BrokerStats.live_stats failed — #{Exception.message(e)}, falling back to empty stats"
-              )
-
-              %{
-                total_pnl: Decimal.new(0),
-                win_count: 0,
-                loss_count: 0,
-                trade_count: 0,
-                open_count: 0
-              }
-          end
-
-        {agents, trades, stats}
+        {agents, trades}
       else
-        {[], [], nil}
+        {[], []}
       end
+
+    # Stats start empty and load asynchronously after mount completes — see
+    # handle_info(:load_broker_stats, ...) below. PR #98: previously this
+    # was a synchronous BrokerStats.live_stats call inside mount, which
+    # made every dashboard load wait on Alpaca + Kalshi HTTP roundtrips
+    # before sending the first byte to the browser. With both APIs slow,
+    # mount could exceed Phoenix's timeout and the LiveView socket would
+    # die before connecting → blank screen. Async load keeps mount fast
+    # (<50ms) and the cards re-render with real numbers when the broker
+    # responses come back.
+    stats = empty_broker_stats()
 
     selected_agent = List.first(agents)
 
@@ -59,6 +42,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
       if org, do: Chat.subscribe(org.id)
       send(self(), :load_edge_scores)
+      if org, do: send(self(), :load_broker_stats)
     end
 
     socket =
@@ -298,6 +282,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # Ignore Task :DOWN — chain data is non-critical
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
+
+  # Async broker stats loading — PR #98. Mount returns instantly with
+  # empty_broker_stats/0; this fires after connect and pulls real numbers
+  # from Alpaca + Kalshi via safe_broker_stats/2. Same pattern as
+  # :load_edge_scores below.
+  def handle_info(:load_broker_stats, socket) do
+    stats =
+      case socket.assigns[:organization] do
+        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
+        _ -> socket.assigns[:pnl_stats] || empty_broker_stats()
+      end
+
+    {:noreply, assign(socket, :pnl_stats, stats)}
+  end
 
   # Async edge scorer loading
   def handle_info(:load_edge_scores, socket) do
@@ -593,14 +591,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
         "DashboardLive: BrokerStats.live_stats failed — #{Exception.message(e)}, using fallback"
       )
 
-      fallback ||
-        %{
-          total_pnl: Decimal.new(0),
-          win_count: 0,
-          loss_count: 0,
-          trade_count: 0,
-          open_count: 0
-        }
+      fallback || empty_broker_stats()
+  end
+
+  defp empty_broker_stats do
+    %{
+      total_pnl: Decimal.new(0),
+      win_count: 0,
+      loss_count: 0,
+      trade_count: 0,
+      open_count: 0
+    }
   end
 
   @impl true
