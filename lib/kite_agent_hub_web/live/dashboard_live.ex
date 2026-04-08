@@ -388,22 +388,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
     org = socket.assigns.organization
 
     with org when not is_nil(org) <- org,
-         {:ok, credentials} <- credentials_module().fetch_secret(org.id, :kalshi),
-         {key_id, pem} <- credentials,
-         {:ok, balance} <- KalshiClient.balance(key_id, pem),
-         {:ok, positions} <- KalshiClient.positions(key_id, pem) do
+         {:ok, credentials} <- credentials_module().fetch_secret_with_env(org.id, :kalshi),
+         {key_id, pem, env} <- credentials,
+         {:ok, balance} <- KalshiClient.balance(key_id, pem, env),
+         {:ok, positions} <- KalshiClient.positions(key_id, pem, env) do
       # Fetch fills and orders separately — don't fail the whole tab if these error
-      fills = case KalshiClient.fills(key_id, pem, 50) do
+      fills = case KalshiClient.fills(key_id, pem, 50, env) do
         {:ok, f} -> f
         _ -> []
       end
 
-      orders = case KalshiClient.orders(key_id, pem, 20) do
+      orders = case KalshiClient.orders(key_id, pem, 20, env) do
         {:ok, o} -> o
         _ -> []
       end
 
-      settlements = case KalshiClient.settlements(key_id, pem, 20) do
+      settlements = case KalshiClient.settlements(key_id, pem, 20, env) do
         {:ok, s} -> s
         _ -> []
       end
@@ -451,6 +451,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Stub used before PR #24 (API key settings) is merged.
   defmodule CredentialsStub do
     def fetch_secret(_org_id, _provider), do: {:error, :not_configured}
+    def fetch_secret_with_env(_org_id, _provider), do: {:error, :not_configured}
   end
 
   defp fetch_chain_data(agent) do

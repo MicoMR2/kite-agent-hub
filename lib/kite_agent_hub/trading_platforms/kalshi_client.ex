@@ -1,31 +1,39 @@
 defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   @moduledoc """
-  Kalshi Demo Trading API client (RSA-PSS authenticated).
+  Kalshi Trading API client (RSA-PSS authenticated).
 
   Auth: KALSHI-ACCESS-KEY header + RSA-PSS signature.
   Demo base: https://demo-api.kalshi.co/trade-api/v2
+  Live base: https://api.elections.kalshi.com/trade-api/v2
 
-  The private key is stored as a PEM string (from Credentials.fetch_secret).
+  The private key is stored as a PEM string (from Credentials.fetch_secret_with_env).
   Each request is signed with: timestamp_ms + method + path (stripped of query params).
+  Host is NOT part of the signature, so the same signature works for demo and live —
+  the demo and live key pairs are different so the env routing matters at the host
+  level only.
 
   Usage:
-    {:ok, {key_id, pem}} = Credentials.fetch_secret(org_id, :kalshi)
-    {:ok, balance} = KalshiClient.balance(key_id, pem)
-    {:ok, positions} = KalshiClient.positions(key_id, pem)
-    {:ok, order} = KalshiClient.place_order(key_id, pem, "BTCZ-...", "yes", 5, 55)
+    {:ok, {key_id, pem, env}} = Credentials.fetch_secret_with_env(org_id, :kalshi)
+    {:ok, balance} = KalshiClient.balance(key_id, pem, env)
+    {:ok, positions} = KalshiClient.positions(key_id, pem, env)
+    {:ok, order} = KalshiClient.place_order(key_id, pem, "BTCZ-...", "yes", 5, 55, env)
+
+  `env` is "paper" (default, demo) or "live". Unknown values fall back to demo.
   """
 
   @demo_host "https://demo-api.kalshi.co"
+  @live_host "https://api.elections.kalshi.com"
   @api_prefix "/trade-api/v2"
 
-  # NOTE: live Kalshi (https://api.elections.kalshi.com) routing is
-  # deferred — function-level env plumbing coming in a follow-up PR.
-  # KalshiClient currently hits demo only. The Credentials.env field
-  # will still be persisted so the follow-up is a mechanical change.
+  # Pick the host based on credential env. "live" → production, anything else
+  # (including "paper", nil, or a typo) routes to demo for safety. Mirrors the
+  # AlpacaClient.base_url/1 catch-all defense pattern from PR #79.
+  defp base_host("live"), do: @live_host
+  defp base_host(_), do: @demo_host
 
   @doc "Fetch portfolio balance — available_balance, portfolio_value."
-  def balance(key_id, pem) do
-    case get("/portfolio/balance", key_id, pem) do
+  def balance(key_id, pem, env \\ "paper") do
+    case get("/portfolio/balance", key_id, pem, env) do
       {:ok, %{"balance" => bal}} ->
         {:ok, %{available_balance: bal / 100.0, currency: "USD"}}
 
@@ -38,8 +46,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc "Fetch open positions. Returns list of position maps."
-  def positions(key_id, pem) do
-    case get("/portfolio/positions?limit=50", key_id, pem) do
+  def positions(key_id, pem, env \\ "paper") do
+    case get("/portfolio/positions?limit=50", key_id, pem, env) do
       {:ok, %{"market_positions" => list}} when is_list(list) ->
         {:ok, Enum.map(list, &parse_position/1)}
 
@@ -52,16 +60,17 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc """
-  Place a limit order on Kalshi demo.
+  Place a limit order on Kalshi.
 
   ticker  — market ticker, e.g. "BTCZ-24DEC2031-B80000"
   side    — "yes" or "no"
   count   — number of contracts (integer)
   price   — limit price in cents (integer, 1-99)
+  env     — "paper" (demo, default) or "live"
 
   Returns {:ok, %{id, ticker, side, count, status}} or {:error, reason}.
   """
-  def place_order(key_id, pem, ticker, side, count, price) do
+  def place_order(key_id, pem, ticker, side, count, price, env \\ "paper") do
     body = %{
       "ticker" => ticker,
       "action" => "buy",
@@ -72,13 +81,13 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       "no_price" => if(side == "no", do: price, else: 100 - price)
     }
 
-    post("/portfolio/orders", body, key_id, pem)
+    post("/portfolio/orders", body, key_id, pem, env)
     |> parse_placed_order()
   end
 
   @doc "Fetch recent fills (trade history). Returns list of fill maps."
-  def fills(key_id, pem, limit \\ 20) do
-    case get("/portfolio/fills?limit=#{limit}", key_id, pem) do
+  def fills(key_id, pem, limit \\ 20, env \\ "paper") do
+    case get("/portfolio/fills?limit=#{limit}", key_id, pem, env) do
       {:ok, %{"fills" => list}} when is_list(list) ->
         {:ok, Enum.map(list, &parse_fill/1)}
 
@@ -91,8 +100,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc "Fetch recent orders. Returns list of order maps."
-  def orders(key_id, pem, limit \\ 20) do
-    case get("/portfolio/orders?limit=#{limit}", key_id, pem) do
+  def orders(key_id, pem, limit \\ 20, env \\ "paper") do
+    case get("/portfolio/orders?limit=#{limit}", key_id, pem, env) do
       {:ok, %{"orders" => list}} when is_list(list) ->
         {:ok, Enum.map(list, &parse_order/1)}
 
@@ -105,8 +114,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc "Fetch settlements. Returns list of settlement maps."
-  def settlements(key_id, pem, limit \\ 20) do
-    case get("/portfolio/settlements?limit=#{limit}", key_id, pem) do
+  def settlements(key_id, pem, limit \\ 20, env \\ "paper") do
+    case get("/portfolio/settlements?limit=#{limit}", key_id, pem, env) do
       {:ok, %{"settlements" => list}} when is_list(list) ->
         {:ok, Enum.map(list, &parse_settlement/1)}
 
@@ -120,7 +129,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  defp post(path, body, key_id, pem) do
+  defp post(path, body, key_id, pem, env) do
     ts_ms = System.os_time(:millisecond)
     full_path = @api_prefix <> path
     msg = "#{ts_ms}POST#{full_path}"
@@ -133,7 +142,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
           {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
         ]
 
-        case Req.post(@demo_host <> full_path, json: body, headers: headers) do
+        case Req.post(base_host(env) <> full_path, json: body, headers: headers) do
           {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
           {:ok, %{status: 401, body: resp_body}} -> {:error, "kalshi 401: #{inspect(resp_body)}"}
           {:ok, %{status: status, body: resp_body}} -> {:error, "kalshi #{status}: #{inspect(resp_body)}"}
@@ -159,7 +168,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   defp parse_placed_order({:ok, _}), do: {:error, "unexpected kalshi order response shape"}
   defp parse_placed_order(err), do: err
 
-  defp get(path, key_id, pem) do
+  defp get(path, key_id, pem, env) do
     ts_ms = System.os_time(:millisecond)
     full_path = @api_prefix <> path
     clean_path = String.split(full_path, "?") |> List.first()
@@ -173,7 +182,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
           {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
         ]
 
-        case Req.get(@demo_host <> full_path, headers: headers) do
+        case Req.get(base_host(env) <> full_path, headers: headers) do
           {:ok, %{status: 200, body: body}} -> {:ok, body}
           {:ok, %{status: 401, body: body}} -> {:error, "kalshi 401: #{inspect(body)}"}
           {:ok, %{status: status, body: body}} -> {:error, "kalshi #{status}: #{inspect(body)}"}
