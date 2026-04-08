@@ -253,10 +253,22 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       side: f["side"],
       action: f["action"],
       count: f["count"] || 0,
-      price: (f["yes_price"] || f["no_price"] || 0) / 100.0,
+      price: fill_price_cents(f) / 100.0,
       created_time: f["created_time"]
     }
   end
+
+  # Kalshi fill responses include BOTH yes_price and no_price in cents.
+  # For a YES fill the trade price is yes_price; for a NO fill it's
+  # no_price. The old `yes_price || no_price` short-circuit was buggy:
+  # in Elixir `0 || x` returns 0 (0 is truthy), so NO fills with a
+  # valid no_price would still pick yes_price=0 and every NO trade
+  # landed on the chart at $0 — producing a flat sparkline.
+  defp fill_price_cents(%{"side" => "no", "no_price" => p}) when is_number(p), do: p
+  defp fill_price_cents(%{"side" => "yes", "yes_price" => p}) when is_number(p), do: p
+  defp fill_price_cents(%{"no_price" => p}) when is_number(p) and p > 0, do: p
+  defp fill_price_cents(%{"yes_price" => p}) when is_number(p) and p > 0, do: p
+  defp fill_price_cents(_), do: 0
 
   defp parse_order(o) do
     %{
@@ -266,7 +278,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       action: o["action"],
       type: o["type"],
       count: o["remaining_count"] || o["count"] || 0,
-      price: (o["yes_price"] || o["no_price"] || 0) / 100.0,
+      price: fill_price_cents(o) / 100.0,
       status: o["status"],
       created_time: o["created_time"]
     }
