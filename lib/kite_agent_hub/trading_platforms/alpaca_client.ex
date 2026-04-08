@@ -34,7 +34,7 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   Returns {:ok, [%{t: unix_ts, v: equity_float}]} or {:error, reason}.
   """
   def portfolio_history(key_id, secret, period \\ "1M", timeframe \\ "1D") do
-    case get("/v2/portfolio/history?period=#{period}&timeframe=#{timeframe}", key_id, secret) do
+    case get("/v2/account/portfolio/history?period=#{period}&timeframe=#{timeframe}", key_id, secret) do
       {:ok, %{"timestamp" => ts, "equity" => equity}} when is_list(ts) ->
         points =
           Enum.zip(ts, equity)
