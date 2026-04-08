@@ -848,7 +848,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                     <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
                       <p class={[
-                        "text-4xl sm:text-5xl font-black tracking-tighter truncate transition-all duration-300",
+                        "text-2xl sm:text-3xl font-black tracking-tight break-all transition-all duration-300",
                         Decimal.gt?(@pnl_stats.total_pnl, 0) &&
                           "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]",
                         Decimal.lt?(@pnl_stats.total_pnl, 0) &&
@@ -861,7 +861,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         {@pnl_stats.trade_count} Settled Trades
                       </p>
                     <% else %>
-                      <p class="text-4xl sm:text-5xl font-black text-gray-700 tracking-tighter">
+                      <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">
                         $0.00
                       </p>
                       <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
@@ -876,7 +876,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Win Rate
                     </p>
                     <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                      <p class="text-4xl sm:text-5xl font-black text-white tracking-tighter">
+                      <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
                         {win_rate(@pnl_stats.win_count, @pnl_stats.trade_count)}
                       </p>
                       <p class="text-[10px] text-gray-400 mt-2 font-mono tracking-widest">
@@ -885,7 +885,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <span class="text-[#ef4444]">{@pnl_stats.loss_count}L</span>
                       </p>
                     <% else %>
-                      <p class="text-4xl sm:text-5xl font-black text-gray-700 tracking-tighter">—</p>
+                      <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">—</p>
                       <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
                         No Data
                       </p>
@@ -897,7 +897,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
                       Open Positions
                     </p>
-                    <p class="text-4xl sm:text-5xl font-black text-white tracking-tighter">
+                    <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
                       {if @pnl_stats, do: @pnl_stats.open_count, else: 0}
                     </p>
                   </div>
@@ -908,14 +908,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Wallet Balance
                     </p>
                     <%= if @wallet_balance_eth do %>
-                      <p class="text-3xl sm:text-4xl lg:text-3xl xl:text-4xl font-black text-white tracking-tighter truncate">
+                      <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
                         {@wallet_balance_eth}
                       </p>
                       <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
                         ETH (Testnet)
                       </p>
                     <% else %>
-                      <p class="text-4xl sm:text-5xl font-black text-gray-700 tracking-tighter animate-pulse">
+                      <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight animate-pulse">
                         …
                       </p>
                       <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
