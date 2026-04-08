@@ -1737,9 +1737,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
     - GET /trades — recent trade history
     - POST /trades — execute a trade {market, side, action, contracts, fill_price, reason}
     - POST /chat — post a message to the KAH chat thread {text}
+    - GET /edge-scores — live QRB edge scores for your open positions + exit/hold suggestions
 
-    Use the QRB edge scoring methodology (trend + signal + liquidity + R:R = 0-100).
-    Only trade when edge score >= 75. Respect your daily_limit_usd and per_trade_limit_usd.
+    Pull /edge-scores before trading. Each position is scored 0-100 across
+    entry_quality, momentum, risk_reward, liquidity. Only trade when the
+    composite edge is >= 75. Respect your daily_limit_usd and per_trade_limit_usd.
     """
   end
 
