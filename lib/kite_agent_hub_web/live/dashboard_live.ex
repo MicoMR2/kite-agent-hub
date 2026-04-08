@@ -1120,8 +1120,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
                               Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
                             ]}>
-                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${@trade.realized_pnl ||
-                                trade.realized_pnl}
+                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${trade.realized_pnl}
                             </p>
                           <% end %>
                         </div>
