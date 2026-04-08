@@ -198,17 +198,17 @@ defmodule KiteAgentHubWeb.TradesLive do
                   phx-value-id={agent.id}
                   class={[
                     "w-full text-left px-4 py-4 rounded-xl border transition-all group",
-                    @selected_agent?.id == agent.id &&
+                    (@selected_agent && @selected_agent.id == agent.id) &&
                       "border-white/20 bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.02)]",
-                    @selected_agent?.id != agent.id &&
+                    (!@selected_agent || @selected_agent.id != agent.id) &&
                       "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
                   ]}
                 >
                   <div class="flex items-center justify-between gap-2">
                     <span class={[
                       "text-sm font-bold truncate tracking-wide transition-colors",
-                      @selected_agent?.id == agent.id && "text-white",
-                      @selected_agent?.id != agent.id && "text-gray-400 group-hover:text-gray-200"
+                      (@selected_agent && @selected_agent.id == agent.id) && "text-white",
+                      (!@selected_agent || @selected_agent.id != agent.id) && "text-gray-400 group-hover:text-gray-200"
                     ]}>
                       {agent.name}
                     </span>
