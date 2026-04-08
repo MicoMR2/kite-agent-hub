@@ -509,18 +509,36 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Format an ERC-20 token balance from Blockscout. Blockscout returns the
   # raw integer value as a string (so it can hold uint256 amounts that
   # overflow JS numbers); we divide by 10^decimals and round to 4 places.
+  # IMPORTANT: Blockscout also returns `decimals` as a STRING ("18"), not
+  # an integer — :math.pow/2 crashes with "2nd argument: not a number"
+  # if you forward it as-is. parse_decimals/1 coerces both shapes safely.
   defp format_token_balance(balance_str, decimals) when is_binary(balance_str) do
-    case Integer.parse(balance_str) do
-      {balance, _} ->
-        scaled = balance / :math.pow(10, decimals || 18)
-        :erlang.float_to_binary(scaled, decimals: 4)
+    try do
+      case Integer.parse(balance_str) do
+        {balance, _} ->
+          scaled = balance / :math.pow(10, parse_decimals(decimals))
+          scaled |> Float.round(4) |> to_string()
 
-      :error ->
-        "—"
+        :error ->
+          "—"
+      end
+    rescue
+      _ -> "—"
     end
   end
 
   defp format_token_balance(_, _), do: "—"
+
+  defp parse_decimals(d) when is_integer(d), do: d
+
+  defp parse_decimals(d) when is_binary(d) do
+    case Integer.parse(d) do
+      {n, _} -> n
+      :error -> 18
+    end
+  end
+
+  defp parse_decimals(_), do: 18
 
   defp win_rate(_, 0), do: "0%"
   defp win_rate(wins, total), do: "#{Float.round(wins / total * 100, 1)}%"
