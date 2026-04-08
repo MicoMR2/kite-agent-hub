@@ -1400,8 +1400,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         />
                       </svg>
                       <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
-                        <span>${Float.round(first_val, 0) |> trunc()}</span>
-                        <span>${Float.round(last_val, 0) |> trunc()}</span>
+                        <span>${List.first(@alpaca_history, %{}) |> Map.get(:equity, 0) |> Float.round(0) |> trunc()}</span>
+                        <span>${List.last(@alpaca_history, %{}) |> Map.get(:equity, 0) |> Float.round(0) |> trunc()}</span>
                       </div>
                     <% else %>
                       <p class="text-center text-gray-600 text-xs py-10">No equity history for this range.</p>
