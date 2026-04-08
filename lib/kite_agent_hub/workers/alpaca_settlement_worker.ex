@@ -105,8 +105,15 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
         do: Map.put(update_attrs, :fill_price, Decimal.from_float(fill_price * 1.0)),
         else: update_attrs
 
+    # PR #100: only overwrite :contracts when the truncated fill is at
+    # least 1. Crypto fills come back as fractional (e.g. 0.997499992
+    # BTC after Alpaca's ~0.25% taker fee), and trunc → 0 violates the
+    # `contracts > 0` schema validation, leaving the trade stuck open
+    # forever. The original requested contracts value is the right
+    # fallback — fill_price still gets updated correctly above, so
+    # P&L math stays accurate.
     update_attrs =
-      if filled_qty,
+      if filled_qty && trunc(filled_qty) > 0,
         do: Map.put(update_attrs, :contracts, trunc(filled_qty)),
         else: update_attrs
 
