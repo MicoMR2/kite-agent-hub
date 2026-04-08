@@ -16,7 +16,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
         agents = Trading.list_agents(org.id)
         selected = List.first(agents)
         trades = if selected, do: Trading.list_trades(selected.id, limit: 20), else: []
-        stats = if selected, do: Trading.agent_pnl_stats(selected.id), else: nil
+        # Stats are pulled live from Alpaca + Kalshi at the org level — see
+        # KiteAgentHub.Trading.BrokerStats. Per-agent split is not meaningful
+        # for these brokers because they track orders by account, not by
+        # KAH agent, so all agents under the same org show the same numbers.
+        stats = KiteAgentHub.Trading.BrokerStats.live_stats(org.id)
         {agents, trades, stats}
       else
         {[], [], nil}
@@ -64,7 +68,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_params(%{"agent_id" => agent_id}, _uri, socket) do
     agent = Trading.get_agent!(agent_id)
     trades = Trading.list_trades(agent.id, limit: 20)
-    stats = Trading.agent_pnl_stats(agent.id)
+    stats = KiteAgentHub.Trading.BrokerStats.live_stats(agent.organization_id)
 
     if connected?(socket) do
       if socket.assigns.selected_agent do
@@ -224,7 +228,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   @impl true
   def handle_info({:trade_created, trade}, socket) do
-    stats = Trading.agent_pnl_stats(trade.kite_agent_id)
+    stats =
+      case socket.assigns[:organization] do
+        %{id: org_id} -> KiteAgentHub.Trading.BrokerStats.live_stats(org_id)
+        _ -> socket.assigns[:pnl_stats]
+      end
 
     {:noreply,
      socket
@@ -233,7 +241,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   def handle_info({:trade_updated, trade}, socket) do
-    stats = Trading.agent_pnl_stats(trade.kite_agent_id)
+    stats =
+      case socket.assigns[:organization] do
+        %{id: org_id} -> KiteAgentHub.Trading.BrokerStats.live_stats(org_id)
+        _ -> socket.assigns[:pnl_stats]
+      end
 
     {:noreply,
      socket
