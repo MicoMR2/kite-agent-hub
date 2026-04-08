@@ -114,15 +114,21 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     side = normalize_alpaca_side(args["action"])
     qty = max(1, div(trunc(compute_notional(args) |> Decimal.to_float()), 100))
 
-    case Credentials.fetch_secret(agent.organization_id, :alpaca) do
-      {:ok, {key_id, secret}} ->
-        case AlpacaClient.place_order(key_id, secret, symbol, qty, side) do
+    case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
+      {:ok, {key_id, secret, env}} ->
+        case AlpacaClient.place_order(key_id, secret, symbol, qty, side, env) do
           {:ok, order} ->
-            Logger.info("TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty}")
+            Logger.info(
+              "TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty} (env=#{env})"
+            )
+
             order.id
 
           {:error, reason} ->
-            Logger.warning("TradeExecutionWorker: Alpaca order failed: #{inspect(reason)}")
+            Logger.warning(
+              "TradeExecutionWorker: Alpaca order failed (env=#{env}): #{inspect(reason)}"
+            )
+
             nil
         end
 
