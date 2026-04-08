@@ -22,7 +22,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   require Logger
 
   alias KiteAgentHub.{Trading, Repo}
-  alias KiteAgentHub.Kite.{RPC, SignalEngine, PriceOracle}
+  alias KiteAgentHub.Kite.{RPC, SignalEngine, PriceOracle, RuleBasedStrategy}
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
   @default_interval_ms 60_000
@@ -106,7 +106,16 @@ defmodule KiteAgentHub.Kite.AgentRunner do
     |> PositionSyncWorker.new()
     |> Oban.insert()
 
-    # Build market context from chain
+    # Rule-based exit pass — runs every tick regardless of LLM availability.
+    # This is the 24/7 floor: even in BYO-LLM mode (no external signal source),
+    # the agent still defends its positions by cutting losers and letting
+    # winners run based on live QRB scoring.
+    run_rule_based_pass(agent, owner_user_id)
+
+    # LLM-sourced signal pass — only emits trades when SignalEngine is
+    # actually wired to an API key or external LLM. In BYO-LLM mode this
+    # returns {:hold, "byo_llm_mode"} and is a no-op; the external LLM
+    # drives new entries via the /api/v1 endpoints instead.
     context = build_context(agent)
 
     case SignalEngine.generate(agent, context) do
@@ -122,11 +131,45 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         |> Oban.insert()
 
       {:hold, reason} ->
-        Logger.info("AgentRunner: agent #{agent.id} hold — #{reason}")
+        Logger.debug("AgentRunner: agent #{agent.id} signal hold — #{reason}")
 
       {:error, reason} ->
         Logger.error("AgentRunner: signal error for agent #{agent.id}: #{inspect(reason)}")
     end
+  end
+
+  defp run_rule_based_pass(agent, owner_user_id) do
+    actions = RuleBasedStrategy.plan_actions(agent)
+
+    if actions == [] do
+      :noop
+    else
+      Logger.info(
+        "AgentRunner: agent #{agent.id} rule-based planned #{length(actions)} exit action(s)"
+      )
+
+      Enum.each(actions, fn action ->
+        %{
+          "agent_id" => agent.id,
+          "owner_user_id" => owner_user_id,
+          "market" => action.ticker,
+          "side" => action.side,
+          "action" => "sell",
+          "contracts" => action.contracts,
+          "fill_price" => to_string(action.fill_price),
+          "platform" => to_string(action.platform),
+          "reason" => action.reason,
+          "source" => "rule_based"
+        }
+        |> TradeExecutionWorker.new()
+        |> Oban.insert()
+      end)
+    end
+  rescue
+    e ->
+      Logger.error(
+        "AgentRunner: rule-based pass crashed for agent #{agent.id}: #{Exception.message(e)}"
+      )
   end
 
   defp build_context(agent) do
