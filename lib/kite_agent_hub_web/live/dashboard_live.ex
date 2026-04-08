@@ -52,6 +52,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:alpaca_period, "1M")
       |> assign(:kalshi_data, nil)
       |> assign(:wallet_txs, nil)
+      |> assign(:wallet_tokens, nil)
       |> assign(:show_agent_context, false)
       |> assign(:agent_context_text, nil)
       |> stream(:trades, trades)
@@ -109,7 +110,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         :wallet ->
           send(self(), :load_wallet_txs)
-          assign(socket, :wallet_txs, :loading)
+          send(self(), :load_wallet_tokens)
+
+          socket
+          |> assign(:wallet_txs, :loading)
+          |> assign(:wallet_tokens, :loading)
 
         :alpaca ->
           send(self(), :load_alpaca)
@@ -291,6 +296,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
       end
 
     {:noreply, assign(socket, :wallet_txs, txs)}
+  end
+
+  # Async ERC-20 token balances via Blockscout. Native KITE balance is fetched
+  # separately via RPC.get_balance/1; this populates the additional tokens the
+  # wallet holds (USDT and any others) so they show up in the wallet tab.
+  def handle_info(:load_wallet_tokens, socket) do
+    agent = socket.assigns.selected_agent
+
+    tokens =
+      if agent && agent.wallet_address do
+        case KiteAgentHub.Kite.Blockscout.token_balances(agent.wallet_address) do
+          {:ok, list} -> list
+          _ -> []
+        end
+      else
+        []
+      end
+
+    {:noreply, assign(socket, :wallet_tokens, tokens)}
   end
 
   # Async Alpaca data loading
@@ -481,6 +505,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp wei_to_eth(wei) when is_integer(wei) do
     Float.round(wei / 1_000_000_000_000_000_000, 4)
   end
+
+  # Format an ERC-20 token balance from Blockscout. Blockscout returns the
+  # raw integer value as a string (so it can hold uint256 amounts that
+  # overflow JS numbers); we divide by 10^decimals and round to 4 places.
+  defp format_token_balance(balance_str, decimals) when is_binary(balance_str) do
+    case Integer.parse(balance_str) do
+      {balance, _} ->
+        scaled = balance / :math.pow(10, decimals || 18)
+        :erlang.float_to_binary(scaled, decimals: 4)
+
+      :error ->
+        "—"
+    end
+  end
+
+  defp format_token_balance(_, _), do: "—"
 
   defp win_rate(_, 0), do: "0%"
   defp win_rate(wins, total), do: "#{Float.round(wins / total * 100, 1)}%"
@@ -1115,6 +1155,33 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <p class="text-3xl font-black text-white">
                     {if @wallet_balance_eth, do: "#{@wallet_balance_eth} KITE", else: "—"}
                   </p>
+                </div>
+                <%!-- Token balances (ERC-20: USDT, etc.) --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">Token Balances</p>
+                  <%= cond do %>
+                    <% @wallet_tokens == :loading -> %>
+                      <div class="flex items-center gap-3 text-gray-500 py-4">
+                        <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+                        <span class="text-xs">Loading token balances...</span>
+                      </div>
+                    <% is_list(@wallet_tokens) && @wallet_tokens != [] -> %>
+                      <div class="space-y-3">
+                        <%= for token <- @wallet_tokens do %>
+                          <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                            <div class="min-w-0">
+                              <p class="text-sm font-bold text-white">{token.symbol}</p>
+                              <p class="text-[10px] text-gray-500 truncate">{token.token}</p>
+                            </div>
+                            <p class="text-sm font-mono text-white tabular-nums">
+                              {format_token_balance(token.balance, token.decimals)}
+                            </p>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% true -> %>
+                      <p class="text-xs text-gray-500 py-2">No ERC-20 tokens held by this wallet.</p>
+                  <% end %>
                 </div>
                 <%!-- Chain info --%>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex items-center justify-between">
