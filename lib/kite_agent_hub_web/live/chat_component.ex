@@ -155,9 +155,17 @@ defmodule KiteAgentHubWeb.ChatComponent do
                 ]}>
                   {msg.text}
                 </div>
-                <span class="text-[9px] text-gray-700 font-mono mt-0.5">
-                  {if msg.inserted_at, do: Calendar.strftime(msg.inserted_at, "%H:%M"), else: ""}
-                </span>
+                <%= if msg.inserted_at do %>
+                  <span
+                    id={"chat-msg-time-#{msg.id}"}
+                    phx-hook="LocalTime"
+                    data-iso={DateTime.to_iso8601(msg.inserted_at)}
+                    data-format="time"
+                    class="text-[9px] text-gray-700 font-mono mt-0.5"
+                  >
+                    {Calendar.strftime(msg.inserted_at, "%H:%M")}
+                  </span>
+                <% end %>
               </div>
             <% end %>
           </div>
