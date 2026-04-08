@@ -513,13 +513,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # an integer — :math.pow/2 crashes with "2nd argument: not a number"
   # if you forward it as-is. parse_decimals/1 coerces both shapes safely.
   defp format_token_balance(balance_str, decimals) when is_binary(balance_str) do
-    case Integer.parse(balance_str) do
-      {balance, _} ->
-        scaled = balance / :math.pow(10, parse_decimals(decimals))
-        :erlang.float_to_binary(scaled, decimals: 4)
+    try do
+      case Integer.parse(balance_str) do
+        {balance, _} ->
+          scaled = balance / :math.pow(10, parse_decimals(decimals))
+          scaled |> Float.round(4) |> to_string()
 
-      :error ->
-        "—"
+        :error ->
+          "—"
+      end
+    rescue
+      _ -> "—"
     end
   end
 
