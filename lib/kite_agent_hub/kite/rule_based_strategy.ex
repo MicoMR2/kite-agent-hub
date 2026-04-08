@@ -70,8 +70,15 @@ defmodule KiteAgentHub.Kite.RuleBasedStrategy do
     all_positions
     |> Enum.filter(&exit_candidate?(&1, threshold))
     |> Enum.map(&to_action(&1, threshold))
+    |> Enum.reject(&noop_action?/1)
     |> Enum.take(agent.max_open_positions || 10)
   end
+
+  # Skip actions that would produce a trade with no size or no price —
+  # these would land in the queue as $0 sells and create bogus trade
+  # records without actually closing anything.
+  defp noop_action?(%{contracts: c, fill_price: p}) when c > 0 and p > 0.0, do: false
+  defp noop_action?(_), do: true
 
   @doc """
   Compute the current exit threshold for an agent based on its settled
