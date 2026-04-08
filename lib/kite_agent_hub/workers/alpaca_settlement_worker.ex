@@ -153,9 +153,13 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
   end
 
   # Anything else (new, accepted, partially_filled, pending_*) — leave
-  # the trade open and try again next minute.
+  # the trade open and try again next minute. Log at info so we can
+  # see exactly what Alpaca is reporting in prod logs (the catch-all
+  # used to be Logger.debug which is silenced in prod and made it
+  # impossible to tell whether a stuck trade was waiting on the broker
+  # or hitting a state we forgot to handle).
   defp handle_status(trade, status, _order) do
-    Logger.debug(
+    Logger.info(
       "AlpacaSettlementWorker: trade #{trade.id} still #{status} — will re-poll next tick"
     )
   end

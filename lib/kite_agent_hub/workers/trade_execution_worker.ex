@@ -84,24 +84,48 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       {:ok, trade} ->
         Logger.info("TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id} on #{platform}")
 
-        # Execute on the appropriate platform first
-        platform_order_id = maybe_execute_on_platform(platform, agent, args, owner_user_id)
+        case maybe_execute_on_platform(platform, agent, args, owner_user_id) do
+          {:ok, platform_order_id} ->
+            trade
+            |> KiteAgentHub.Trading.TradeRecord.changeset(%{platform_order_id: platform_order_id})
+            |> Repo.update()
 
-        # Update with platform order ID if we got one
-        if platform_order_id do
-          trade
-          |> KiteAgentHub.Trading.TradeRecord.changeset(%{platform_order_id: platform_order_id})
-          |> Repo.update()
+          {:error, reason} ->
+            # Alpaca rejected the order (insufficient qty, market closed,
+            # invalid symbol, etc.). Flip the trade to "failed" with the
+            # broker's error stashed in the reason field so the agent can
+            # see what went wrong on the next GET /trades. Don't try to
+            # write a non-string reason — Alpaca returns nested maps that
+            # would explode the string column.
+            trade
+            |> KiteAgentHub.Trading.TradeRecord.changeset(%{
+              status: "failed",
+              reason: format_failure_reason(reason)
+            })
+            |> Repo.update()
+
+          :noop ->
+            :ok
         end
 
-        # Always attempt Kite chain settlement proof
-        maybe_submit_onchain(trade, agent, args, owner_user_id)
+        # Kite on-chain settlement proof is only meaningful for trades
+        # that were intended to settle on Kite chain. Alpaca trades
+        # complete entirely through the broker — running the EVM signing
+        # path on top would (a) hit a missing private key error and
+        # spam logs, (b) waste an RPC call, and (c) confuse the trade
+        # row with an unrelated tx_hash. Short-circuit on platform.
+        if platform != "alpaca" do
+          maybe_submit_onchain(trade, agent, args, owner_user_id)
+        end
 
       {:error, changeset} ->
         Logger.error("TradeExecutionWorker: failed to create trade: #{inspect(changeset.errors)}")
         {:error, "trade insert failed"}
     end
   end
+
+  defp format_failure_reason(reason) when is_binary(reason), do: String.slice(reason, 0, 500)
+  defp format_failure_reason(reason), do: reason |> inspect() |> String.slice(0, 500)
 
   # Detect which platform to execute on based on market.
   #
@@ -126,7 +150,11 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   defp detect_platform(_market), do: "kite"
 
-  # Execute on Alpaca paper trading
+  # Execute on Alpaca. Returns:
+  #   {:ok, order_id}     — order accepted by Alpaca, id stored on the trade row
+  #   {:error, reason}    — Alpaca rejected (403 insufficient qty, 422, etc.)
+  #                         OR credentials missing. Caller flips trade to failed.
+  #   :noop               — non-Alpaca platform, do nothing here
   defp maybe_execute_on_platform("alpaca", agent, args, _owner_user_id) do
     market = args["market"]
     symbol = Map.get(@alpaca_symbol_map, market, market)
@@ -141,23 +169,23 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
               "TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty} (env=#{env})"
             )
 
-            order.id
+            {:ok, order.id}
 
           {:error, reason} ->
             Logger.warning(
               "TradeExecutionWorker: Alpaca order failed (env=#{env}): #{inspect(reason)}"
             )
 
-            nil
+            {:error, reason}
         end
 
       {:error, reason} ->
         Logger.warning("TradeExecutionWorker: Alpaca credentials unavailable: #{inspect(reason)}")
-        nil
+        {:error, "alpaca credentials unavailable"}
     end
   end
 
-  defp maybe_execute_on_platform(_platform, _agent, _args, _owner_user_id), do: nil
+  defp maybe_execute_on_platform(_platform, _agent, _args, _owner_user_id), do: :noop
 
   defp normalize_alpaca_side("buy"), do: "buy"
   defp normalize_alpaca_side("sell"), do: "sell"
