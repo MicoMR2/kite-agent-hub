@@ -130,7 +130,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
   end
 
   defp validate_trade_params(params, agent) do
-    market = normalize_market(params["market"])
+    market = TradeExecutionWorker.normalize_market(params["market"])
     side = params["side"]
     action = params["action"]
     contracts = params["contracts"]
@@ -166,38 +166,6 @@ defmodule KiteAgentHubWeb.API.TradesController do
     end
   end
 
-  # Normalize the market string before it reaches TradeExecutionWorker.
-  # External agents post in whichever notation they prefer (BTC/USD,
-  # btcusd, BTC USD, etc.) but TradeExecutionWorker.detect_platform/1
-  # only matches the canonical KAH form (BTCUSD, AAPL, ETH-USDC, ...).
-  # A slash-separated pair like "BTC/USD" used to fall through to
-  # platform="kite" because it failed both the @alpaca_markets list
-  # and the [A-Z]{1,5} equity regex — slash isn't a letter and the
-  # whole string was too long.
-  #
-  # The normalizer:
-  #   1. Trims surrounding whitespace
-  #   2. Uppercases (so "btcusd" matches the whitelist)
-  #   3. Removes slashes ("BTC/USD" → "BTCUSD")
-  #   4. Removes inner whitespace ("BTC USD" → "BTCUSD")
-  #
-  # We deliberately do NOT touch dashes — "ETH-USDC" is a real KAH
-  # market name and stripping the dash would break the existing
-  # @alpaca_markets routing.
-  defp normalize_market(nil), do: nil
-  defp normalize_market(market) when not is_binary(market), do: nil
-
-  defp normalize_market(market) do
-    market
-    |> String.trim()
-    |> String.upcase()
-    |> String.replace("/", "")
-    |> String.replace(~r/\s+/, "")
-    |> case do
-      "" -> nil
-      m -> m
-    end
-  end
 
   defp serialize_trade(trade) do
     %{

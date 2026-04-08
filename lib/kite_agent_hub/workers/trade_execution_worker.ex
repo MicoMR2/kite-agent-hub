@@ -63,7 +63,12 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   end
 
   defp execute_trade(agent, args, owner_user_id) do
-    market = args["market"] || "ETH-USDC"
+    # Defense in depth: TradesController already runs normalize_market/1
+    # before enqueuing, but AgentRunner (rule_based_strategy + signal_engine)
+    # enqueues TradeExecutionWorker directly without going through the
+    # controller. Re-running normalization here means malformed markets
+    # never reach detect_platform/1 regardless of how the job was queued.
+    market = normalize_market(args["market"]) || "ETH-USDC"
     platform = detect_platform(market)
 
     trade_attrs = %{
@@ -284,6 +289,40 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     %{"trade_id" => trade_id, "tx_hash" => tx_hash, "owner_user_id" => owner_user_id}
     |> KiteAgentHub.Workers.SettlementWorker.new(schedule_in: 15)
     |> Oban.insert()
+  end
+
+  @doc """
+  Normalize a market string into the canonical KAH form before routing.
+
+  Public so TradesController and any other enqueue path (AgentRunner,
+  RuleBasedStrategy, SignalEngine, future internal callers) can call
+  the same helper. Belt-and-suspenders fix from PR #93 review:
+  controller-only normalization left a gap for jobs queued from inside
+  the app.
+
+  Steps:
+    1. Trim surrounding whitespace
+    2. Uppercase ("btcusd" → "BTCUSD")
+    3. Strip slashes ("BTC/USD" → "BTCUSD")
+    4. Strip inner whitespace ("BTC USD" → "BTCUSD")
+    5. Empty result → nil so the existing required-field check fires
+
+  Deliberately does NOT touch dashes — "ETH-USDC" is a real KAH market
+  name and stripping the dash would break @alpaca_markets routing.
+  """
+  def normalize_market(nil), do: nil
+  def normalize_market(market) when not is_binary(market), do: nil
+
+  def normalize_market(market) do
+    market
+    |> String.trim()
+    |> String.upcase()
+    |> String.replace("/", "")
+    |> String.replace(~r/\s+/, "")
+    |> case do
+      "" -> nil
+      m -> m
+    end
   end
 
   defp encode_trade_calldata(trade) do
