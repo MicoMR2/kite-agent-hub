@@ -124,13 +124,30 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
     # write we just made (Phorari PR #87 review bug 2).
     case maybe_update_fill(trade, update_attrs) do
       {:ok, updated_trade} ->
-        Trading.settle_trade(updated_trade, Decimal.new(0))
+        case Trading.settle_trade(updated_trade, Decimal.new(0)) do
+          {:ok, settled_trade} ->
+            enqueue_attestation(settled_trade)
+            {:ok, settled_trade}
+
+          other ->
+            other
+        end
 
       {:error, reason} ->
         Logger.error(
           "AlpacaSettlementWorker: trade #{trade.id} fill update failed — leaving open: #{inspect(reason)}"
         )
     end
+  end
+
+  # PR #101: enqueue a Kite chain attestation job for every successfully
+  # settled trade. The KiteAttestationWorker is idempotent (skips on
+  # existing attestation_tx_hash and uses a deterministic nonce derived
+  # from the trade UUID), so re-enqueueing is safe.
+  defp enqueue_attestation(%{id: trade_id}) do
+    %{trade_id: trade_id}
+    |> KiteAgentHub.Workers.KiteAttestationWorker.new()
+    |> Oban.insert()
   end
 
   # Terminal failure states — flip to cancelled/failed and stop polling.

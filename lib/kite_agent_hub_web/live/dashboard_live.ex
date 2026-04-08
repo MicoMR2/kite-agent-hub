@@ -1124,6 +1124,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${trade.realized_pnl}
                             </p>
                           <% end %>
+                          <%!-- PR #101: Kite chain attestation receipt. Every settled
+                               trade gets a tiny on-chain transfer to a treasury via
+                               KiteAttestationWorker; the resulting tx hash is the
+                               judges' "settles on Kite chain + attestation" proof. --%>
+                          <%= if trade.attestation_tx_hash do %>
+                            <a
+                              href={"https://testnet.kitescan.ai/tx/" <> trade.attestation_tx_hash}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono inline-flex items-center gap-1"
+                              title={"Kite chain attestation: " <> trade.attestation_tx_hash}
+                            >
+                              ✓ on-chain
+                            </a>
+                          <% end %>
                         </div>
                       </div>
                     <% end %>

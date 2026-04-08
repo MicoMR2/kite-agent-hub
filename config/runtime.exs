@@ -8,7 +8,11 @@ config :kite_agent_hub,
     System.get_env("WORKOS_REDIRECT_URI") ||
       "http://localhost:4000/auth/workos/callback",
   anthropic_api_key: System.get_env("ANTHROPIC_API_KEY") || "",
-  agent_private_key: System.get_env("AGENT_PRIVATE_KEY") || ""
+  agent_private_key: System.get_env("AGENT_PRIVATE_KEY") || "",
+  # PR #101: Kite chain treasury address. KiteAttestationWorker sends a
+  # tiny PYUSD transfer here from the agent wallet on every settled
+  # trade — produces the on-chain proof the hackathon judges look for.
+  kite_treasury_address: System.get_env("KITE_TREASURY_ADDRESS") || ""
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
