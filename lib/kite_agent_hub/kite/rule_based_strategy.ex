@@ -106,8 +106,17 @@ defmodule KiteAgentHub.Kite.RuleBasedStrategy do
 
   # ── Private ───────────────────────────────────────────────────────────────
 
-  defp exit_candidate?(%{score: score} = _pos, threshold) when is_integer(score),
-    do: score < threshold
+  # An exit candidate must have a numeric score AND a live current_price > 0
+  # AND a position size > 0. Positions missing any of these would produce
+  # an invalid trade — a $0 fill_price passes the TradeRecord changeset
+  # which does not validate fill_price > 0 (CyberSec flag on PR #73).
+  # Filter them out here before they ever reach to_action or the execution
+  # queue.
+  defp exit_candidate?(%{score: score, current_price: price} = pos, threshold)
+       when is_integer(score) and is_number(price) and price > 0 do
+    size = pos[:contracts] || pos[:qty] || 0
+    is_number(size) and size > 0 and score < threshold
+  end
 
   defp exit_candidate?(_, _), do: false
 
