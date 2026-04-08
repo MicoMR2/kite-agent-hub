@@ -48,6 +48,7 @@ defmodule KiteAgentHub.Trading.AgentContext do
     - GET /api/v1/trades — list your trade history
     - GET /api/v1/trades/:id — get trade details
     - GET /api/v1/agents/me — your agent profile and current limits
+    - GET /api/v1/edge-scores — live QRB edge scores for all open positions + suggestions
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}

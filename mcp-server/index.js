@@ -124,22 +124,17 @@ server.tool(
 // Tool: get_edge_score
 server.tool(
   "get_edge_score",
-  "Get current edge scores for all tracked markets using QRB methodology (0-100 scale, >=75 GO, 50-74 HOLD, <50 NO)",
+  "Get live QRB edge scores for all current Alpaca + Kalshi positions. Each position scored 0-100 across entry_quality, momentum, risk_reward, liquidity. Also returns exit/hold suggestions for weak/strong positions.",
   {},
   async () => {
-    // Edge scores are computed server-side via the EdgeScorer module
-    // For now, call the trades endpoint to get context
-    const agent = await kahFetch("GET", "/api/v1/agents/me");
-    const trades = await kahFetch("GET", "/api/v1/trades?limit=5");
+    const result = await kahFetch("GET", "/api/v1/edge-scores");
 
     return {
       content: [{
         type: "text",
-        text: JSON.stringify({
-          note: "Edge scores are displayed on the KAH dashboard EdgeScorer tab. Use the QRB methodology to compute your own scores: Trend (0-40) + Signal Quality (0-30) + Volume/Liquidity (0-20) + Risk/Reward (0-10) = Edge Score (0-100). Score >= 75 = GO, 50-74 = HOLD, < 50 = NO.",
-          agent: agent.data,
-          recent_activity: trades.data,
-        }, null, 2),
+        text: result.status < 300
+          ? JSON.stringify(result.data, null, 2)
+          : `Failed to fetch edge scores (${result.status}): ${JSON.stringify(result.data)}`,
       }],
     };
   }
