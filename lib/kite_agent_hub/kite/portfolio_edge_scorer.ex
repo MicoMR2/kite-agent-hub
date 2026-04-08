@@ -105,9 +105,9 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   # ── Kalshi Position Scoring ──────────────────────────────────────────────────
 
   defp score_kalshi_positions(org_id) do
-    case Credentials.fetch_secret(org_id, :kalshi) do
-      {:ok, {key_id, pem}} ->
-        case KalshiClient.positions(key_id, pem) do
+    case Credentials.fetch_secret_with_env(org_id, :kalshi) do
+      {:ok, {key_id, pem, env}} ->
+        case KalshiClient.positions(key_id, pem, env) do
           {:ok, positions} -> Enum.map(positions, &score_kalshi_position/1)
           _ -> []
         end
