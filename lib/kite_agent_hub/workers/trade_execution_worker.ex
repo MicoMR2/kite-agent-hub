@@ -164,7 +164,17 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     market = args["market"]
     symbol = Map.get(@alpaca_symbol_map, market, market)
     side = normalize_alpaca_side(args["action"])
-    qty = max(1, div(trunc(compute_notional(args) |> Decimal.to_float()), 100))
+
+    # qty is the agent's intended share/unit count, passed through to
+    # Alpaca as-is. The previous formula was
+    #   max(1, div(trunc(notional), 100))
+    # which assumed every asset trades at ~$100/share — wildly wrong
+    # for SPY (~$520) and catastrophically wrong for crypto pairs like
+    # BTCUSD (~$60k) where it would have requested 600 BTC for what
+    # the agent thought was a $250 trade. PR #94: trust the agent's
+    # explicit `contracts` value and let Alpaca enforce position size
+    # limits server-side.
+    qty = parse_qty(args["contracts"])
 
     case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
       {:ok, {key_id, secret, env}} ->
@@ -334,4 +344,19 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     price = Decimal.new(to_string(args["fill_price"] || "0"))
     Decimal.mult(price, Decimal.new(contracts))
   end
+
+  # Coerce the agent's `contracts` field into a positive integer for
+  # Alpaca's qty parameter. Accepts integers, floats (for fractional
+  # crypto orders), or numeric strings. Falls back to 1 on garbage so
+  # the order is at least valid (Alpaca will reject anything that
+  # exceeds the agent's actual buying power).
+  defp parse_qty(qty) when is_integer(qty) and qty > 0, do: qty
+  defp parse_qty(qty) when is_float(qty) and qty > 0, do: qty
+  defp parse_qty(qty) when is_binary(qty) do
+    case Float.parse(qty) do
+      {f, _} when f > 0 -> f
+      _ -> 1
+    end
+  end
+  defp parse_qty(_), do: 1
 end
