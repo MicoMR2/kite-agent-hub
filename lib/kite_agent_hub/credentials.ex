@@ -22,6 +22,9 @@ defmodule KiteAgentHub.Credentials do
   @doc """
   Decrypt and return {key_id, secret} for a given org + provider.
   Returns {:ok, {key_id, secret}} or {:error, reason}.
+
+  Back-compat shape — use `fetch_secret_with_env/2` when the caller
+  needs the paper/live routing hint (AlpacaClient, KalshiClient).
   """
   def fetch_secret(org_id, provider) do
     case get_credential(org_id, provider) do
@@ -31,6 +34,25 @@ defmodule KiteAgentHub.Credentials do
       %ApiCredential{key_id: key_id, encrypted_secret: ct, iv: iv, tag: tag} ->
         case Cipher.decrypt(ct, iv, tag) do
           {:ok, secret} -> {:ok, {key_id, secret}}
+          {:error, _} -> {:error, :decryption_failed}
+        end
+    end
+  end
+
+  @doc """
+  Decrypt and return `{key_id, secret, env}` for a given org + provider.
+
+  `env` is either `"paper"` (default, safe) or `"live"` — platform
+  clients use this to pick the correct base URL at call time.
+  """
+  def fetch_secret_with_env(org_id, provider) do
+    case get_credential(org_id, provider) do
+      nil ->
+        {:error, :not_configured}
+
+      %ApiCredential{key_id: key_id, encrypted_secret: ct, iv: iv, tag: tag, env: env} ->
+        case Cipher.decrypt(ct, iv, tag) do
+          {:ok, secret} -> {:ok, {key_id, secret, env || "paper"}}
           {:error, _} -> {:error, :decryption_failed}
         end
     end

@@ -332,16 +332,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     require Logger
 
-    case credentials_module().fetch_secret(org.id, :alpaca) do
-      {:ok, {key_id, secret}} ->
-        Logger.info("DashboardLive: Alpaca credentials found, period=#{period}, key_prefix=#{String.slice(key_id || "", 0..3)}")
+    case credentials_module().fetch_secret_with_env(org.id, :alpaca) do
+      {:ok, {key_id, secret, env}} ->
+        Logger.info("DashboardLive: Alpaca credentials found, period=#{period}, env=#{env}, key_prefix=#{String.slice(key_id || "", 0..3)}")
 
         {api_period, api_timeframe} = alpaca_period_to_api(period)
 
-        account_result = AlpacaClient.account(key_id, secret)
-        positions_result = AlpacaClient.positions(key_id, secret)
-        history_result = AlpacaClient.portfolio_history(key_id, secret, api_period, api_timeframe)
-        orders_result = AlpacaClient.orders(key_id, secret)
+        account_result = AlpacaClient.account(key_id, secret, env)
+        positions_result = AlpacaClient.positions(key_id, secret, env)
+        history_result = AlpacaClient.portfolio_history(key_id, secret, api_period, api_timeframe, env)
+        orders_result = AlpacaClient.orders(key_id, secret, 20, env)
 
         case account_result do
           {:ok, account} ->

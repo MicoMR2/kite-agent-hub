@@ -18,6 +18,11 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   @demo_host "https://demo-api.kalshi.co"
   @api_prefix "/trade-api/v2"
 
+  # NOTE: live Kalshi (https://api.elections.kalshi.com) routing is
+  # deferred — function-level env plumbing coming in a follow-up PR.
+  # KalshiClient currently hits demo only. The Credentials.env field
+  # will still be persisted so the follow-up is a mechanical change.
+
   @doc "Fetch portfolio balance — available_balance, portfolio_value."
   def balance(key_id, pem) do
     case get("/portfolio/balance", key_id, pem) do
