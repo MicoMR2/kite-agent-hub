@@ -2,11 +2,16 @@ defmodule KiteAgentHubWeb.API.TradesController do
   @moduledoc """
   JSON API for programmatic trade submission and status queries.
 
-  All endpoints require an API key sent as:
-    Authorization: Bearer <agent_api_key>
+  All endpoints require the secret agent api_token sent as:
+    Authorization: Bearer <agent_api_token>
 
-  The API key is the agent's wallet_address (simple auth for hackathon demo).
-  Production would use a proper token scheme.
+  ## Security note
+
+  Earlier versions of this controller accepted the agent's
+  `wallet_address` as a fallback credential. That was an auth bypass:
+  wallet addresses are public on-chain, so anyone who could read the
+  chain could impersonate any agent. That fallback has been removed —
+  only the secret api_token is accepted.
 
   Endpoints:
     POST /api/v1/trades        — enqueue a trade signal
@@ -111,11 +116,12 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
+  # Auth is via the secret agent api_token ONLY. Wallet addresses are
+  # public on-chain and must never be accepted as a credential.
   defp authenticate(conn) do
     case get_req_header(conn, "authorization") do
       ["Bearer " <> token] ->
-        # Try api_token first (secure), fall back to wallet_address (legacy)
-        case Trading.get_agent_by_token(token) || Trading.get_agent_by_wallet(token) do
+        case Trading.get_agent_by_token(token) do
           nil -> {:error, :unauthorized}
           agent -> {:ok, agent}
         end
