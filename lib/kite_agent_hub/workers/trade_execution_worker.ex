@@ -103,8 +103,27 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  # Detect which platform to execute on based on market
+  # Detect which platform to execute on based on market.
+  #
+  # The hardcoded @alpaca_markets list always wins (covers crypto pairs
+  # like ETH-USDC and the original equity allowlist), but anything that
+  # *looks* like a standard US equity ticker — uppercase letters only,
+  # 1 to 5 chars — is also auto-routed to Alpaca. Without this, every
+  # ticker the agent picks up dynamically (GLD, NVDA, MSFT, AMD, ...)
+  # falls through to platform="kite", which has no Alpaca order
+  # placement and leaves the trade row stranded at status="open"
+  # forever. The whitelist alone was the bottleneck the agent kept
+  # hitting in prod.
   defp detect_platform(market) when market in @alpaca_markets, do: "alpaca"
+
+  defp detect_platform(market) when is_binary(market) do
+    if Regex.match?(~r/\A[A-Z]{1,5}\z/, market) do
+      "alpaca"
+    else
+      "kite"
+    end
+  end
+
   defp detect_platform(_market), do: "kite"
 
   # Execute on Alpaca paper trading
