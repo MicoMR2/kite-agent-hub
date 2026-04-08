@@ -62,10 +62,8 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  defp build_prompt(agent, context) do
+  defp build_prompt(_agent, context) do
     strategy = "general momentum trading on Kite chain"
-    per_trade_limit = agent.per_trade_limit_usd || 1000
-    daily_limit = agent.daily_limit_usd || 5000
     market = context[:market] || "ETH-USDC"
     price = context[:price] || "unknown"
     trend = context[:trend] || "neutral"
@@ -92,8 +90,6 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
     ## Agent Configuration
     - Strategy: #{strategy}
-    - Per-trade limit: $#{per_trade_limit} notional
-    - Daily spend limit: $#{daily_limit} notional
 
     ## Current Market Context
     - Market: #{market}

@@ -71,7 +71,6 @@ defmodule KiteAgentHub.Kite.RuleBasedStrategy do
     |> Enum.filter(&exit_candidate?(&1, threshold))
     |> Enum.map(&to_action(&1, threshold))
     |> Enum.reject(&noop_action?/1)
-    |> Enum.take(agent.max_open_positions || 10)
   end
 
   # Skip actions that would produce a trade with no size or no price —

@@ -145,49 +145,6 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                   <% end %>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                      Daily Limit (USD)
-                    </label>
-                    <input
-                      id={@form[:daily_limit_usd].id}
-                      name={@form[:daily_limit_usd].name}
-                      type="number"
-                      value={Phoenix.HTML.Form.input_value(@form, :daily_limit_usd) || "1000"}
-                      min="1"
-                      class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                      Per-Trade Limit (USD)
-                    </label>
-                    <input
-                      id={@form[:per_trade_limit_usd].id}
-                      name={@form[:per_trade_limit_usd].name}
-                      type="number"
-                      value={Phoenix.HTML.Form.input_value(@form, :per_trade_limit_usd) || "500"}
-                      min="1"
-                      class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                    Max Open Positions
-                  </label>
-                  <input
-                    id={@form[:max_open_positions].id}
-                    name={@form[:max_open_positions].name}
-                    type="number"
-                    value={Phoenix.HTML.Form.input_value(@form, :max_open_positions) || "10"}
-                    min="1"
-                    class="w-full sm:w-1/2 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
-                  />
-                </div>
-
                 <div class="pt-4 mt-4 border-t border-white/5">
                   <button
                     type="submit"

@@ -32,25 +32,12 @@ defmodule KiteAgentHub.Trading do
 
   def get_agent_by_token(_), do: nil
 
-  @doc "Sum of notional USD spent by agent today (UTC)."
-  def daily_spend(agent_id) do
-    today_start = DateTime.utc_now() |> DateTime.to_date() |> DateTime.new!(~T[00:00:00], "Etc/UTC")
-
-    TradeRecord
-    |> where([t], t.kite_agent_id == ^agent_id)
-    |> where([t], t.inserted_at >= ^today_start)
-    |> where([t], t.status in ["pending", "filled", "queued"])
-    |> select([t], coalesce(sum(t.notional_usd), 0.0))
-    |> Repo.one() || 0.0
-  end
-
   def create_agent(attrs) do
     %KiteAgent{}
     |> KiteAgent.changeset(attrs)
     |> Repo.insert()
   end
 
-  # General name update only — spending limits require explicit separate call
   def update_agent_name(%KiteAgent{} = agent, name) do
     agent
     |> KiteAgent.name_changeset(%{name: name})
@@ -60,13 +47,6 @@ defmodule KiteAgentHub.Trading do
   def update_vault_address(%KiteAgent{} = agent, vault_address) do
     agent
     |> KiteAgent.changeset(%{vault_address: vault_address})
-    |> Repo.update()
-  end
-
-  # Spending limits are a privileged mutation — separate from general updates
-  def update_spending_limits(%KiteAgent{} = agent, attrs) do
-    agent
-    |> KiteAgent.spending_limits_changeset(attrs)
     |> Repo.update()
   end
 

@@ -56,10 +56,6 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         Logger.warning("TradeExecutionWorker: agent #{agent_id} is #{agent.status}, skipping")
         {:cancel, "agent not active"}
 
-      not within_per_trade_limit?(agent, args) ->
-        Logger.warning("TradeExecutionWorker: agent #{agent_id} per-trade limit exceeded")
-        {:cancel, "per-trade limit exceeded"}
-
       true ->
         owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
         Repo.with_user(owner_user_id, fn -> execute_trade(agent, args, owner_user_id) end)
@@ -239,11 +235,6 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   defp encode_trade_calldata(trade) do
     VaultABI.calldata_for_trade(trade)
-  end
-
-  defp within_per_trade_limit?(agent, args) do
-    notional = compute_notional(args)
-    Decimal.lte?(notional, Decimal.new(agent.per_trade_limit_usd))
   end
 
   defp compute_notional(args) do

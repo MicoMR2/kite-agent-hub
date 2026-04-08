@@ -60,9 +60,6 @@ defmodule KiteAgentHubWeb.DemoController do
       "name" => "Demo Alpha Bot",
       "wallet_address" => @demo_wallet,
       "organization_id" => org.id,
-      "daily_limit_usd" => 1000,
-      "per_trade_limit_usd" => 500,
-      "max_open_positions" => 10,
       "status" => "paused"
     }) do
       {:ok, agent} ->
