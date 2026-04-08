@@ -47,8 +47,14 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     no user-supplied input ever reaches the on-chain message.
   """
 
+  # PR #102 hot-fix: was originally `queue: :default` which silently
+  # accepted inserts but never processed them — KAH only configures
+  # `trade_execution / settlement / position_sync / maintenance` queues
+  # in config/config.exs. Routing through :settlement is the right home
+  # because attestation is the final stage of the settlement pipeline
+  # (kicked off from AlpacaSettlementWorker after Trading.settle_trade).
   use Oban.Worker,
-    queue: :default,
+    queue: :settlement,
     max_attempts: 5,
     unique: [period: 600, fields: [:args, :worker]]
 
