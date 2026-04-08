@@ -5,21 +5,28 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   PR #101 — judging-criteria pipeline. The hackathon requires that agents
   "settle on Kite chain" with "attestations (proof, auditability)". This
   worker is the bridge: when AlpacaSettlementWorker flips a trade to
-  `settled`, it enqueues this worker, which submits a tiny gasless
-  PYUSD transfer from the agent's wallet to a treasury address. The
-  resulting tx hash is persisted on `trade_records.attestation_tx_hash`
-  and rendered on the dashboard with a Blockscout link, giving each
+  `settled`, it enqueues this worker, which signs a normal EIP-155
+  ERC-20 `transfer(treasury, 0.001 USDT)` with AGENT_PRIVATE_KEY via
+  `KiteAgentHub.Kite.TxSigner` and broadcasts it through
+  `KiteAgentHub.Kite.RPC.send_raw_transaction/2`. The resulting tx
+  hash is persisted on `trade_records.attestation_tx_hash` and rendered
+  on the dashboard with a `testnet.kitescan.ai` link, giving each
   trade a verifiable on-chain receipt.
+
+  We do NOT use the gasless relayer here — the relayer is hardcoded
+  for PYUSD's EIP-712 domain, and the demo agent wallet holds Kite
+  testnet "Test USD" at a different contract address. Direct signing
+  via TxSigner removes the third-party relayer dependency entirely
+  (CyberSec considers this a security improvement, msg 5477).
 
   ## Idempotency
 
   Oban can retry. We achieve idempotency two ways:
 
   1. Skip if `attestation_tx_hash` is already set on the trade row.
-  2. The EIP-3009 `nonce` field is derived deterministically from the
-     trade UUID via keccak256, so a relayer-side replay attempt with
-     the same nonce will be rejected and return the same tx — never
-     a duplicate transfer.
+  2. Oban `unique: [period: 600, fields: [:args, :worker]]` blocks
+     duplicate jobs with the same trade_id from being enqueued within
+     a 10-minute window.
 
   ## Failure modes
 
