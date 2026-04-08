@@ -71,15 +71,18 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   @doc """
-  Place a market order on Alpaca paper trading.
+  Place a market order on Alpaca.
 
   symbol  — e.g. "ETHUSD", "BTCUSD", "SPY"
   qty     — number of shares/units (string or float)
   side    — "buy" or "sell"
+  env     — "paper" (default, paper-api.alpaca.markets) or "live"
+            (api.alpaca.markets). The catch-all in base_url/1 routes
+            unknown values to paper for safety.
 
   Returns {:ok, %{id, symbol, side, qty, status}} or {:error, reason}.
   """
-  def place_order(key_id, secret, symbol, qty, side \\ "buy") do
+  def place_order(key_id, secret, symbol, qty, side \\ "buy", env \\ "paper") do
     body = %{
       "symbol" => symbol,
       "qty" => to_string(qty),
@@ -88,7 +91,7 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
       "time_in_force" => "day"
     }
 
-    post("/v2/orders", body, key_id, secret)
+    post("/v2/orders", body, key_id, secret, env)
     |> parse_placed_order()
   end
 
