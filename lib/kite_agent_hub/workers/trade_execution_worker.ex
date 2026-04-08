@@ -174,24 +174,30 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     # the agent thought was a $250 trade. PR #94: trust the agent's
     # explicit `contracts` value and let Alpaca enforce position size
     # limits server-side.
-    qty = parse_qty(args["contracts"])
+    requested_qty = parse_qty(args["contracts"])
 
     case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
       {:ok, {key_id, secret, env}} ->
-        case AlpacaClient.place_order(key_id, secret, symbol, qty, side, env) do
-          {:ok, order} ->
+        # PR #99: on a sell, clamp qty to whatever Alpaca shows we
+        # actually hold for this symbol. Crypto pairs (BTCUSD/ETHUSD/...)
+        # take a ~0.25% taker fee in the asset itself, so a `contracts: 1`
+        # buy lands as ~0.9975 actual position. Without this clamp,
+        # the matching sell hits Alpaca 403:
+        #   "insufficient balance for BTC (requested: 1, available: 0.9975)"
+        # which is exactly what we saw on Job 14949. The agent has no
+        # way to know about post-fee position size, so the worker has
+        # to reconcile against live state at submit time. Buys pass
+        # through unchanged.
+        case clamp_sell_qty(side, key_id, secret, env, symbol, requested_qty) do
+          {:ok, qty} ->
+            do_place_order(key_id, secret, symbol, qty, side, env)
+
+          {:noop, reason} ->
             Logger.info(
-              "TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty} (env=#{env})"
+              "TradeExecutionWorker: Alpaca sell skipped — #{symbol} #{reason} (env=#{env})"
             )
 
-            {:ok, order.id}
-
-          {:error, reason} ->
-            Logger.warning(
-              "TradeExecutionWorker: Alpaca order failed (env=#{env}): #{inspect(reason)}"
-            )
-
-            {:error, reason}
+            {:error, "no open position to sell: #{reason}"}
         end
 
       {:error, reason} ->
@@ -201,6 +207,59 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   end
 
   defp maybe_execute_on_platform(_platform, _agent, _args, _owner_user_id), do: :noop
+
+  defp do_place_order(key_id, secret, symbol, qty, side, env) do
+    case AlpacaClient.place_order(key_id, secret, symbol, qty, side, env) do
+      {:ok, order} ->
+        Logger.info(
+          "TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty} (env=#{env})"
+        )
+
+        {:ok, order.id}
+
+      {:error, reason} ->
+        Logger.warning(
+          "TradeExecutionWorker: Alpaca order failed (env=#{env}): #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  # Buys pass through. Sells get clamped to the actual Alpaca position
+  # so we never request more than we hold (the post-fee crypto issue).
+  # Returns:
+  #   {:ok, qty}        — qty to submit (may be < requested for sells)
+  #   {:noop, reason}   — no position to sell, caller marks the trade failed
+  defp clamp_sell_qty("buy", _key_id, _secret, _env, _symbol, requested), do: {:ok, requested}
+
+  defp clamp_sell_qty("sell", key_id, secret, env, symbol, requested) do
+    case AlpacaClient.positions(key_id, secret, env) do
+      {:ok, positions} ->
+        case Enum.find(positions, fn p -> p.symbol == symbol end) do
+          nil ->
+            {:noop, "no open position"}
+
+          %{qty: held} when is_number(held) and held > 0 ->
+            qty = min(requested, held)
+            {:ok, qty}
+
+          _ ->
+            {:noop, "position qty unparseable or zero"}
+        end
+
+      {:error, reason} ->
+        Logger.warning(
+          "TradeExecutionWorker: positions fetch failed for sell clamp — #{inspect(reason)}, falling back to requested qty"
+        )
+
+        # If we can't reach Alpaca for positions, fall through with the
+        # requested qty — Alpaca will reject if it's wrong, same as
+        # before this PR. We don't want a transient positions outage to
+        # block every sell.
+        {:ok, requested}
+    end
+  end
 
   defp normalize_alpaca_side("buy"), do: "buy"
   defp normalize_alpaca_side("sell"), do: "sell"
