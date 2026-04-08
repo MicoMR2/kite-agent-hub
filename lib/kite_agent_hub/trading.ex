@@ -112,6 +112,23 @@ defmodule KiteAgentHub.Trading do
     list_trades(agent_id, status: "open", limit: 200)
   end
 
+  @doc """
+  List open Alpaca trades for a single agent that have a non-nil
+  platform_order_id. Used by AlpacaSettlementWorker which iterates
+  agents under their own RLS scope and asks for the subset that needs
+  poll-based fill settlement.
+  """
+  def list_open_alpaca_trades(agent_id) do
+    TradeRecord
+    |> where([t], t.kite_agent_id == ^agent_id)
+    |> where([t], t.status == "open")
+    |> where([t], t.platform == "alpaca")
+    |> where([t], not is_nil(t.platform_order_id))
+    |> order_by(asc: :inserted_at)
+    |> limit(200)
+    |> Repo.all()
+  end
+
   def get_trade_for_agent(trade_id, agent_id) do
     Repo.get_by(TradeRecord, id: trade_id, kite_agent_id: agent_id)
   end

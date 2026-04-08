@@ -74,6 +74,21 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   @doc """
+  Fetch a single order by Alpaca order id. Used by AlpacaSettlementWorker
+  to poll fill status for open trades. Routes to paper or live based on
+  the credential env.
+
+  Returns {:ok, %{id, symbol, side, qty, filled_qty, filled_avg_price,
+  status, submitted_at}} or {:error, reason}.
+  """
+  def get_order(key_id, secret, order_id, env \\ "paper") do
+    case get("/v2/orders/#{order_id}", key_id, secret, env) do
+      {:ok, body} when is_map(body) -> {:ok, parse_order(body)}
+      err -> err
+    end
+  end
+
+  @doc """
   Fetch recent OHLCV bars for a symbol from the Alpaca Market Data API.
 
   symbol     — e.g. "AAPL", "SPY", "TSLA"

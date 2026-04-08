@@ -88,7 +88,12 @@ config :kite_agent_hub, Oban,
      crontab: [
        # Prune stale chat messages every 6 hours — keeps at least the last
        # 100 per org, deletes anything older than 24h beyond that.
-       {"0 */6 * * *", KiteAgentHub.Workers.MessagePrunerWorker}
+       {"0 */6 * * *", KiteAgentHub.Workers.MessagePrunerWorker},
+       # Poll Alpaca for fill status of open Alpaca trades every minute —
+       # closes the loop on the platform-as-broker execution path so
+       # filled orders flip to settled and rejected/cancelled orders
+       # stop blocking the agent's open-position view.
+       {"* * * * *", KiteAgentHub.Workers.AlpacaSettlementWorker}
      ]}
   ]
 
