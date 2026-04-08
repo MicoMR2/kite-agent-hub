@@ -352,11 +352,23 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   # exceeds the agent's actual buying power).
   defp parse_qty(qty) when is_integer(qty) and qty > 0, do: qty
   defp parse_qty(qty) when is_float(qty) and qty > 0, do: qty
+
   defp parse_qty(qty) when is_binary(qty) do
     case Float.parse(qty) do
-      {f, _} when f > 0 -> f
-      _ -> 1
+      {f, _} when f > 0 ->
+        f
+
+      _ ->
+        Logger.warning(
+          "TradeExecutionWorker: parse_qty fallback (binary): #{inspect(qty)} → 1"
+        )
+
+        1
     end
   end
-  defp parse_qty(_), do: 1
+
+  defp parse_qty(qty) do
+    Logger.warning("TradeExecutionWorker: parse_qty fallback (unknown): #{inspect(qty)} → 1")
+    1
+  end
 end
