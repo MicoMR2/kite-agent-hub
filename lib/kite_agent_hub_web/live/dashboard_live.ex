@@ -113,10 +113,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         :alpaca ->
           send(self(), :load_alpaca)
+          schedule_tab_refresh(:alpaca)
           assign(socket, :alpaca_data, :loading)
 
         :kalshi ->
           send(self(), :load_kalshi)
+          schedule_tab_refresh(:kalshi)
           assign(socket, :kalshi_data, :loading)
 
         _ ->
@@ -124,6 +126,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
       end
 
     {:noreply, assign(socket, :active_tab, tab_atom)}
+  end
+
+  # Re-fetches live account data every 30 seconds while the tab is
+  # visible. The tick handler below checks `active_tab` and is a no-op
+  # if the user has moved away, so stale intervals never run forever.
+  defp schedule_tab_refresh(tab) do
+    Process.send_after(self(), {:tab_refresh, tab}, 30_000)
   end
 
   @impl true
@@ -292,6 +301,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_info({:load_alpaca, period}, socket) do
     {:noreply, load_alpaca_data(socket, period)}
   end
+
+  # Periodic refresh for Alpaca/Kalshi tabs — keeps live portfolio
+  # + equity within ~30s of the actual broker dashboard. No-op if
+  # the user has switched away from that tab.
+  def handle_info({:tab_refresh, :alpaca}, %{assigns: %{active_tab: :alpaca}} = socket) do
+    send(self(), :load_alpaca)
+    schedule_tab_refresh(:alpaca)
+    {:noreply, socket}
+  end
+
+  def handle_info({:tab_refresh, :kalshi}, %{assigns: %{active_tab: :kalshi}} = socket) do
+    send(self(), :load_kalshi)
+    schedule_tab_refresh(:kalshi)
+    {:noreply, socket}
+  end
+
+  def handle_info({:tab_refresh, _other}, socket), do: {:noreply, socket}
 
   # Async Kalshi data loading
   def handle_info(:load_kalshi, socket) do
