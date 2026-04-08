@@ -13,17 +13,40 @@ defmodule KiteAgentHub.Chat do
 
   @type message :: %ChatMessage{}
 
-  @doc "List recent messages for an org, oldest first."
+  @doc """
+  List recent messages for an org, oldest first.
+
+  ## Options
+
+    * `:limit` — max messages to return (default 50)
+    * `:after_id` — only return messages strictly newer (inserted_at >) than
+      the given message id. Used by the long-poll and catch-up pagination.
+  """
   @spec list_messages(Ecto.UUID.t(), keyword()) :: [message()]
   def list_messages(org_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
+    after_id = Keyword.get(opts, :after_id)
 
-    ChatMessage
-    |> where([m], m.organization_id == ^org_id)
-    |> order_by([m], desc: m.inserted_at)
-    |> limit(^limit)
-    |> Repo.all()
-    |> Enum.reverse()
+    query =
+      ChatMessage
+      |> where([m], m.organization_id == ^org_id)
+      |> order_by([m], desc: m.inserted_at)
+      |> limit(^limit)
+
+    query =
+      if after_id && after_id != "" do
+        case Repo.get(ChatMessage, after_id) do
+          %ChatMessage{inserted_at: ts} ->
+            where(query, [m], m.inserted_at > ^ts)
+
+          _ ->
+            query
+        end
+      else
+        query
+      end
+
+    query |> Repo.all() |> Enum.reverse()
   end
 
   @doc "Send a message from a user. Credentials are stripped in the changeset before persistence."

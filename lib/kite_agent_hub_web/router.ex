@@ -34,6 +34,8 @@ defmodule KiteAgentHubWeb.Router do
     get "/trades/:id", TradesController, :show
     get "/agents/me", TradesController, :agent_me
     post "/chat", ChatController, :create
+    get "/chat", ChatController, :index
+    get "/chat/wait", ChatController, :wait
     get "/edge-scores", EdgeScoresController, :index
   end
 
