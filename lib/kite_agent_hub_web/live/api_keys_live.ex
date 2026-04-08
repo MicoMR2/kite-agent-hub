@@ -87,12 +87,22 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
 
   def handle_event(
         "save",
-        %{"provider" => provider, "key_id" => key_id, "secret" => secret},
+        %{"provider" => provider, "key_id" => key_id, "secret" => secret} = params,
         socket
       ) do
     org = socket.assigns.org
 
-    case Credentials.upsert_credential(org.id, provider, %{"key_id" => key_id, "secret" => secret}) do
+    env =
+      case Map.get(params, "env") do
+        "live" -> "live"
+        _ -> "paper"
+      end
+
+    case Credentials.upsert_credential(org.id, provider, %{
+           "key_id" => key_id,
+           "secret" => secret,
+           "env" => env
+         }) do
       {:ok, _} ->
         configured = Credentials.configured_providers(org.id)
         credentials = load_masked_credentials(org.id)
@@ -129,8 +139,14 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     ~w(alpaca kalshi)
     |> Enum.reduce(%{}, fn provider, acc ->
       case Credentials.get_credential(org_id, provider) do
-        nil -> acc
-        cred -> Map.put(acc, provider, %{key_id: Credentials.mask_key_id(cred.key_id)})
+        nil ->
+          acc
+
+        cred ->
+          Map.put(acc, provider, %{
+            key_id: Credentials.mask_key_id(cred.key_id),
+            env: cred.env || "paper"
+          })
       end
     end)
   end
@@ -302,6 +318,36 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     <% end %>
                   </div>
 
+                  <%!-- Environment toggle: paper/demo is the safe default --%>
+                  <% current_env = (existing && existing.env) || "paper" %>
+                  <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                      Environment
+                    </label>
+                    <div class="flex gap-2">
+                      <label class={[
+                        "flex-1 cursor-pointer rounded-xl border px-4 py-3 text-center transition-all",
+                        current_env == "paper" && "border-emerald-500/40 bg-emerald-500/10",
+                        current_env != "paper" && "border-white/10 bg-white/[0.02] hover:border-white/20"
+                      ]}>
+                        <input type="radio" name="env" value="paper" checked={current_env == "paper"} class="sr-only" />
+                        <span class="text-xs font-black uppercase tracking-widest text-white">
+                          {if provider.id == "kalshi", do: "Demo", else: "Paper"}
+                        </span>
+                        <p class="text-[10px] text-gray-500 mt-1">Safe sandbox — no real money</p>
+                      </label>
+                      <label class={[
+                        "flex-1 cursor-pointer rounded-xl border px-4 py-3 text-center transition-all",
+                        current_env == "live" && "border-red-500/40 bg-red-500/10",
+                        current_env != "live" && "border-white/10 bg-white/[0.02] hover:border-white/20"
+                      ]}>
+                        <input type="radio" name="env" value="live" checked={current_env == "live"} class="sr-only" />
+                        <span class="text-xs font-black uppercase tracking-widest text-white">Live</span>
+                        <p class="text-[10px] text-gray-500 mt-1">Real funds — trades are final</p>
+                      </label>
+                    </div>
+                  </div>
+
                   <div class="flex items-center gap-3 pt-1">
                     <button
                       type="submit"
@@ -320,9 +366,16 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                 </form>
               <% else %>
                 <div class="flex items-center justify-between">
-                  <div class="font-mono text-sm text-gray-400">
+                  <div class="font-mono text-sm text-gray-400 flex items-center gap-2">
                     <%= if existing do %>
                       {existing.key_id}
+                      <span class={[
+                        "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border",
+                        existing.env == "live" && "text-red-400 border-red-500/30 bg-red-500/10",
+                        existing.env != "live" && "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                      ]}>
+                        {if existing.env == "live", do: "Live", else: (if provider.id == "kalshi", do: "Demo", else: "Paper")}
+                      </span>
                     <% else %>
                       <span class="text-gray-700 italic text-xs">No key stored</span>
                     <% end %>

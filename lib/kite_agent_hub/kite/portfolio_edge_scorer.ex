@@ -61,9 +61,9 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   # ── Alpaca Position Scoring ──────────────────────────────────────────────────
 
   defp score_alpaca_positions(org_id) do
-    case Credentials.fetch_secret(org_id, :alpaca) do
-      {:ok, {key_id, secret}} ->
-        case AlpacaClient.positions(key_id, secret) do
+    case Credentials.fetch_secret_with_env(org_id, :alpaca) do
+      {:ok, {key_id, secret, env}} ->
+        case AlpacaClient.positions(key_id, secret, env) do
           {:ok, positions} -> Enum.map(positions, &score_alpaca_position/1)
           _ -> []
         end

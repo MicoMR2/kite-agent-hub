@@ -13,16 +13,23 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   """
 
   @paper_base "https://paper-api.alpaca.markets"
+  @live_base "https://api.alpaca.markets"
+
+  # Pick the Alpaca REST base URL for a given env.
+  # Default "paper" matches the pre-env-toggle behavior so callers
+  # that haven't been updated yet keep working on the sandbox.
+  defp base_url("live"), do: @live_base
+  defp base_url(_), do: @paper_base
 
   @doc "Fetch account summary — equity, cash, buying_power, portfolio_value."
-  def account(key_id, secret) do
-    get("/v2/account", key_id, secret)
+  def account(key_id, secret, env \\ "paper") do
+    get("/v2/account", key_id, secret, env)
     |> parse_account()
   end
 
   @doc "Fetch open positions. Returns list of position maps."
-  def positions(key_id, secret) do
-    case get("/v2/positions", key_id, secret) do
+  def positions(key_id, secret, env \\ "paper") do
+    case get("/v2/positions", key_id, secret, env) do
       {:ok, list} when is_list(list) -> {:ok, Enum.map(list, &parse_position/1)}
       {:ok, _} -> {:ok, []}
       err -> err
@@ -33,8 +40,8 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   Fetch portfolio equity history for sparkline chart.
   Returns {:ok, [%{t: unix_ts, v: equity_float}]} or {:error, reason}.
   """
-  def portfolio_history(key_id, secret, period \\ "1M", timeframe \\ "1D") do
-    case get("/v2/account/portfolio/history?period=#{period}&timeframe=#{timeframe}", key_id, secret) do
+  def portfolio_history(key_id, secret, period \\ "1M", timeframe \\ "1D", env \\ "paper") do
+    case get("/v2/account/portfolio/history?period=#{period}&timeframe=#{timeframe}", key_id, secret, env) do
       {:ok, %{"timestamp" => ts, "equity" => equity}} when is_list(ts) ->
         points =
           Enum.zip(ts, equity)
@@ -55,8 +62,8 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   Fetch recent filled orders. Returns {:ok, [order_map]} or {:error, reason}.
   Each order: %{id, symbol, side, qty, filled_qty, filled_avg_price, status, submitted_at}
   """
-  def orders(key_id, secret, limit \\ 20) do
-    case get("/v2/orders?status=filled&limit=#{limit}&direction=desc", key_id, secret) do
+  def orders(key_id, secret, limit \\ 20, env \\ "paper") do
+    case get("/v2/orders?status=filled&limit=#{limit}&direction=desc", key_id, secret, env) do
       {:ok, list} when is_list(list) -> {:ok, Enum.map(list, &parse_order/1)}
       {:ok, _} -> {:ok, []}
       err -> err
@@ -87,13 +94,13 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  defp post(path, body, key_id, secret) do
+  defp post(path, body, key_id, secret, env \\ "paper") do
     headers = [
       {"APCA-API-KEY-ID", key_id},
       {"APCA-API-SECRET-KEY", secret}
     ]
 
-    case Req.post(@paper_base <> path, json: body, headers: headers) do
+    case Req.post(base_url(env) <> path, json: body, headers: headers) do
       {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
       {:ok, %{status: 401}} -> {:error, :unauthorized}
       {:ok, %{status: status, body: resp_body}} -> {:error, "alpaca #{status}: #{inspect(resp_body)}"}
@@ -114,13 +121,13 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
 
   defp parse_placed_order(err), do: err
 
-  defp get(path, key_id, secret) do
+  defp get(path, key_id, secret, env \\ "paper") do
     require Logger
 
     key_prefix = if is_binary(key_id), do: String.slice(key_id, 0..3), else: "nil"
     has_secret = is_binary(secret) and secret != ""
-    url = @paper_base <> path
-    Logger.info("Alpaca GET #{url} key_prefix=#{key_prefix} has_secret=#{has_secret}")
+    url = base_url(env) <> path
+    Logger.info("Alpaca GET #{url} env=#{env} key_prefix=#{key_prefix} has_secret=#{has_secret}")
 
     headers = [
       {"APCA-API-KEY-ID", key_id},
