@@ -2,22 +2,28 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   @moduledoc """
   Submits a Kite chain attestation for every settled Alpaca/Kalshi trade.
 
-  PR #101 — judging-criteria pipeline. The hackathon requires that agents
-  "settle on Kite chain" with "attestations (proof, auditability)". This
-  worker is the bridge: when AlpacaSettlementWorker flips a trade to
-  `settled`, it enqueues this worker, which signs a normal EIP-155
-  ERC-20 `transfer(treasury, 0.001 USDT)` with AGENT_PRIVATE_KEY via
-  `KiteAgentHub.Kite.TxSigner` and broadcasts it through
-  `KiteAgentHub.Kite.RPC.send_raw_transaction/2`. The resulting tx
-  hash is persisted on `trade_records.attestation_tx_hash` and rendered
-  on the dashboard with a `testnet.kitescan.ai` link, giving each
-  trade a verifiable on-chain receipt.
+  PR #101 / #106 — judging-criteria pipeline. The hackathon requires
+  that agents "settle on Kite chain" with "attestations (proof,
+  auditability)". This worker is the bridge: when AlpacaSettlementWorker
+  flips a trade to `settled`, it enqueues this worker, which signs a
+  normal EIP-155 NATIVE KITE value transfer (0.00001 KITE) with
+  AGENT_PRIVATE_KEY via `KiteAgentHub.Kite.TxSigner` and broadcasts it
+  through `KiteAgentHub.Kite.RPC.send_raw_transaction/2`. The resulting
+  tx hash is persisted on `trade_records.attestation_tx_hash` and
+  rendered on the dashboard with a `testnet.kitescan.ai` link, giving
+  each trade a verifiable on-chain receipt.
 
-  We do NOT use the gasless relayer here — the relayer is hardcoded
-  for PYUSD's EIP-712 domain, and the demo agent wallet holds Kite
-  testnet "Test USD" at a different contract address. Direct signing
-  via TxSigner removes the third-party relayer dependency entirely
-  (CyberSec considers this a security improvement, msg 5477).
+  PR #106 switched the on-chain settlement from an ERC-20 USDT transfer
+  to a native KITE transfer. The original design required the agent
+  wallet to hold Test USDT, which the testnet faucet cooldown made
+  hard to keep funded during the demo. Native KITE is the chain's
+  gas token — every funded wallet has it by default. Cleaner story:
+  "agent settles on Kite chain using Kite token."
+
+  We do NOT use the gasless relayer — it's hardcoded for PYUSD's EIP-712
+  domain. Direct signing via TxSigner removes the third-party relayer
+  dependency entirely (CyberSec considers this a security improvement,
+  msg 5477).
 
   ## Idempotency
 
@@ -64,24 +70,23 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.Kite.{RPC, TxSigner}
 
-  # Kite testnet "Test USD" (USDT). 18 decimals — confirmed via
-  # testnet.kitescan.ai. Different from PYUSD; we sign normal EIP-155
-  # ERC-20 transfers via TxSigner + RPC.send_raw_transaction.
-  @usdt_contract "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63"
+  # PR #106: switched from ERC-20 USDT transfer to NATIVE KITE transfer.
+  # The previous design required the agent wallet to hold Test USDT,
+  # which the Kite testnet faucet cooldown made hard to keep funded
+  # during the demo. Native KITE is the chain's gas token — every
+  # funded wallet has it by default. Cleaner story for the hackathon
+  # too: "agent settles on Kite chain using Kite token."
+  #
+  # 0.00001 KITE = 10_000_000_000_000 wei. Effectively dust on testnet
+  # but a real, non-zero, irreversible value transfer that emits a
+  # full Transfer event on the explorer. CyberSec proposed the switch
+  # at msg 5586, after the USDT funding tx was misdirected to the
+  # token contract address and the wallet ended up with 0 USDT.
+  @attestation_amount_wei 10_000_000_000_000
 
-  # 0.001 USDT per attestation = 1e15 base units (18 decimals). Cheap
-  # enough that any seed-funded agent attests hundreds of trades; large
-  # enough that the transfer is non-zero so the on-chain receipt is real.
-  @attestation_amount_units 1_000_000_000_000_000
-
-  # ERC-20 transfer(address,uint256) function selector — first 4 bytes
-  # of keccak256("transfer(address,uint256)").
-  @erc20_transfer_selector "a9059cbb"
-
-  # Conservative gas limit for an ERC-20 transfer on a low-traffic
-  # testnet. Real cost is ~35k–55k; we pad to 100k to absorb any token
-  # contract weirdness without hitting "out of gas".
-  @gas_limit 100_000
+  # Native value transfer needs ~21k gas (no calldata). Pad to 25k
+  # to absorb chain-side variance.
+  @gas_limit 25_000
 
   # Kite testnet chain id (TxSigner default).
   @chain_id 2368
@@ -124,7 +129,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     # CyberSec pre-cleared this removal at msg 5497 (no security impact).
     with {:ok, private_key} <- fetch_private_key(),
          {:ok, treasury} <- fetch_treasury_address(),
-         {:ok, tx_hash} <- submit_erc20_transfer(private_key, treasury),
+         {:ok, tx_hash} <- submit_native_transfer(private_key, treasury),
          {:ok, _updated} <- persist_tx_hash(trade, tx_hash) do
       Logger.info(
         "KiteAttestationWorker: trade #{trade.id} attested on Kite chain — tx #{tx_hash}"
@@ -169,37 +174,26 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     |> Repo.update()
   end
 
-  # Build, sign, and broadcast an ERC-20 transfer of the attestation
-  # amount from the agent wallet (derived from AGENT_PRIVATE_KEY) to
-  # the configured treasury. Uses TxSigner + RPC.send_raw_transaction
-  # — no relayer dependency.
-  defp submit_erc20_transfer(private_key, treasury) do
+  # Build, sign, and broadcast a NATIVE KITE value transfer from the
+  # agent wallet (derived from AGENT_PRIVATE_KEY) to the configured
+  # treasury. Empty data — pure value tx, no contract call. The tx
+  # still emits a full record on testnet.kitescan.ai (from / to /
+  # value), which is the audit trail the hackathon judges follow.
+  defp submit_native_transfer(private_key, treasury) do
     with {:ok, from_address} <- TxSigner.address_from_private_key(private_key),
          {:ok, nonce} <- RPC.get_transaction_count(from_address, :testnet),
          {:ok, gas_price} <- RPC.gas_price(:testnet),
-         {:ok, data} <- build_transfer_calldata(treasury, @attestation_amount_units),
          tx <- %{
            nonce: nonce,
            gas_price: gas_price,
            gas_limit: @gas_limit,
-           to: @usdt_contract,
-           value: 0,
-           data: data
+           to: treasury,
+           value: @attestation_amount_wei,
+           data: ""
          },
          {:ok, signed_hex} <- TxSigner.sign(tx, private_key, chain_id: @chain_id),
          {:ok, tx_hash} <- RPC.send_raw_transaction(signed_hex, :testnet) do
       {:ok, tx_hash}
     end
   end
-
-  # ERC-20 transfer(address,uint256) calldata builder.
-  # 4-byte selector + 32-byte address (left-padded) + 32-byte amount.
-  defp build_transfer_calldata("0x" <> hex_addr, amount) when byte_size(hex_addr) == 40 do
-    addr_padded = String.pad_leading(hex_addr, 64, "0")
-    amount_hex = Integer.to_string(amount, 16) |> String.downcase()
-    amount_padded = String.pad_leading(amount_hex, 64, "0")
-    {:ok, "0x" <> @erc20_transfer_selector <> addr_padded <> amount_padded}
-  end
-
-  defp build_transfer_calldata(_, _), do: {:error, "treasury address must be 0x + 40 hex chars"}
 end
