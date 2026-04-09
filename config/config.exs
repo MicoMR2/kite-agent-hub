@@ -93,7 +93,15 @@ config :kite_agent_hub, Oban,
        # closes the loop on the platform-as-broker execution path so
        # filled orders flip to settled and rejected/cancelled orders
        # stop blocking the agent's open-position view.
-       {"* * * * *", KiteAgentHub.Workers.AlpacaSettlementWorker}
+       {"* * * * *", KiteAgentHub.Workers.AlpacaSettlementWorker},
+       # PR #105: every 5 minutes, scan for any settled trades that
+       # don't yet have an attestation_tx_hash and enqueue attestation
+       # jobs for them. Catches trades that settled before the
+       # pipeline existed, attestation jobs that got discarded
+       # during the AGENT_PRIVATE_KEY misconfig window (~v112-v117),
+       # and any future transient failures. Bounded scan + idempotent
+       # downstream worker = safe at any cadence.
+       {"*/5 * * * *", KiteAgentHub.Workers.AttestationBackfillWorker}
      ]}
   ]
 

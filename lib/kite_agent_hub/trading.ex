@@ -224,4 +224,22 @@ defmodule KiteAgentHub.Trading do
     |> limit(^limit)
     |> Repo.all()
   end
+
+  @doc """
+  Returns up to `limit` settled trades across ALL agents that do NOT yet
+  have an `attestation_tx_hash`. Used by `AttestationBackfillWorker` to
+  retroactively attest trades that settled before the attestation
+  pipeline existed (or while AGENT_PRIVATE_KEY was misconfigured).
+
+  Bounded scan keeps each backfill tick small. The worker calls this
+  on a schedule and enqueues KiteAttestationWorker for each result; the
+  attestation worker is idempotent so re-runs are safe. PR #105.
+  """
+  def list_unattested_settled_trades(limit \\ 50) do
+    TradeRecord
+    |> where([t], t.status == "settled" and is_nil(t.attestation_tx_hash))
+    |> order_by([t], asc: t.updated_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
 end
