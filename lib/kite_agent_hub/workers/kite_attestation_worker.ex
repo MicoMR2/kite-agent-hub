@@ -108,15 +108,22 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
         {:snooze, 30}
 
       %TradeRecord{} = trade ->
+        Logger.info("KiteAttestationWorker: trade #{trade.id} starting attestation")
         attest(trade)
     end
   end
 
   defp attest(trade) do
+    # PR #104: removed `fetch_agent` + `ensure_wallet` from the with chain.
+    # The from-address is derived from AGENT_PRIVATE_KEY inside TxSigner —
+    # the kite_agent.wallet_address DB field is purely a display value
+    # for the dashboard and does NOT need to be set for signing to work.
+    # In the prod DB the demo agent's wallet_address column is null even
+    # though AGENT_PRIVATE_KEY env produces a valid 0x4049... address,
+    # so the old `ensure_wallet` check was silently dropping every job.
+    # CyberSec pre-cleared this removal at msg 5497 (no security impact).
     with {:ok, private_key} <- fetch_private_key(),
          {:ok, treasury} <- fetch_treasury_address(),
-         {:ok, agent} <- fetch_agent(trade),
-         :ok <- ensure_wallet(agent),
          {:ok, tx_hash} <- submit_erc20_transfer(private_key, treasury),
          {:ok, _updated} <- persist_tx_hash(trade, tx_hash) do
       Logger.info(
@@ -132,13 +139,6 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
       {:error, :missing_treasury} ->
         Logger.error("KiteAttestationWorker: KITE_TREASURY_ADDRESS not configured")
         {:error, "treasury address not configured"}
-
-      {:error, :missing_wallet} ->
-        Logger.warning(
-          "KiteAttestationWorker: trade #{trade.id} agent has no wallet_address — dropping"
-        )
-
-        :ok
 
       {:error, reason} ->
         Logger.warning(
@@ -162,18 +162,6 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
       _ -> {:error, :missing_treasury}
     end
   end
-
-  defp fetch_agent(trade) do
-    case Repo.preload(trade, :kite_agent) do
-      %{kite_agent: %{} = agent} -> {:ok, agent}
-      _ -> {:error, :missing_wallet}
-    end
-  end
-
-  defp ensure_wallet(%{wallet_address: addr}) when is_binary(addr) and byte_size(addr) >= 42,
-    do: :ok
-
-  defp ensure_wallet(_), do: {:error, :missing_wallet}
 
   defp persist_tx_hash(trade, tx_hash) do
     trade
