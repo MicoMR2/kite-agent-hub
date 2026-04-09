@@ -179,6 +179,17 @@ defmodule KiteAgentHubWeb.API.TradesController do
       status: trade.status,
       realized_pnl: trade.realized_pnl,
       tx_hash: trade.tx_hash,
+      # PR #107: expose the Kite chain attestation tx hash so the agent
+      # (and any downstream API consumer) can see whether a settled
+      # trade has been attested on-chain yet, plus the explorer URL
+      # for that proof. Without this, the agent was reading the older
+      # `tx_hash` field (which is for the original on-chain trade
+      # intent record, separate from attestation) and getting null.
+      attestation_tx_hash: trade.attestation_tx_hash,
+      attestation_explorer_url:
+        if(trade.attestation_tx_hash,
+          do: "https://testnet.kitescan.ai/tx/" <> trade.attestation_tx_hash
+        ),
       reason: trade.reason,
       inserted_at: trade.inserted_at
     }
