@@ -80,6 +80,15 @@ config :kite_agent_hub, Oban,
   queues: [
     trade_execution: 5,
     settlement: 10,
+    # PR #108: KiteAttestationWorker runs on its own queue with
+    # concurrency: 1 so on-chain attestation jobs are serialized.
+    # Each tx needs a unique nonce from RPC.get_transaction_count;
+    # parallel jobs all see the same `latest` nonce, sign txs with
+    # identical nonces, and only one lands per slot — meaning two
+    # of three would silently share a tx hash. Serializing here
+    # eliminates the race entirely with no application-level nonce
+    # tracking required.
+    attestation: 1,
     position_sync: 2,
     maintenance: 1
   ],

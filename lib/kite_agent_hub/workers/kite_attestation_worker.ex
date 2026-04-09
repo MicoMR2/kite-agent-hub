@@ -59,8 +59,15 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   # in config/config.exs. Routing through :settlement is the right home
   # because attestation is the final stage of the settlement pipeline
   # (kicked off from AlpacaSettlementWorker after Trading.settle_trade).
+  # PR #108: routed to a dedicated `:attestation` queue (concurrency: 1
+  # in config/config.exs) so on-chain signing is serialized. Two parallel
+  # jobs would each fetch the same `latest` nonce from RPC, sign txs
+  # with identical nonces, and only one would land per slot — silently
+  # producing duplicate tx hashes (we hit this on the first backfill
+  # burst, msg 5597). Serializing the queue eliminates the race with
+  # zero application-level nonce tracking.
   use Oban.Worker,
-    queue: :settlement,
+    queue: :attestation,
     max_attempts: 5,
     unique: [period: 600, fields: [:args, :worker]]
 
