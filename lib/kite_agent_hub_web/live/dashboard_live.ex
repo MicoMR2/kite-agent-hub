@@ -625,15 +625,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp recent_attestations(nil), do: []
   defp recent_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 5)
 
-  # Render the running USDT total paid to the treasury. Each attestation
-  # is exactly 0.001 USDT (KiteAttestationWorker @attestation_amount_units),
-  # so the total is `count * 0.001`. Format with 3 decimals so a single
-  # attestation reads as "0.001" not "0.0".
+  # Render the running KITE total paid to the treasury. Each attestation
+  # is exactly 0.00001 KITE (KiteAttestationWorker @attestation_amount_wei
+  # = 1e13 wei = 1e-5 KITE post-PR #106). Format with 5 decimals so a
+  # single attestation reads as "0.00001" not "0.0".
   defp format_attestation_fee(count) when is_integer(count) and count >= 0 do
-    :erlang.float_to_binary(count * 0.001, decimals: 3)
+    :erlang.float_to_binary(count * 0.00001, decimals: 5)
   end
 
-  defp format_attestation_fee(_), do: "0.000"
+  defp format_attestation_fee(_), do: "0.00000"
 
   @impl true
   def render(assigns) do
@@ -1023,7 +1023,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           {@attestation_count} <span class="text-base font-mono text-gray-500">on-chain receipts</span>
                         </p>
                         <p class="text-[11px] text-gray-400 mt-1 font-mono">
-                          Every settled trade pays {format_attestation_fee(@attestation_count)} USDT to treasury
+                          Every settled trade pays {format_attestation_fee(@attestation_count)} KITE to treasury
                         </p>
                       </div>
                     </div>
