@@ -66,6 +66,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:wallet_tokens, nil)
       |> assign(:show_agent_context, false)
       |> assign(:agent_context_text, nil)
+      |> assign(:attestation_count, attestation_count(selected_agent))
+      |> assign(:recent_attestations, recent_attestations(selected_agent))
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -93,6 +95,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
      socket
      |> assign(:selected_agent, agent)
      |> assign(:pnl_stats, stats)
+     |> assign(:attestation_count, attestation_count(agent))
+     |> assign(:recent_attestations, recent_attestations(agent))
      |> assign(:wallet_balance_eth, nil)
      |> assign(:block_number, nil)
      |> stream(:trades, trades, reset: true)}
@@ -254,9 +258,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
         _ -> socket.assigns[:pnl_stats]
       end
 
+    # PR #103: refresh the on-chain attestation summary card whenever a
+    # trade row updates. Cheap query (count + 5-row select) and only the
+    # currently-selected agent's trades come through this PubSub topic,
+    # so we don't need to filter further.
+    agent = socket.assigns[:selected_agent]
+
     {:noreply,
      socket
      |> assign(:pnl_stats, stats)
+     |> assign(:attestation_count, attestation_count(agent))
+     |> assign(:recent_attestations, recent_attestations(agent))
      |> stream_insert(:trades, trade)}
   end
 
@@ -603,6 +615,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
       open_count: 0
     }
   end
+
+  # PR #103: helpers for the on-chain attestations summary card.
+  # Both safely no-op when there's no selected agent (e.g. fresh org
+  # with no agents yet) so the dashboard never crashes on first load.
+  defp attestation_count(nil), do: 0
+  defp attestation_count(%{id: id}), do: Trading.count_attestations(id)
+
+  defp recent_attestations(nil), do: []
+  defp recent_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 5)
+
+  # Render the running USDT total paid to the treasury. Each attestation
+  # is exactly 0.001 USDT (KiteAttestationWorker @attestation_amount_units),
+  # so the total is `count * 0.001`. Format with 3 decimals so a single
+  # attestation reads as "0.001" not "0.0".
+  defp format_attestation_fee(count) when is_integer(count) and count >= 0 do
+    :erlang.float_to_binary(count * 0.001, decimals: 3)
+  end
+
+  defp format_attestation_fee(_), do: "0.000"
 
   @impl true
   def render(assigns) do
@@ -972,6 +1003,64 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </p>
                     <% end %>
                   </div>
+                </div>
+
+                <%!-- PR #103: Kite Chain Attestations summary banner.
+                     This is the demo's headline proof: every settled trade
+                     produces a verifiable on-chain receipt. Judges scrolling
+                     the dashboard see this card before the trade list. --%>
+                <div class="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/[0.06] to-emerald-500/[0.02] backdrop-blur-md p-6">
+                  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div class="flex items-start gap-4">
+                      <div class="h-12 w-12 rounded-xl border border-emerald-500/40 bg-emerald-500/10 flex items-center justify-center shrink-0 text-emerald-400 text-xl font-bold">
+                        ✓
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">
+                          Kite Chain Attestations
+                        </p>
+                        <p class="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                          {@attestation_count} <span class="text-base font-mono text-gray-500">on-chain receipts</span>
+                        </p>
+                        <p class="text-[11px] text-gray-400 mt-1 font-mono">
+                          Every settled trade pays {format_attestation_fee(@attestation_count)} USDT to treasury
+                        </p>
+                      </div>
+                    </div>
+                    <%= if @selected_agent && @selected_agent.wallet_address do %>
+                      <a
+                        href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                      >
+                        View All on Kitescan →
+                      </a>
+                    <% end %>
+                  </div>
+
+                  <%= if @recent_attestations != [] do %>
+                    <div class="mt-4 pt-4 border-t border-emerald-500/10 space-y-2">
+                      <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                        Latest receipts
+                      </p>
+                      <%= for tx <- @recent_attestations do %>
+                        <a
+                          href={"https://testnet.kitescan.ai/tx/" <> tx.attestation_tx_hash}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="flex items-center justify-between gap-2 text-[11px] font-mono text-gray-400 hover:text-emerald-300 transition-colors"
+                        >
+                          <span class="truncate">
+                            {tx.market} {tx.action}
+                          </span>
+                          <span class="text-emerald-500/70 truncate">
+                            {String.slice(tx.attestation_tx_hash, 0, 10)}…{String.slice(tx.attestation_tx_hash, -6, 6)}
+                          </span>
+                        </a>
+                      <% end %>
+                    </div>
+                  <% end %>
                 </div>
 
                 <%!-- Vault address strip --%>

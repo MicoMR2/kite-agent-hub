@@ -200,4 +200,28 @@ defmodule KiteAgentHub.Trading do
       open_count: open_count
     }
   end
+
+  @doc """
+  Count of trades for the given agent that have been attested on Kite chain
+  (i.e. `attestation_tx_hash` is set). Used by the dashboard's on-chain
+  activity summary card. PR #103.
+  """
+  def count_attestations(agent_id) do
+    TradeRecord
+    |> where([t], t.kite_agent_id == ^agent_id and not is_nil(t.attestation_tx_hash))
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
+  Most recent N attested trades for an agent, newest first. Used by the
+  dashboard's on-chain activity summary so judges can click straight
+  through to the latest receipts on testnet.kitescan.ai. PR #103.
+  """
+  def list_recent_attestations(agent_id, limit \\ 5) do
+    TradeRecord
+    |> where([t], t.kite_agent_id == ^agent_id and not is_nil(t.attestation_tx_hash))
+    |> order_by([t], desc: t.updated_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
 end
