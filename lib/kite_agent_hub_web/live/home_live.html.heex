@@ -112,10 +112,10 @@
         </div>
         <div class="text-center group">
           <p class="text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
-            2
+            BYOK
           </p>
           <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
-            Alpaca + Kalshi
+            Alpaca · Kalshi · More
           </p>
         </div>
         <div class="text-center group">
@@ -151,10 +151,10 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <%= for {title, desc, icon} <- [
         {"BYO-LLM via MCP", "Connect Claude Code, Claude Desktop, or any MCP-compatible LLM with a single copy-paste block. No platform API charges — you bring the intelligence.", "hero-cpu-chip"},
-        {"Alpaca + Kalshi Trading", "Execute on equities, options, and prediction markets from one agent. Live portfolio, fills, and settlements on both platforms.", "hero-arrows-right-left"},
+        {"Bring Your Own Keys", "Connect Alpaca paper trading, Kalshi demo markets — with Webull and Robinhood on the roadmap. Keys are AES-256-GCM encrypted at rest. Never logged.", "hero-arrows-right-left"},
         {"QRB EdgeScorer", "Every open position is scored 0-100 on entry quality, momentum, risk/reward, and liquidity. Exit suggestions for weak positions, hold signals for strong ones.", "hero-chart-bar-square"},
-        {"Live Agent Chat", "Real-time messenger where agents and humans talk in the same thread. Credential stripping built in. Org-scoped PubSub, no cross-workspace leaks.", "hero-chat-bubble-left-right"},
-        {"Non-Custodial by Design", "Private keys never touch the server. We store only your wallet address and vault contract address. Your funds, your keys — full stop.", "hero-shield-check"},
+        {"Multi-Agent Teams", "Deploy trading agents that execute, research agents that signal, and conversational agents that coordinate. Build a full team — only traders need a wallet.", "hero-user-group"},
+        {"Non-Custodial by Design", "Private keys never touch the server. We store only your public wallet address. Your funds, your keys — full stop.", "hero-shield-check"},
         {"Vault-Enforced Limits", "Set daily USD caps, per-trade limits, and max open positions per agent. Limits enforced server-side before any trade queues.", "hero-lock-closed"}
       ] do %>
           <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 hover:border-white/20 hover:bg-white/[0.04] transition-all duration-300 group">
@@ -178,50 +178,59 @@
             Live in under 10 minutes
           </h2>
           <p class="text-lg text-gray-400 font-light max-w-2xl mx-auto">
-            Three steps from zero to autonomous on-chain trading.
+            Four steps from zero to autonomous on-chain trading.
           </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-          <%!-- Connector lines (desktop only) --%>
-          <div
-            class="hidden md:block absolute top-[52px] left-1/3 right-1/3 h-px border-t border-dashed border-white/20"
-            style="width: calc(100% / 3 - 2rem); left: calc(100% / 3 + 1rem);"
-          >
-          </div>
-
-          <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 text-center relative hover:border-white/20 transition-all">
-            <div class="w-14 h-14 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-xl font-black mx-auto mb-8 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative">
+          <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-7 text-center relative hover:border-white/20 transition-all">
+            <div class="w-12 h-12 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-lg font-black mx-auto mb-6 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
               1
             </div>
-            <h3 class="text-xl font-bold text-white mb-4">Register & Create Org</h3>
-            <p class="text-gray-400 text-sm leading-relaxed font-light">
-              Sign up with email and password. A workspace is automatically provisioned — invite teammates any time.
+            <h3 class="text-base font-bold text-white mb-3">Register & Add Keys</h3>
+            <p class="text-gray-400 text-xs leading-relaxed font-light">
+              Sign up in seconds. Add your Alpaca paper keys and Kalshi demo credentials. AES-256-GCM encrypted at rest — never logged.
             </p>
+            <div class="mt-4 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+              Alpaca · Kalshi · more coming
+            </div>
           </div>
 
-          <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 text-center relative hover:border-white/20 transition-all">
-            <div class="w-14 h-14 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-xl font-black mx-auto mb-8 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
+          <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-7 text-center relative hover:border-white/20 transition-all">
+            <div class="w-12 h-12 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-lg font-black mx-auto mb-6 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
               2
             </div>
-            <h3 class="text-xl font-bold text-white mb-4">Add API Keys</h3>
-            <p class="text-gray-400 text-sm leading-relaxed font-light">
-              Drop in your Alpaca paper keys and Kalshi demo credentials on the API Keys page. Encrypted at rest with AES-256-GCM.
+            <h3 class="text-base font-bold text-white mb-3">Connect Kite Wallet</h3>
+            <p class="text-gray-400 text-xs leading-relaxed font-light">
+              Paste your Kite testnet wallet address. Deploy a TradingAgentVault to enforce on-chain spend limits. Get testnet tokens at faucet.gokite.ai.
             </p>
-            <code class="mt-6 block text-xs font-mono text-gray-300 bg-black/50 border border-white/10 rounded-lg px-4 py-3 shadow-inner">
-              /api-keys → Alpaca + Kalshi
-            </code>
+            <div class="mt-4 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+              Required for trading agents only
+            </div>
           </div>
 
-          <div class="rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/[0.05] backdrop-blur-md p-8 text-center relative hover:border-[#22c55e]/50 hover:bg-[#22c55e]/[0.08] transition-all">
-            <div class="w-14 h-14 rounded-full border border-[#22c55e]/50 bg-[#0a0a0f] flex items-center justify-center text-xl font-black mx-auto mb-8 shadow-[0_0_25px_rgba(34,197,94,0.2)] text-[#22c55e]">
+          <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-7 text-center relative hover:border-white/20 transition-all">
+            <div class="w-12 h-12 rounded-full border border-white/20 bg-[#0a0a0f] flex items-center justify-center text-lg font-black mx-auto mb-6 shadow-[0_0_20px_rgba(255,255,255,0.05)] text-white">
               3
             </div>
-            <h3 class="text-xl font-bold text-white mb-4">Connect Your LLM</h3>
-            <p class="text-gray-400 text-sm leading-relaxed font-light">
-              Copy the Claude Code paste block or Claude Desktop MCP config from your dashboard. Your LLM can now trade on Alpaca and Kalshi through KAH.
+            <h3 class="text-base font-bold text-white mb-3">Create Your Agent</h3>
+            <p class="text-gray-400 text-xs leading-relaxed font-light">
+              Choose your agent type: Trading (executes live trades), Research (signals only), or Conversational (analysis & coordination). Each gets a tailored system prompt.
             </p>
-            <div class="mt-6 inline-flex items-center gap-2 text-xs text-[#22c55e] font-semibold tracking-wider uppercase">
+            <div class="mt-4 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+              Trading · Research · Conversational
+            </div>
+          </div>
+
+          <div class="rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/[0.05] backdrop-blur-md p-7 text-center relative hover:border-[#22c55e]/50 hover:bg-[#22c55e]/[0.08] transition-all">
+            <div class="w-12 h-12 rounded-full border border-[#22c55e]/50 bg-[#0a0a0f] flex items-center justify-center text-lg font-black mx-auto mb-6 shadow-[0_0_25px_rgba(34,197,94,0.2)] text-[#22c55e]">
+              4
+            </div>
+            <h3 class="text-base font-bold text-white mb-3">Make Your First Trade</h3>
+            <p class="text-gray-400 text-xs leading-relaxed font-light">
+              Copy your agent's system prompt and paste it into Claude Code, Claude Desktop, or any MCP-compatible LLM. Your agent scores edge, picks a market, and executes.
+            </p>
+            <div class="mt-4 inline-flex items-center gap-2 text-xs text-[#22c55e] font-semibold tracking-wider uppercase">
               <span class="w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
               </span>
               Fully autonomous
