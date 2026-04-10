@@ -16,12 +16,12 @@ Kite chain is the **trust and accountability layer for AI agents**. Agents can t
 
 ## What It Does
 
-1. **Register & onboard** — Sign up with email or WorkOS SSO (Google, GitHub). An organization is auto-created on first login.
-2. **Deploy an agent** — Give it a name, paste a funded Kite testnet wallet address, set per-trade and daily spend limits.
-3. **Generate a wallet & verify vault** — Run `agent_onboard.py` to generate an EVM keypair saved to `~/.kite/agent_key.json` (chmod 600), then verify your `TradingAgentVault` is live on-chain before the agent activates.
-4. **EdgeScorer signals** — The EdgeScorer tab scores ETH-USDC, BTC-USDC, and KITE-USDC 0–100 using trend (40 pts), RSI (30 pts), volume (20 pts), and 24h change (10 pts). Scores ≥ 75 → `:go`, 50–74 → `:hold`, < 50 → `:no`.
-5. **Autonomous trading** — Every 60 seconds the agent fetches live price data, scores market edge, asks Claude Haiku for a buy/sell/hold signal with confidence score, and if signaled, submits a signed EIP-155 transaction to Kite chain.
-6. **Real-time dashboard** — Three tabs: **Overview** (live P&L + agent controls), **Kite Wallet** (vault balance + Kitescan links + block number), **EdgeScorer** (market signal cards with score bars + breakdowns). All update live via Phoenix LiveView + PubSub.
+1. **Register & add keys** — Sign up with email or WorkOS SSO (Google, GitHub). Add your Alpaca paper trading and Kalshi demo API keys — AES-256-GCM encrypted at rest, never logged. More platforms (Webull, Robinhood) on the roadmap.
+2. **Connect Kite wallet** — For trading agents, paste a funded Kite testnet wallet address and deploy a `TradingAgentVault` to enforce on-chain spend limits. Research and conversational agents need no wallet.
+3. **Create your agent** — Choose a type: **Trading** (executes live trades, requires wallet), **Research** (signals only, no wallet), or **Conversational** (analysis & coordination). Each gets a role-specific system prompt.
+4. **EdgeScorer signals** — The EdgeScorer tab scores open positions 0–100 on trend, signal quality, liquidity, and risk/reward (QRB methodology). Scores ≥ 75 → GO, 50–74 → HOLD, < 50 → NO.
+5. **Autonomous trading** — Paste your agent's system prompt into Claude Code, Claude Desktop, or any MCP-compatible LLM. The agent scores edge, picks a market, and executes — every trade attested on Kite chain.
+6. **Real-time dashboard** — Live P&L, agent controls, Kite wallet balance, Kitescan links, and EdgeScorer cards. All update live via Phoenix LiveView + PubSub.
 7. **Trade history** — Filter by status (open / settled / failed / cancelled), paginate, see the AI's reasoning for each trade.
 8. **JSON API** — External scripts can submit trade signals via `POST /api/v1/trades` (Alpaca/Kalshi bridge).
 
@@ -32,12 +32,13 @@ Kite chain is the **trust and accountability layer for AI agents**. Agents can t
 > For judges — this is the 5-minute path through the live app.
 
 1. Visit **https://kite-agent-hub.fly.dev** → register a new account
-2. Go to **Agents → New Agent** — name it, paste a funded testnet wallet address, set limits (e.g. $250 per-trade, $1,000 daily)
-3. Check the **Dashboard → EdgeScorer tab** — see live 0–100 scores for ETH-USDC, BTC-USDC, KITE-USDC with GO/HOLD/NO badges
-4. Hit **Activate** on your agent (Overview tab) — the 60-second loop starts
-5. Check **Dashboard → Kite Wallet tab** — see your vault balance and live block number from Kite testnet
-6. Visit **Trade History** — each trade shows market, action, fill price, P&L, and the AI's signal reasoning
-7. Click any Kitescan link in the wallet tab → on-chain proof of every settlement
+2. Go to **API Keys** → add Alpaca paper trading keys + Kalshi demo credentials
+3. Go to **Agents → New Agent** → select **Trading**, name it, paste a funded testnet wallet address
+4. Dashboard → vault form → paste your `TradingAgentVault` address to activate
+5. Check the **Dashboard → EdgeScorer tab** — see live 0–100 scores with GO/HOLD/NO badges
+6. Copy the agent's system prompt → paste into Claude Code or Claude Desktop → your agent starts trading
+7. Visit **Trade History** — each trade shows market, action, fill price, P&L, and the AI's signal reasoning
+8. Click any Kitescan link → on-chain proof of every settlement
 
 ---
 
@@ -134,17 +135,6 @@ export AGENT_PRIVATE_KEY=...   # 64-char hex, funded Kite testnet wallet
 mix phx.server
 # → http://localhost:4000
 ```
-
-### Agent onboarding (Step 3)
-
-```bash
-pip install eth-account requests
-python scripts/agent_onboard.py \
-  --rpc-url https://rpc-testnet.gokite.ai/ \
-  --chain-id 2368
-```
-
-This generates a fresh EVM keypair, saves it to `~/.kite/agent_key.json` (chmod 600, never printed to stdout), and verifies your vault contract is live on-chain. Copy the printed wallet address into the dashboard agent form.
 
 ---
 
