@@ -22,8 +22,20 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
   end
 
   @impl true
+  def handle_event("select_type", %{"type" => type}, socket) when type in ~w(trading research conversational) do
+    params = %{"agent_type" => type, "name" => get_field_value(socket.assigns.form, :name)}
+
+    form =
+      %KiteAgent{}
+      |> KiteAgent.changeset(params)
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    {:noreply, assign(socket, agent_type: type, form: form)}
+  end
+
   def handle_event("validate", %{"kite_agent" => params}, socket) do
-    agent_type = Map.get(params, "agent_type", "trading")
+    agent_type = Map.get(params, "agent_type", socket.assigns.agent_type)
 
     form =
       %KiteAgent{}
@@ -34,25 +46,53 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
     {:noreply, assign(socket, form: form, agent_type: agent_type)}
   end
 
-  def handle_event("save", %{"kite_agent" => params}, socket) do
+  def handle_event("review", %{"kite_agent" => params}, socket) do
+    agent_type = Map.get(params, "agent_type", socket.assigns.agent_type)
+
+    changeset =
+      %KiteAgent{}
+      |> KiteAgent.changeset(params)
+      |> Map.put(:action, :validate)
+
+    form = to_form(changeset)
+
+    if changeset.valid? do
+      {:noreply, assign(socket, form: form, agent_type: agent_type, step: :confirm)}
+    else
+      {:noreply, assign(socket, form: form, agent_type: agent_type, step: :configure)}
+    end
+  end
+
+  def handle_event("back", _params, socket) do
+    {:noreply, assign(socket, step: :configure)}
+  end
+
+  def handle_event("save", _params, socket) do
     org = socket.assigns.organization
 
     if org do
-      attrs = Map.put(params, "organization_id", org.id)
+      params =
+        socket.assigns.form.params
+        |> Map.put("organization_id", org.id)
+        |> Map.put("agent_type", socket.assigns.agent_type)
 
-      case Trading.create_agent(attrs) do
+      case Trading.create_agent(params) do
         {:ok, agent} ->
           {:noreply,
            socket
-           |> put_flash(:info, "Agent #{agent.name} created. Deploy your vault to activate it.")
+           |> put_flash(:info, "#{agent.name} created. Ready to deploy.")
            |> push_navigate(to: ~p"/dashboard?agent_id=#{agent.id}")}
 
         {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset))}
+          {:noreply, assign(socket, form: to_form(changeset), step: :configure)}
       end
     else
       {:noreply, put_flash(socket, :error, "No workspace found. Create one first.")}
     end
+  end
+
+  defp get_field_value(form, field) do
+    Phoenix.HTML.Form.input_value(form, field) || ""
   end
 
   @impl true
@@ -63,150 +103,258 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
         <%!-- Nav --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center gap-4">
-            <.link
-              navigate={~p"/dashboard"}
-              class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
-            >
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-              Dashboard
-            </.link>
+            <%= if @step == :confirm do %>
+              <button
+                phx-click="back"
+                class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                Edit
+              </button>
+            <% else %>
+              <.link
+                navigate={~p"/dashboard"}
+                class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                Dashboard
+              </.link>
+            <% end %>
             <span class="text-gray-700">|</span>
-            <h1 class="text-sm font-black text-white uppercase tracking-widest">New Agent</h1>
+            <h1 class="text-sm font-black text-white uppercase tracking-widest">
+              <%= if @step == :confirm, do: "Confirm Agent", else: "New Agent" %>
+            </h1>
+            <%!-- Step indicator --%>
+            <div class="ml-auto flex items-center gap-2">
+              <span class={[
+                "w-2 h-2 rounded-full",
+                if(@step == :configure, do: "bg-white", else: "bg-white/30")
+              ]}></span>
+              <span class={[
+                "w-2 h-2 rounded-full",
+                if(@step == :confirm, do: "bg-[#22c55e]", else: "bg-white/10")
+              ]}></span>
+            </div>
           </div>
         </div>
 
         <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16">
-          <%!-- Left: form --%>
+          <%!-- Left: form or confirm --%>
           <div class="lg:col-span-3">
-            <div class="mb-8">
-              <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-                  <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 class="text-2xl font-black text-white tracking-tight">Configure Your Agent</h1>
-                  <p class="text-sm text-gray-500 mt-0.5">Set identity, wallet, and risk limits</p>
+            <%= if @step == :configure do %>
+              <%!-- STEP 1: Configure --%>
+              <div class="mb-8">
+                <div class="flex items-center gap-4">
+                  <div class="w-12 h-12 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.05)]">
+                    <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 class="text-2xl font-black text-white tracking-tight">Configure Your Agent</h1>
+                    <p class="text-sm text-gray-500 mt-0.5">Choose type, name, and connect a wallet if needed</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 sm:p-8">
-              <.form
-                for={@form}
-                id="agent-form"
-                phx-change="validate"
-                phx-submit="save"
-                class="space-y-6"
-              >
-                <%!-- Agent Type Selector --%>
-                <div>
-                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
-                    Agent Type
-                  </label>
-                  <div class="grid grid-cols-3 gap-2">
-                    <%= for {type, label, desc} <- [{"trading", "Trading", "Executes live trades"}, {"research", "Research", "Signals only, no trades"}, {"conversational", "Conversational", "Analysis & coordination"}] do %>
-                      <label class={[
-                        "relative flex flex-col gap-1 cursor-pointer rounded-xl border p-3 transition-all",
-                        if(@agent_type == type,
-                          do: "border-white/30 bg-white/[0.06]",
-                          else: "border-white/5 bg-white/[0.01] hover:border-white/15"
-                        )
-                      ]}>
-                        <input
-                          type="radio"
-                          name={@form[:agent_type].name}
-                          value={type}
-                          checked={@agent_type == type}
-                          class="sr-only"
-                        />
-                        <span class="text-xs font-bold text-white">{label}</span>
-                        <span class="text-[10px] text-gray-500 leading-snug">{desc}</span>
-                      </label>
-                    <% end %>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 sm:p-8">
+                <.form
+                  for={@form}
+                  id="agent-form"
+                  phx-change="validate"
+                  phx-submit="review"
+                  class="space-y-6"
+                >
+                  <%!-- Agent Type Selector --%>
+                  <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+                      Agent Type <span class="text-red-400">*</span>
+                    </label>
+                    <div class="grid grid-cols-3 gap-2">
+                      <%= for {type, label, desc, icon} <- [
+                        {"trading", "Trading", "Executes live trades on Alpaca & Kalshi", "hero-currency-dollar"},
+                        {"research", "Research", "Analyzes markets and posts signals only", "hero-magnifying-glass"},
+                        {"conversational", "Conversational", "Answers questions and coordinates agents", "hero-chat-bubble-left-right"}
+                      ] do %>
+                        <button
+                          type="button"
+                          phx-click="select_type"
+                          phx-value-type={type}
+                          class={[
+                            "relative flex flex-col items-start gap-1.5 cursor-pointer rounded-xl border p-3 transition-all text-left w-full",
+                            if(@agent_type == type,
+                              do: "border-white/40 bg-white/[0.08] shadow-[0_0_15px_rgba(255,255,255,0.05)]",
+                              else: "border-white/5 bg-white/[0.01] hover:border-white/20 hover:bg-white/[0.04]"
+                            )
+                          ]}
+                        >
+                          <%= if @agent_type == type do %>
+                            <span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_6px_#22c55e]"></span>
+                          <% end %>
+                          <.icon name={icon} class={["w-4 h-4 mb-0.5", if(@agent_type == type, do: "text-white", else: "text-gray-500")]} />
+                          <span class={["text-xs font-bold", if(@agent_type == type, do: "text-white", else: "text-gray-400")]}>{label}</span>
+                          <span class="text-[10px] text-gray-600 leading-snug">{desc}</span>
+                        </button>
+                      <% end %>
+                    </div>
+                    <%!-- Hidden field to carry agent_type in form submission --%>
+                    <input type="hidden" name={@form[:agent_type].name} value={@agent_type} />
                   </div>
-                  <%= for {msg, _} <- @form[:agent_type].errors do %>
-                    <p class="text-xs text-red-400 mt-1">{msg}</p>
-                  <% end %>
-                </div>
 
-                <%!-- Agent Name --%>
-                <div>
-                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                    Agent Name
-                  </label>
-                  <input
-                    id={@form[:name].id}
-                    name={@form[:name].name}
-                    type="text"
-                    value={Phoenix.HTML.Form.input_value(@form, :name)}
-                    placeholder={
-                      case @agent_type do
-                        "research" -> "e.g. Market Scout, Alpha Researcher"
-                        "conversational" -> "e.g. Strategy Advisor, Team Coordinator"
-                        _ -> "e.g. Alpha Scalper, Kite Arb Bot"
-                      end
-                    }
-                    spellcheck="false"
-                    required
-                    class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
-                  />
-                  <%= for {msg, _} <- @form[:name].errors do %>
-                    <p class="text-xs text-red-400 mt-1">{msg}</p>
-                  <% end %>
-                </div>
-
-                <%!-- Wallet Address — trading agents only --%>
-                <%= if @agent_type == "trading" do %>
+                  <%!-- Agent Name --%>
                   <div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                      Kite Wallet Address
+                      Agent Name <span class="text-red-400">*</span>
                     </label>
                     <input
-                      id={@form[:wallet_address].id}
-                      name={@form[:wallet_address].name}
+                      id={@form[:name].id}
+                      name={@form[:name].name}
                       type="text"
-                      value={Phoenix.HTML.Form.input_value(@form, :wallet_address)}
-                      placeholder="0x..."
+                      value={Phoenix.HTML.Form.input_value(@form, :name)}
+                      placeholder={
+                        case @agent_type do
+                          "research" -> "e.g. Market Scout, Alpha Researcher"
+                          "conversational" -> "e.g. Strategy Advisor, Team Coordinator"
+                          _ -> "e.g. Alpha Scalper, Kite Arb Bot"
+                        end
+                      }
                       spellcheck="false"
+                      required
                       class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                     />
-                    <p class="text-xs text-gray-600 mt-2">
-                      Get testnet tokens at
-                      <a
-                        href="https://faucet.gokite.ai"
-                        target="_blank"
-                        class="text-[#22c55e] hover:text-white transition-colors"
-                      >
-                        faucet.gokite.ai
-                      </a>
-                    </p>
-                    <%= for {msg, _} <- @form[:wallet_address].errors do %>
+                    <%= for {msg, _} <- @form[:name].errors do %>
                       <p class="text-xs text-red-400 mt-1">{msg}</p>
                     <% end %>
                   </div>
+
+                  <%!-- Wallet Address — trading agents only --%>
+                  <%= if @agent_type == "trading" do %>
+                    <div>
+                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                        Kite Wallet Address <span class="text-red-400">*</span>
+                      </label>
+                      <input
+                        id={@form[:wallet_address].id}
+                        name={@form[:wallet_address].name}
+                        type="text"
+                        value={Phoenix.HTML.Form.input_value(@form, :wallet_address)}
+                        placeholder="0x..."
+                        spellcheck="false"
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                      <p class="text-xs text-gray-600 mt-2">
+                        Get testnet tokens at
+                        <a
+                          href="https://faucet.gokite.ai"
+                          target="_blank"
+                          class="text-[#22c55e] hover:text-white transition-colors"
+                        >
+                          faucet.gokite.ai
+                        </a>
+                      </p>
+                      <%= for {msg, _} <- @form[:wallet_address].errors do %>
+                        <p class="text-xs text-red-400 mt-1">{msg}</p>
+                      <% end %>
+                    </div>
+                  <% else %>
+                    <input type="hidden" name={@form[:wallet_address].name} value="" />
+                  <% end %>
+
+                  <div class="pt-4 mt-4 border-t border-white/5">
+                    <button
+                      type="submit"
+                      phx-disable-with="Reviewing..."
+                      class="w-full py-3.5 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                    >
+                      Review Agent →
+                    </button>
+                  </div>
+                </.form>
+              </div>
+
+              <%= if @agent_type == "trading" do %>
+                <p class="text-center text-[10px] text-gray-600 mt-6 uppercase tracking-widest font-bold">
+                  Private keys never stored. Only your public wallet address is saved.
+                </p>
+              <% end %>
+
+            <% else %>
+              <%!-- STEP 2: Confirm --%>
+              <div class="mb-8">
+                <div class="flex items-center gap-4">
+                  <div class="w-12 h-12 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/[0.06] flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.1)]">
+                    <svg class="w-6 h-6 text-[#22c55e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 class="text-2xl font-black text-white tracking-tight">Confirm Agent</h1>
+                    <p class="text-sm text-gray-500 mt-0.5">Review before creating</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 sm:p-8 space-y-5">
+                <%!-- Summary rows --%>
+                <div class="flex items-center justify-between py-3 border-b border-white/5">
+                  <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Type</span>
+                  <span class={[
+                    "text-xs font-bold px-3 py-1 rounded-full border uppercase tracking-widest",
+                    case @agent_type do
+                      "trading" -> "text-white border-white/20 bg-white/[0.05]"
+                      "research" -> "text-blue-400 border-blue-500/20 bg-blue-500/[0.05]"
+                      _ -> "text-purple-400 border-purple-500/20 bg-purple-500/[0.05]"
+                    end
+                  ]}>
+                    {String.capitalize(@agent_type)}
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between py-3 border-b border-white/5">
+                  <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Name</span>
+                  <span class="text-sm font-mono text-white">
+                    {Phoenix.HTML.Form.input_value(@form, :name)}
+                  </span>
+                </div>
+
+                <%= if @agent_type == "trading" do %>
+                  <div class="flex items-center justify-between py-3 border-b border-white/5">
+                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Wallet</span>
+                    <span class="text-xs font-mono text-gray-300">
+                      {String.slice(Phoenix.HTML.Form.input_value(@form, :wallet_address) || "", 0, 20)}…
+                    </span>
+                  </div>
+                  <div class="rounded-xl border border-yellow-500/20 bg-yellow-500/[0.04] p-4">
+                    <p class="text-xs text-yellow-300 leading-relaxed">
+                      After creation, go to the dashboard and paste your TradingAgentVault address to activate trading.
+                    </p>
+                  </div>
                 <% else %>
-                  <%!-- Hidden field so wallet_address isn't sent as nil but also not required --%>
-                  <input type="hidden" name={@form[:wallet_address].name} value="" />
+                  <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.04] p-4">
+                    <p class="text-xs text-blue-300 leading-relaxed">
+                      No wallet required. After creation, copy your agent's system prompt from the dashboard and paste it into Claude Code or your LLM.
+                    </p>
+                  </div>
                 <% end %>
 
-                <div class="pt-4 mt-4 border-t border-white/5">
+                <div class="pt-2 flex gap-3">
                   <button
-                    type="submit"
-                    phx-disable-with="Creating..."
-                    class="w-full py-3.5 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                    type="button"
+                    phx-click="back"
+                    class="flex-1 py-3 rounded-xl border border-white/10 text-gray-400 text-xs font-bold uppercase tracking-widest hover:border-white/20 hover:text-white transition-all"
                   >
-                    Create Agent
+                    ← Edit
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="save"
+                    phx-disable-with="Creating..."
+                    class="flex-[2] py-3 rounded-xl bg-[#22c55e] text-black text-xs font-black uppercase tracking-widest hover:bg-[#16a34a] transition-colors shadow-[0_0_20px_rgba(34,197,94,0.2)]"
+                  >
+                    Confirm & Create Agent
                   </button>
                 </div>
-              </.form>
-            </div>
-
-            <%= if @agent_type == "trading" do %>
-              <p class="text-center text-[10px] text-gray-600 mt-6 uppercase tracking-widest font-bold">
-                Private keys never stored. Only your public wallet address is saved.
-              </p>
+              </div>
             <% end %>
           </div>
 
@@ -228,7 +376,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                   <div class="pb-8">
                     <p class="text-sm font-bold text-white">Create the agent</p>
                     <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      Registered with your wallet. Status:
+                      Your agent is registered with status:
                       <span class="text-gray-400 font-mono text-[10px] uppercase bg-white/5 px-1.5 py-0.5 rounded border border-white/10">pending</span>
                     </p>
                   </div>
@@ -242,13 +390,10 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                     <div class="w-px flex-1 bg-white/10 mt-2"></div>
                   </div>
                   <div class="pb-8">
-                    <p class="text-sm font-bold text-white">Deploy the vault</p>
+                    <p class="text-sm font-bold text-white">Paste your vault address</p>
                     <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      Deploy a TradingAgentVault on Kite testnet. Fund it at faucet.gokite.ai.
+                      On the dashboard, enter your deployed TradingAgentVault address. This activates on-chain spend limits and settlement.
                     </p>
-                    <code class="mt-3 block text-[11px] font-mono text-gray-400 bg-black/50 rounded-lg px-4 py-2.5 border border-white/10">
-                      python agent_onboard.py
-                    </code>
                   </div>
                 </div>
 
@@ -259,9 +404,9 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                     </div>
                   </div>
                   <div>
-                    <p class="text-sm font-bold text-white">Go live</p>
+                    <p class="text-sm font-bold text-white">Connect your LLM & trade</p>
                     <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      Paste the vault address on the dashboard. Trades execute on Alpaca + Kite chain.
+                      Copy your agent's system prompt and paste it into Claude Code or Claude Desktop. Trades execute on Alpaca, Kalshi, and settle on Kite chain.
                     </p>
                   </div>
                 </div>
@@ -302,7 +447,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                   <div class="pb-8">
                     <p class="text-sm font-bold text-white">Copy the system prompt</p>
                     <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      From the dashboard, copy your agent's prompt and paste it into Claude or your LLM of choice.
+                      From the dashboard, copy your agent's system prompt and paste it into Claude or your LLM of choice.
                     </p>
                   </div>
                 </div>
@@ -332,5 +477,4 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
     </Layouts.app>
     """
   end
-
 end
