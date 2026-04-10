@@ -6,9 +6,11 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   @foreign_key_type :binary_id
 
   @statuses ~w(pending active paused error)
+  @agent_types ~w(trading research conversational)
 
   schema "kite_agents" do
     field :name, :string
+    field :agent_type, :string, default: "trading"
     field :wallet_address, :string
     field :vault_address, :string
     field :chain_id, :integer, default: 2368
@@ -26,14 +28,17 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     agent
     |> cast(attrs, [
       :name,
+      :agent_type,
       :wallet_address,
       :vault_address,
       :chain_id,
       :status,
       :organization_id
     ])
-    |> validate_required([:name, :wallet_address, :organization_id])
+    |> validate_required([:name, :organization_id])
     |> validate_inclusion(:status, @statuses)
+    |> validate_inclusion(:agent_type, @agent_types)
+    |> validate_wallet_for_trading()
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
     |> maybe_generate_api_token()
@@ -48,12 +53,31 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_required([:name])
   end
 
+  defp validate_wallet_for_trading(changeset) do
+    agent_type = get_field(changeset, :agent_type) || "trading"
+
+    if agent_type == "trading" do
+      validate_required(changeset, [:wallet_address])
+    else
+      # Normalize empty string to nil so the unique constraint doesn't fire
+      # and validate_evm_address doesn't reject a blank value
+      case get_change(changeset, :wallet_address) do
+        "" -> put_change(changeset, :wallet_address, nil)
+        _ -> changeset
+      end
+    end
+  end
+
   defp validate_evm_address(changeset, field) do
     validate_change(changeset, field, fn _, value ->
-      if Regex.match?(~r/\A0x[0-9a-fA-F]{40}\z/, value) do
+      if is_nil(value) or value == "" do
         []
       else
-        [{field, "must be a valid EVM address (0x + 40 hex chars)"}]
+        if Regex.match?(~r/\A0x[0-9a-fA-F]{40}\z/, value) do
+          []
+        else
+          [{field, "must be a valid EVM address (0x + 40 hex chars)"}]
+        end
       end
     end)
   end
