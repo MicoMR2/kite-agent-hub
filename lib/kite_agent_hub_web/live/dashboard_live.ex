@@ -834,7 +834,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <p class="text-xs text-gray-600 font-mono truncate mb-3">
                       {String.slice(agent.wallet_address || "", 0, 12)}…
                     </p>
-                    <div class="flex items-center">
+                    <div class="flex items-center gap-2">
                       <span class={[
                         "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
                         agent.status == "active" &&
@@ -847,6 +847,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       ]}>
                         {agent.status}
                       </span>
+                      <%= if agent.agent_type && agent.agent_type != "trading" do %>
+                        <span class="text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold bg-blue-500/10 border-blue-500/20 text-blue-400">
+                          {agent.agent_type}
+                        </span>
+                      <% end %>
                     </div>
                   </.link>
                 <% end %>

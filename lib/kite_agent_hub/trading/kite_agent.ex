@@ -6,9 +6,11 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   @foreign_key_type :binary_id
 
   @statuses ~w(pending active paused error)
+  @agent_types ~w(trading research conversational)
 
   schema "kite_agents" do
     field :name, :string
+    field :agent_type, :string, default: "trading"
     field :wallet_address, :string
     field :vault_address, :string
     field :chain_id, :integer, default: 2368
@@ -26,14 +28,17 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     agent
     |> cast(attrs, [
       :name,
+      :agent_type,
       :wallet_address,
       :vault_address,
       :chain_id,
       :status,
       :organization_id
     ])
-    |> validate_required([:name, :wallet_address, :organization_id])
+    |> validate_required([:name, :organization_id])
     |> validate_inclusion(:status, @statuses)
+    |> validate_inclusion(:agent_type, @agent_types)
+    |> validate_wallet_for_trading()
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
     |> maybe_generate_api_token()
@@ -46,6 +51,16 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     agent
     |> cast(attrs, [:name])
     |> validate_required([:name])
+  end
+
+  defp validate_wallet_for_trading(changeset) do
+    agent_type = get_field(changeset, :agent_type) || "trading"
+
+    if agent_type == "trading" do
+      validate_required(changeset, [:wallet_address])
+    else
+      changeset
+    end
   end
 
   defp validate_evm_address(changeset, field) do
