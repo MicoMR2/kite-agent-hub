@@ -1,5 +1,3 @@
-.github/workflows/fly-deploy.yml:
-
 name: Deploy to Fly.io
 
 on:
