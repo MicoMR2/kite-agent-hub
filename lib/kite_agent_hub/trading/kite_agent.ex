@@ -59,16 +59,25 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     if agent_type == "trading" do
       validate_required(changeset, [:wallet_address])
     else
-      changeset
+      # Normalize empty string to nil so the unique constraint doesn't fire
+      # and validate_evm_address doesn't reject a blank value
+      case get_change(changeset, :wallet_address) do
+        "" -> put_change(changeset, :wallet_address, nil)
+        _ -> changeset
+      end
     end
   end
 
   defp validate_evm_address(changeset, field) do
     validate_change(changeset, field, fn _, value ->
-      if Regex.match?(~r/\A0x[0-9a-fA-F]{40}\z/, value) do
+      if is_nil(value) or value == "" do
         []
       else
-        [{field, "must be a valid EVM address (0x + 40 hex chars)"}]
+        if Regex.match?(~r/\A0x[0-9a-fA-F]{40}\z/, value) do
+          []
+        else
+          [{field, "must be a valid EVM address (0x + 40 hex chars)"}]
+        end
       end
     end)
   end
