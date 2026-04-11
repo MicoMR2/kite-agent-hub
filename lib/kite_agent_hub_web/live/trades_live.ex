@@ -185,9 +185,9 @@ defmodule KiteAgentHubWeb.TradesLive do
           </div>
         </div>
 
-        <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
+        <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
           <%!-- Agent Sidebar --%>
-          <div class="w-full lg:w-72 shrink-0 space-y-4">
+          <div class="w-full md:w-48 lg:w-72 shrink-0 space-y-4">
             <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest px-2">
               Agents
             </h2>
@@ -235,31 +235,31 @@ defmodule KiteAgentHubWeb.TradesLive do
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-white/10 bg-black/20">
-                    <th class="text-left px-6 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="text-left px-3 py-3 sm:px-6 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Market
                     </th>
-                    <th class="text-left px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="text-left px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Action
                     </th>
-                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Qty
                     </th>
-                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Fill
                     </th>
-                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="hidden sm:table-cell text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Notional
                     </th>
-                    <th class="text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       P&L
                     </th>
-                    <th class="text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="text-center px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Status
                     </th>
-                    <th class="text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="hidden sm:table-cell text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Chain
                     </th>
-                    <th class="text-right px-6 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                    <th class="hidden md:table-cell text-right px-3 py-3 sm:px-6 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Time
                     </th>
                   </tr>
@@ -282,10 +282,10 @@ defmodule KiteAgentHubWeb.TradesLive do
                   <% else %>
                     <%= for trade <- @trades do %>
                       <tr class="hover:bg-white/[0.02] transition-colors group">
-                        <td class="px-6 py-4 font-black whitespace-nowrap text-white text-sm tracking-tight">
+                        <td class="px-3 py-3 sm:px-6 sm:py-4 font-black whitespace-nowrap text-white text-sm tracking-tight">
                           {trade.market}
                         </td>
-                        <td class="px-4 py-4 whitespace-nowrap">
+                        <td class="px-3 py-3 sm:px-4 sm:py-4 whitespace-nowrap">
                           <span class={[
                             "inline-flex px-2 py-1 rounded border text-[10px] font-black uppercase tracking-widest",
                             trade.action == "buy" &&
@@ -296,24 +296,24 @@ defmodule KiteAgentHubWeb.TradesLive do
                             {trade.action}
                           </span>
                         </td>
-                        <td class="px-4 py-4 text-right tabular-nums text-gray-300 font-mono text-sm whitespace-nowrap">
+                        <td class="px-3 py-3 sm:px-4 sm:py-4 text-right tabular-nums text-gray-300 font-mono text-sm whitespace-nowrap">
                           {trade.contracts}
                         </td>
-                        <td class="px-4 py-4 text-right tabular-nums font-mono text-sm text-gray-300 whitespace-nowrap">
+                        <td class="px-3 py-3 sm:px-4 sm:py-4 text-right tabular-nums font-mono text-sm text-gray-300 whitespace-nowrap">
                           ${trade.fill_price}
                         </td>
-                        <td class="px-4 py-4 text-right tabular-nums font-mono text-sm text-gray-500 whitespace-nowrap">
+                        <td class="hidden sm:table-cell px-4 py-4 text-right tabular-nums font-mono text-sm text-gray-500 whitespace-nowrap">
                           {format_notional(trade.notional_usd)}
                         </td>
-                        <td class={"px-4 py-4 text-right tabular-nums text-sm font-mono whitespace-nowrap #{pnl_class(trade.realized_pnl)}"}>
+                        <td class={"px-3 py-3 sm:px-4 sm:py-4 text-right tabular-nums text-sm font-mono whitespace-nowrap #{pnl_class(trade.realized_pnl)}"}>
                           {format_pnl(trade.realized_pnl)}
                         </td>
-                        <td class="px-4 py-4 text-center whitespace-nowrap">
+                        <td class="px-3 py-3 sm:px-4 sm:py-4 text-center whitespace-nowrap">
                           <span class={"inline-flex px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest #{status_classes(trade.status)}"}>
                             {trade.status}
                           </span>
                         </td>
-                        <td class="px-4 py-4 text-center whitespace-nowrap">
+                        <td class="hidden sm:table-cell px-4 py-4 text-center whitespace-nowrap">
                           <%= if trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) do %>
                             <a
                               href={"https://testnet.kitescan.ai/tx/#{trade.tx_hash}"}
@@ -327,7 +327,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                             <span class="text-[10px] text-gray-700 font-mono">—</span>
                           <% end %>
                         </td>
-                        <td class="px-6 py-4 text-right text-xs text-gray-500 tabular-nums whitespace-nowrap font-mono tracking-widest">
+                        <td class="hidden md:table-cell px-3 py-3 sm:px-6 sm:py-4 text-right text-xs text-gray-500 tabular-nums whitespace-nowrap font-mono tracking-widest">
                           <span
                             id={"trade-time-#{trade.id}"}
                             phx-hook="LocalTime"
