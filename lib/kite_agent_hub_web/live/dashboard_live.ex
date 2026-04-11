@@ -651,8 +651,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <span class="text-sm font-black text-white tracking-tight uppercase">
                   Kite Agent Hub
                 </span>
-                <span class="text-gray-600 mx-2">|</span>
-                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase hidden sm:inline truncate max-w-[120px] sm:max-w-none">
+                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase hidden sm:inline truncate max-w-[120px] sm:max-w-none ml-2">
                   {if @organization, do: @organization.name, else: "No workspace"}
                 </span>
               </div>
@@ -679,9 +678,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
               >
                 <.icon name="hero-plus" class="w-3.5 h-3.5" /> New Agent
               </.link>
-              <%!-- Mobile hamburger (hidden on sm+) --%>
+              <%!-- Mobile menu button (hidden on sm+) --%>
               <button
-                class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/10 bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.07] transition-all"
+                class="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-white/20 bg-white/[0.07] text-gray-300 hover:text-white hover:bg-white/[0.12] transition-all"
                 phx-click={JS.toggle(to: "#mobile-nav-drawer")}
                 aria-label="Menu"
               >
