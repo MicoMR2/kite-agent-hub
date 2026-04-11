@@ -25,6 +25,11 @@ defmodule KiteAgentHubWeb.UserSessionController do
         |> put_flash(:info, info)
         |> UserAuth.log_in_user(user, user_params)
 
+      {:confirmed, _user} ->
+        conn
+        |> put_flash(:info, "Email confirmed! Sign in with your password.")
+        |> redirect(to: ~p"/users/log-in")
+
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "The link is invalid or it has expired.")
