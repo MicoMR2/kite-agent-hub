@@ -102,4 +102,10 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* Safelist: classes returned from Elixir helper functions (not in HEEx templates)
+   Tailwind v4's scanner does not reliably detect class strings in `defp` function
+   bodies — only template literals are guaranteed to be scanned. Any class that
+   appears exclusively in a `do: "..."` return must be listed here. */
+@source inline("bg-stone-500 border-stone-400 text-stone-200");
+
 /* This file is for your main application CSS */
