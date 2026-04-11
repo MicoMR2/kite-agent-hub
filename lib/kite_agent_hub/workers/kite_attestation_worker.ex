@@ -49,8 +49,12 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   - Treasury address read from `Application.get_env(:kite_agent_hub, :kite_treasury_address)`,
     sourced from Fly secret KITE_TREASURY_ADDRESS. Server-controlled.
   - Transfer amount is a server-side constant, not user-controlled.
-  - The deterministic nonce only encodes the server-generated trade UUID;
-    no user-supplied input ever reaches the on-chain message.
+  - The tx calldata carries the server-generated trade UUID as 16 raw
+    bytes so each attestation is cryptographically unique. No
+    user-supplied input ever reaches the on-chain message.
+  - Nonce is fetched with the `pending` block tag so mempool txs are
+    counted — prevents hash-collision races between back-to-back jobs
+    running on the serialized `:attestation` queue.
   """
 
   # PR #102 hot-fix: was originally `queue: :default` which silently
@@ -91,9 +95,10 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   # token contract address and the wallet ended up with 0 USDT.
   @attestation_amount_wei 10_000_000_000_000
 
-  # Native value transfer needs ~21k gas (no calldata). Pad to 25k
-  # to absorb chain-side variance.
-  @gas_limit 25_000
+  # Base 21k for a value transfer + 16 bytes of trade_id calldata
+  # at 16 gas/byte = ~256 gas. Pad generously to 30k to absorb
+  # chain-side variance and any future calldata additions.
+  @gas_limit 30_000
 
   # Kite testnet chain id (TxSigner default).
   @chain_id 2368
@@ -136,7 +141,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     # CyberSec pre-cleared this removal at msg 5497 (no security impact).
     with {:ok, private_key} <- fetch_private_key(),
          {:ok, treasury} <- fetch_treasury_address(),
-         {:ok, tx_hash} <- submit_native_transfer(private_key, treasury),
+         {:ok, tx_hash} <- submit_native_transfer(private_key, treasury, trade),
          {:ok, _updated} <- persist_tx_hash(trade, tx_hash) do
       Logger.info(
         "KiteAttestationWorker: trade #{trade.id} attested on Kite chain — tx #{tx_hash}"
@@ -183,10 +188,12 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
 
   # Build, sign, and broadcast a NATIVE KITE value transfer from the
   # agent wallet (derived from AGENT_PRIVATE_KEY) to the configured
-  # treasury. Empty data — pure value tx, no contract call. The tx
-  # still emits a full record on testnet.kitescan.ai (from / to /
-  # value), which is the audit trail the hackathon judges follow.
-  defp submit_native_transfer(private_key, treasury) do
+  # treasury. The tx carries the trade UUID in its calldata so each
+  # attestation is byte-unique on the chain — this prevents two jobs
+  # that pick the same nonce from signing identical raw transactions
+  # and producing the same tx hash (which was writing one hash to two
+  # trade rows and breaking auditability).
+  defp submit_native_transfer(private_key, treasury, trade) do
     with {:ok, from_address} <- TxSigner.address_from_private_key(private_key),
          {:ok, nonce} <- RPC.get_transaction_count(from_address, :testnet),
          {:ok, gas_price} <- RPC.gas_price(:testnet),
@@ -196,11 +203,18 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
            gas_limit: @gas_limit,
            to: treasury,
            value: @attestation_amount_wei,
-           data: ""
+           data: trade_id_calldata(trade.id)
          },
          {:ok, signed_hex} <- TxSigner.sign(tx, private_key, chain_id: @chain_id),
          {:ok, tx_hash} <- RPC.send_raw_transaction(signed_hex, :testnet) do
       {:ok, tx_hash}
     end
+  end
+
+  # Encode the trade UUID as 16 raw bytes of calldata, hex-prefixed.
+  # Example: "c4c040af-154f-44fe-8be5-e912228b16b5" →
+  # "0xc4c040af154f44fe8be5e912228b16b5"
+  defp trade_id_calldata(uuid) when is_binary(uuid) do
+    "0x" <> String.replace(uuid, "-", "")
   end
 end

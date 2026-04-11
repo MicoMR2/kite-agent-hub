@@ -35,9 +35,18 @@ defmodule KiteAgentHub.Kite.RPC do
     call("eth_getTransactionReceipt", [tx_hash], chain)
   end
 
-  @doc "Get transaction count (nonce) for an address."
+  @doc """
+  Get transaction count (nonce) for an address.
+
+  Uses the `"pending"` block tag so the returned nonce includes
+  transactions already submitted to the mempool but not yet mined.
+  Using `"latest"` would let two jobs that run in quick succession
+  fetch the same nonce before the first tx confirms, causing them
+  to sign byte-identical value transfers and produce duplicate tx
+  hashes on the chain side.
+  """
   def get_transaction_count(address, chain \\ :testnet) do
-    call("eth_getTransactionCount", [address, "latest"], chain)
+    call("eth_getTransactionCount", [address, "pending"], chain)
     |> decode_hex_integer()
   end
 
