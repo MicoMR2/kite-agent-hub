@@ -3,19 +3,15 @@ defmodule KiteAgentHubWeb.ChatComponent do
   Floating chat popup LiveComponent for the dashboard.
 
   Displays messages from the current organization's chat stream and
-  allows the logged-in user to send messages or connect an agent to
-  the thread. All reads and writes are scoped to `:org_id` so
+  allows the logged-in user to send messages or invite agents to the
+  conversation. All reads and writes are scoped to `:org_id` so
   chat is isolated per workspace.
 
-  Subscribes to `KiteAgentHub.Chat` PubSub on first update for
-  real-time message delivery, then re-fetches the last 50 messages
-  on each send to keep the list consistent without relying on
-  cross-component PubSub push.
-
   Required assigns:
-    * `:org_id` — current organization id
-    * `:user` — current user struct (for `send_user_message/3`)
-    * `:agent` — optionally selected agent (enables the "+" connect button)
+    * `:org_id`  — current organization id
+    * `:user`    — current user struct (for `send_user_message/3`)
+    * `:agents`  — list of all org agents (for the invite panel)
+    * `:agent`   — currently selected agent (optional, for backwards compat)
   """
   use KiteAgentHubWeb, :live_component
 
@@ -27,9 +23,11 @@ defmodule KiteAgentHubWeb.ChatComponent do
       socket
       |> assign(assigns)
       |> assign_new(:open, fn -> false end)
+      |> assign_new(:show_invite, fn -> false end)
       |> assign_new(:messages, fn -> [] end)
       |> assign_new(:chat_input, fn -> "" end)
       |> assign_new(:subscribed, fn -> false end)
+      |> assign_new(:agents, fn -> [] end)
 
     socket =
       if assigns[:org_id] && !socket.assigns.subscribed do
@@ -47,7 +45,11 @@ defmodule KiteAgentHubWeb.ChatComponent do
   end
 
   def handle_event("toggle_chat", _params, socket) do
-    {:noreply, assign(socket, :open, !socket.assigns.open)}
+    {:noreply, assign(socket, open: !socket.assigns.open, show_invite: false)}
+  end
+
+  def handle_event("toggle_invite", _params, socket) do
+    {:noreply, assign(socket, :show_invite, !socket.assigns.show_invite)}
   end
 
   def handle_event("send_message", %{"text" => text}, socket) do
@@ -64,17 +66,39 @@ defmodule KiteAgentHubWeb.ChatComponent do
           {:noreply, assign(socket, :chat_input, "")}
       end
     else
-      Logger.warning("Chat send skipped: org_id=#{inspect(socket.assigns[:org_id])}, user=#{inspect(socket.assigns[:user] != nil)}")
       {:noreply, socket}
     end
   end
 
+  def handle_event("invite_agent", %{"agent_id" => agent_id}, socket) do
+    org_id = socket.assigns[:org_id]
+    agents = socket.assigns[:agents] || []
+    agent = Enum.find(agents, &(to_string(&1.id) == agent_id))
+
+    if agent && org_id do
+      Chat.send_system_message(
+        org_id,
+        "#{agent.name} (#{String.capitalize(agent.agent_type || "agent")}) has joined the conversation."
+      )
+
+      messages = Chat.list_messages(org_id, limit: 50)
+      {:noreply, socket |> assign(:messages, messages) |> assign(:show_invite, false)}
+    else
+      {:noreply, assign(socket, :show_invite, false)}
+    end
+  end
+
+  # Legacy single-agent connect kept for backwards compat
   def handle_event("connect_agent", _params, socket) do
     agent = socket.assigns[:agent]
     org_id = socket.assigns[:org_id]
 
     if agent && org_id do
-      Chat.send_system_message(org_id, "#{agent.name} connected to chat. Agent is ready to receive instructions.")
+      Chat.send_system_message(
+        org_id,
+        "#{agent.name} connected to chat. Agent is ready to receive instructions."
+      )
+
       messages = Chat.list_messages(org_id, limit: 50)
       {:noreply, assign(socket, :messages, messages)}
     else
@@ -98,7 +122,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
       <%!-- Chat Window --%>
       <%= if @open do %>
-        <div class="w-96 h-[500px] rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl flex flex-col overflow-hidden">
+        <div class="w-96 rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl flex flex-col overflow-hidden">
           <%!-- Header --%>
           <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02]">
             <div class="flex items-center gap-2">
@@ -106,13 +130,23 @@ defmodule KiteAgentHubWeb.ChatComponent do
               <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Chat</h3>
             </div>
             <div class="flex items-center gap-2">
-              <%= if @agent do %>
+              <%!-- Invite Agents button --%>
+              <%= if @agents != [] do %>
                 <button
-                  phx-click="connect_agent"
+                  phx-click="toggle_invite"
                   phx-target={@myself}
-                  class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest transition-colors"
+                  class={[
+                    "text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-1 px-2 py-1 rounded-lg border",
+                    if(@show_invite,
+                      do: "text-white border-white/20 bg-white/[0.08]",
+                      else: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10"
+                    )
+                  ]}
                 >
-                  + {@agent.name}
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                  </svg>
+                  Invite Agents
                 </button>
               <% end %>
               <button phx-click="toggle_chat" phx-target={@myself} class="text-gray-500 hover:text-white transition-colors">
@@ -121,22 +155,54 @@ defmodule KiteAgentHubWeb.ChatComponent do
             </div>
           </div>
 
+          <%!-- Invite Panel --%>
+          <%= if @show_invite do %>
+            <div class="border-b border-white/10 bg-white/[0.01] px-4 py-3">
+              <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Select an agent to invite</p>
+              <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                <%= for agent <- @agents do %>
+                  <button
+                    phx-click="invite_agent"
+                    phx-value-agent_id={agent.id}
+                    phx-target={@myself}
+                    class="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.01] hover:border-white/20 hover:bg-white/[0.05] transition-all text-left group"
+                  >
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class={[
+                        "w-1.5 h-1.5 rounded-full shrink-0",
+                        case agent.status do
+                          "active" -> "bg-emerald-400"
+                          "pending" -> "bg-yellow-400"
+                          _ -> "bg-gray-500"
+                        end
+                      ]}></span>
+                      <span class="text-xs font-semibold text-white truncate">{agent.name}</span>
+                      <span class={[
+                        "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border shrink-0",
+                        case agent.agent_type do
+                          "trading" -> "text-white border-white/15 bg-white/5"
+                          "research" -> "text-blue-400 border-blue-500/20 bg-blue-500/5"
+                          _ -> "text-purple-400 border-purple-500/20 bg-purple-500/5"
+                        end
+                      ]}>
+                        {String.capitalize(agent.agent_type || "agent")}
+                      </span>
+                    </div>
+                    <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      Invite →
+                    </span>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+
           <%!-- Messages --%>
-          <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3" phx-hook="ScrollBottom">
+          <div id="chat-messages" class="h-[380px] overflow-y-auto px-4 py-3 space-y-3" phx-hook="ScrollBottom">
             <%= if @messages == [] do %>
               <div class="text-center mt-10 space-y-2">
                 <p class="text-gray-600 text-xs">No messages yet.</p>
-                <%= if @agent do %>
-                  <button
-                    phx-click="connect_agent"
-                    phx-target={@myself}
-                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/10 transition-all"
-                  >
-                    Connect {@agent.name}
-                  </button>
-                <% else %>
-                  <p class="text-gray-700 text-[10px]">Select an agent on the dashboard first.</p>
-                <% end %>
+                <p class="text-gray-700 text-[10px]">Use "Invite Agents" to bring agents into this chat.</p>
               </div>
             <% end %>
             <%= for msg <- @messages do %>
@@ -176,7 +242,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
               type="text"
               name="text"
               value={@chat_input}
-              placeholder="Message your agent..."
+              placeholder="Message your agents..."
               autocomplete="off"
               class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-white/20"
             />
