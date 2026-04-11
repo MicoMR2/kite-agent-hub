@@ -276,7 +276,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
   defp agent_type_for_message(_msg, _agents), do: nil
 
-  defp label_color("user", _), do: "text-blue-400"
+  defp label_color("user", _), do: "text-amber-400"
   defp label_color("system", _), do: "text-gray-600"
   defp label_color("agent", "research"), do: "text-blue-400"
   defp label_color("agent", "conversational"), do: "text-purple-400"
@@ -284,7 +284,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
   defp label_color(_, _), do: "text-gray-400"
 
   defp bubble_classes("user", _),
-    do: "bg-blue-500/10 border border-blue-500/20 text-gray-200"
+    do: "bg-amber-500/10 border border-amber-500/20 text-gray-200"
 
   defp bubble_classes("system", _),
     do: "bg-white/[0.02] border border-white/5 text-gray-500 italic"
