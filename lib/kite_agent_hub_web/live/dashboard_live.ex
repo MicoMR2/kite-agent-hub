@@ -679,6 +679,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
               >
                 <.icon name="hero-plus" class="w-3.5 h-3.5" /> New Agent
               </.link>
+              <%!-- Mobile hamburger (hidden on sm+) --%>
+              <button
+                class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/10 bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.07] transition-all"
+                phx-click={JS.toggle(to: "#mobile-nav-drawer")}
+                aria-label="Menu"
+              >
+                <.icon name="hero-bars-3" class="w-5 h-5" />
+              </button>
               <%= if @selected_agent do %>
                 <button
                   phx-click="show_agent_context"
@@ -704,6 +712,45 @@ defmodule KiteAgentHubWeb.DashboardLive do
           </div>
         </div>
 
+        <%!-- Mobile nav drawer (toggle via hamburger, hidden on sm+) --%>
+        <div
+          id="mobile-nav-drawer"
+          class="hidden sm:hidden border-b border-white/10 bg-[#0a0a0f]/95 backdrop-blur-md z-10"
+        >
+          <div class="px-4 py-3 space-y-1">
+            <%= if @block_number do %>
+              <div class="flex items-center gap-3 px-3 py-3 min-h-[44px]">
+                <span class="w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse shrink-0">
+                </span>
+                <span class="text-xs font-mono text-gray-300 tracking-wider">BLOCK {@block_number}</span>
+              </div>
+            <% end %>
+            <%= if @selected_agent do %>
+              <button
+                phx-click={JS.hide(to: "#mobile-nav-drawer") |> JS.push("show_agent_context")}
+                class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-emerald-400 hover:bg-white/[0.05] transition-colors min-h-[44px] text-left"
+              >
+                <.icon name="hero-document-text" class="w-5 h-5 shrink-0" />
+                <span class="text-sm font-semibold">Agent Context</span>
+              </button>
+            <% end %>
+            <.link
+              navigate={~p"/users/settings"}
+              class="flex items-center gap-3 px-3 py-3 rounded-xl text-gray-300 hover:bg-white/[0.05] transition-colors min-h-[44px]"
+            >
+              <.icon name="hero-cog-6-tooth" class="w-5 h-5 shrink-0" />
+              <span class="text-sm font-semibold">Settings</span>
+            </.link>
+            <.link
+              href={~p"/users/log-out"}
+              method="delete"
+              class="flex items-center gap-3 px-3 py-3 rounded-xl text-gray-400 hover:bg-white/[0.05] transition-colors min-h-[44px]"
+            >
+              <.icon name="hero-arrow-right-on-rectangle" class="w-5 h-5 shrink-0" />
+              <span class="text-sm font-semibold">Sign out</span>
+            </.link>
+          </div>
+        </div>
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
           <nav class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="dashboard-tabs">
