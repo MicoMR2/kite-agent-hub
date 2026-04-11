@@ -652,7 +652,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   Kite Agent Hub
                 </span>
                 <span class="text-gray-600 mx-2">|</span>
-                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase">
+                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase hidden sm:inline truncate max-w-[120px] sm:max-w-none">
                   {if @organization, do: @organization.name, else: "No workspace"}
                 </span>
               </div>
@@ -669,7 +669,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <% end %>
               <.link
                 navigate={~p"/trades"}
-                class="text-xs text-gray-400 hover:text-white transition-colors font-semibold uppercase tracking-widest"
+                class="hidden sm:block text-xs text-gray-400 hover:text-white transition-colors font-semibold uppercase tracking-widest"
               >
                 Trades
               </.link>
@@ -682,21 +682,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <%= if @selected_agent do %>
                 <button
                   phx-click="show_agent_context"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 text-xs font-bold uppercase tracking-widest text-emerald-400 hover:text-emerald-300 transition-all"
+                  class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 text-xs font-bold uppercase tracking-widest text-emerald-400 hover:text-emerald-300 transition-all"
                 >
                   <.icon name="hero-document-text" class="w-3.5 h-3.5" /> Agent Context
                 </button>
               <% end %>
               <.link
                 navigate={~p"/users/settings"}
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
+                class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
               >
                 <.icon name="hero-cog-6-tooth" class="w-3.5 h-3.5" /> Settings
               </.link>
               <.link
                 href={~p"/users/log-out"}
                 method="delete"
-                class="text-xs text-gray-500 hover:text-gray-300 transition-colors uppercase font-semibold tracking-widest"
+                class="hidden sm:block text-xs text-gray-500 hover:text-gray-300 transition-colors uppercase font-semibold tracking-widest"
               >
                 Sign out
               </.link>
