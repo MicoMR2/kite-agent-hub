@@ -19,6 +19,7 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
           )
 
         conn
+        |> put_session(:user_return_to, ~p"/agents/new")
         |> put_flash(:info, "Account created! Check your email to confirm and log in.")
         |> redirect(to: ~p"/users/log-in")
 
