@@ -5,11 +5,19 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
   alias KiteAgentHub.Accounts.User
 
   # Delivers the email using the application mailer.
+  # From-address is read from Application env at runtime (set via MAILER_FROM_EMAIL
+  # in runtime.exs) so it can be changed without a code redeploy. Falls back to
+  # Resend's free sandbox address so emails work immediately even before a custom
+  # domain is verified in Resend.
+  defp mailer_from do
+    Application.get_env(:kite_agent_hub, :mailer_from_email, "Kite Agent Hub <onboarding@resend.dev>")
+  end
+
   defp deliver(recipient, subject, body) do
     email =
       new()
       |> to(recipient)
-      |> from({"KiteAgentHub", "contact@example.com"})
+      |> from(mailer_from())
       |> subject(subject)
       |> text_body(body)
 
