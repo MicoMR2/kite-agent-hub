@@ -185,9 +185,9 @@ defmodule KiteAgentHubWeb.TradesLive do
           </div>
         </div>
 
-        <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
+        <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row gap-6">
           <%!-- Agent Sidebar --%>
-          <div class="w-full md:w-48 lg:w-72 shrink-0 space-y-4">
+          <div class="w-full sm:w-40 md:w-48 lg:w-72 shrink-0 space-y-4">
             <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest px-2">
               Agents
             </h2>

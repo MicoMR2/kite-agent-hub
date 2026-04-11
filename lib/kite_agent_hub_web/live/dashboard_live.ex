@@ -639,7 +639,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="min-h-screen bg-[#0a0a0f] text-gray-100">
+      <div id="top" class="min-h-screen bg-[#0a0a0f] text-gray-100">
+        <%!-- Return to top button (mobile only) --%>
+        <a
+          href="#top"
+          class="sm:hidden fixed bottom-5 right-4 z-50 w-10 h-10 rounded-full bg-gray-800/90 border border-white/10 flex items-center justify-center shadow-xl backdrop-blur-sm text-gray-300 hover:text-white hover:bg-gray-700/90 transition-all"
+          aria-label="Back to top"
+        >
+          <.icon name="hero-arrow-up" class="w-5 h-5" />
+        </a>
         <%!-- Top nav bar --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center justify-between">
@@ -675,10 +683,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
               </.link>
               <.link
                 navigate={~p"/agents/new"}
-                class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold transition-all uppercase tracking-widest"
+                class="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold transition-all uppercase tracking-widest"
               >
-                <.icon name="hero-plus" class="w-3.5 h-3.5" /> New Agent
+                <.icon name="hero-plus" class="w-3.5 h-3.5" />
+                <span class="hidden xs:inline">New Agent</span>
               </.link>
+              <%!-- Mobile icon-only nav buttons (visible on mobile, hidden on sm+) --%>
+              <%= if @selected_agent do %>
+                <button
+                  phx-click="show_agent_context"
+                  class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+                  title="Agent Context"
+                >
+                  <.icon name="hero-document-text" class="w-4 h-4" />
+                </button>
+              <% end %>
+              <.link
+                navigate={~p"/users/settings"}
+                class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/5 bg-white/[0.02] text-gray-400"
+                title="Settings"
+              >
+                <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+              </.link>
+              <.link
+                href={~p"/users/log-out"}
+                method="delete"
+                class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/5 bg-white/[0.02] text-gray-500"
+                title="Sign out"
+              >
+                <.icon name="hero-arrow-right-on-rectangle" class="w-4 h-4" />
+              </.link>
+              <%!-- Desktop text nav items (hidden on mobile) --%>
               <%= if @selected_agent do %>
                 <button
                   phx-click="show_agent_context"
@@ -791,9 +826,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <% else %>
           <%!-- ═══════════════ MAIN DASHBOARD ═══════════════ --%>
           <%= if @active_tab == :overview do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row gap-6">
             <%!-- ── Sidebar: Agent List ── --%>
-            <div class="w-full md:w-48 lg:w-72 shrink-0 space-y-4">
+            <div class="w-full sm:w-40 md:w-48 lg:w-72 shrink-0 space-y-4">
               <div class="flex items-center justify-between px-2">
                 <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Agents</h2>
                 <span class="text-xs text-gray-600 font-mono tracking-wider">
@@ -1152,7 +1187,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                   </div>
 
-                  <div id="trades" phx-update="stream" class="divide-y divide-white/5">
+                  <div id="trades" phx-update="stream" class="divide-y divide-white/5 max-h-[480px] sm:max-h-none overflow-y-auto">
                     <div id="trades-empty-state" class="hidden only:flex flex-col items-center justify-center py-20 px-4 text-center">
                       <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center mb-4">
                         <.icon name="hero-chart-bar" class="w-6 h-6 text-gray-600" />
@@ -1269,39 +1304,47 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </code>
                   </div>
 
-                  <%!-- Claude Code / Terminal paste block --%>
-                  <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Option A — Claude Code / Terminal</span>
+                  <%!-- Claude Code / Terminal paste block (collapsible) --%>
+                  <details class="group">
+                    <summary class="flex items-center justify-between cursor-pointer list-none mb-1">
+                      <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
+                        <span class="transition-transform group-open:rotate-90">▶</span>
+                        Option A — Claude Code / Terminal
+                      </span>
                       <button
                         id={"copy-claude-code-#{@selected_agent.id}"}
                         phx-hook="CopyToClipboard"
                         data-text={claude_code_prompt(@selected_agent)}
                         class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
+                        onclick="event.preventDefault()"
                       >
                         Copy
                       </button>
-                    </div>
-                    <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
+                    </summary>
+                    <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto mt-1"><%= claude_code_prompt(@selected_agent) %></pre>
                     <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat.</p>
-                  </div>
+                  </details>
 
-                  <%!-- Claude Desktop MCP config --%>
-                  <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Option B — Claude Desktop (MCP)</span>
+                  <%!-- Claude Desktop MCP config (collapsible) --%>
+                  <details class="group">
+                    <summary class="flex items-center justify-between cursor-pointer list-none mb-1">
+                      <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1">
+                        <span class="transition-transform group-open:rotate-90">▶</span>
+                        Option B — Claude Desktop (MCP)
+                      </span>
                       <button
                         id={"copy-mcp-#{@selected_agent.id}"}
                         phx-hook="CopyToClipboard"
                         data-text={mcp_config_json(@selected_agent)}
                         class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                        onclick="event.preventDefault()"
                       >
                         Copy
                       </button>
-                    </div>
-                    <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-36 sm:max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
+                    </summary>
+                    <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-36 sm:max-h-40 overflow-y-auto mt-1"><%= mcp_config_json(@selected_agent) %></pre>
                     <p class="text-[10px] text-gray-600 mt-1">Add to claude_desktop_config.json, then restart Claude Desktop.</p>
-                  </div>
+                  </details>
                 </div>
             </div>
           </div>
