@@ -1976,6 +1976,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
           org_id={@organization.id}
           user={@current_scope.user}
           agent={@selected_agent}
+          agents={@agents}
         />
       <% end %>
     </Layouts.app>
