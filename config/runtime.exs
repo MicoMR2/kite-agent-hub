@@ -115,6 +115,13 @@ if config_env() == :prod do
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
 
+  # From-address for outbound email. Set MAILER_FROM_EMAIL to override.
+  # Example: fly secrets set MAILER_FROM_EMAIL="Kite Agent Hub <support@yourdomain.com>"
+  # Defaults to Resend's free sandbox sender (works without custom domain verification).
+  if from_email = System.get_env("MAILER_FROM_EMAIL") do
+    config :kite_agent_hub, mailer_from_email: from_email
+  end
+
   # Mailer — Resend adapter via Swoosh.
   # Swoosh 1.16 ships Swoosh.Adapters.Resend — no extra dependency.
   # Set RESEND_API_KEY via: fly secrets set RESEND_API_KEY=re_...
