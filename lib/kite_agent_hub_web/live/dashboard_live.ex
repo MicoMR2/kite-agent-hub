@@ -684,7 +684,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 phx-click={JS.toggle(to: "#mobile-nav-drawer")}
                 aria-label="Menu"
               >
-                <.icon name="hero-bars-3" class="w-5 h-5" />
+                <.icon name="hero-cog-6-tooth" class="w-5 h-5" />
               </button>
               <%= if @selected_agent do %>
                 <button
@@ -993,7 +993,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]",
                         Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
                       ]}>
-                        {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${@pnl_stats.total_pnl}
+                        {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(@pnl_stats.total_pnl, 4)}
                       </p>
                       <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
                         {@pnl_stats.trade_count} Settled Trades
@@ -1268,7 +1268,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
                               Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
                             ]}>
-                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${trade.realized_pnl}
+                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${Decimal.round(trade.realized_pnl, 4)}
                             </p>
                           <% end %>
                           <%!-- PR #101: Kite chain attestation receipt. Every settled
