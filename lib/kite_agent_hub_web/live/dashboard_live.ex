@@ -791,9 +791,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <% else %>
           <%!-- ═══════════════ MAIN DASHBOARD ═══════════════ --%>
           <%= if @active_tab == :overview do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
             <%!-- ── Sidebar: Agent List ── --%>
-            <div class="w-full lg:w-72 shrink-0 space-y-4">
+            <div class="w-full md:w-48 lg:w-72 shrink-0 space-y-4">
               <div class="flex items-center justify-between px-2">
                 <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Agents</h2>
                 <span class="text-xs text-gray-600 font-mono tracking-wider">
@@ -932,7 +932,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
 
                 <%!-- Stats row --%>
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                   <%!-- Realized P&L --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 relative overflow-hidden group">
                     <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
@@ -1683,19 +1683,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Symbol", "Side", "Qty", "Avg Entry", "Current", "P&L"] do %>
-                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-4 py-3 font-black text-white">{p.symbol}</td>
-                              <td class="px-4 py-3 text-gray-400">{p.side}</td>
-                              <td class="px-4 py-3 tabular-nums text-gray-300">{p.qty}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}</td>
-                              <td class={"px-4 py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">{p.symbol}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-gray-400">{p.side}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">{p.qty}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}</td>
+                              <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(p.unrealized_pl || 0.0), decimals: 2)}
                               </td>
                             </tr>
@@ -1718,20 +1718,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Symbol", "Side", "Qty", "Fill Price", "Time"] do %>
-                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for o <- data.orders do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-4 py-3 font-black text-white">{o.symbol}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">{o.symbol}</td>
                               <td class="px-4 py-3">
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", o.side == "buy" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", o.side == "sell" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{o.side}</span>
                               </td>
-                              <td class="px-4 py-3 tabular-nums text-gray-300 font-mono">{o.filled_qty}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{if o.filled_avg_price, do: "$#{:erlang.float_to_binary(o.filled_avg_price, decimals: 2)}", else: "—"}</td>
-                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">{o.filled_qty}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">{if o.filled_avg_price, do: "$#{:erlang.float_to_binary(o.filled_avg_price, decimals: 2)}", else: "—"}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if o.submitted_at do %>
                                   <span id={"alpaca-order-time-#{o.id || o.symbol}"} phx-hook="LocalTime" data-iso={o.submitted_at} data-format="datetime">
                                     {String.slice(o.submitted_at, 0, 16) |> String.replace("T", " ")}
@@ -1838,21 +1838,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Market", "Side", "Contracts", "Avg Price", "Current", "Value"] do %>
-                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-4 py-3 text-white text-xs font-mono">{p.title}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono">{p.title}</td>
                               <td class="px-4 py-3">
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", p.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{p.side}</span>
                               </td>
-                              <td class="px-4 py-3 tabular-nums text-gray-300">{p.contracts}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-400">{:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(p.current_price * 100, decimals: 0)}¢</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-white">${:erlang.float_to_binary(p.value, decimals: 2)}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">{p.contracts}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">{:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(p.current_price * 100, decimals: 0)}¢</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-white">${:erlang.float_to_binary(p.value, decimals: 2)}</td>
                             </tr>
                           <% end %>
                         </tbody>
@@ -1873,23 +1873,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Market", "Side", "Action", "Contracts", "Price", "Time"] do %>
-                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for f <- Enum.take(data.fills, 10) do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-4 py-3 font-black text-white text-xs font-mono">{f.ticker}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">{f.ticker}</td>
                               <td class="px-4 py-3">
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", f.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", f.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{f.side}</span>
                               </td>
                               <td class="px-4 py-3">
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", f.action == "buy" && "text-blue-400 border-blue-500/20 bg-blue-500/10", f.action == "sell" && "text-orange-400 border-orange-500/20 bg-orange-500/10"]}>{f.action}</span>
                               </td>
-                              <td class="px-4 py-3 tabular-nums text-gray-300 font-mono">{f.count}</td>
-                              <td class="px-4 py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(f.price * 100, decimals: 0)}¢</td>
-                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">{f.count}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(f.price * 100, decimals: 0)}¢</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if f.created_time do %>
                                   <span id={"kalshi-fill-time-#{f.trade_id || f.ticker}"} phx-hook="LocalTime" data-iso={f.created_time} data-format="datetime">
                                     {String.slice(f.created_time, 0, 16) |> String.replace("T", " ")}
@@ -1913,21 +1913,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Market", "Result", "Revenue", "Settled"] do %>
-                              <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for s <- Enum.take(data.settlements, 10) do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-4 py-3 font-black text-white text-xs font-mono">{s.ticker}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">{s.ticker}</td>
                               <td class="px-4 py-3">
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", s.market_result == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", s.market_result == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{s.market_result || "—"}</span>
                               </td>
-                              <td class={"px-4 py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
+                              <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(s.revenue), decimals: 2)}
                               </td>
-                              <td class="px-4 py-3 text-[10px] text-gray-500 font-mono">
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if s.settled_time do %>
                                   <span id={"kalshi-settle-time-#{s.ticker}"} phx-hook="LocalTime" data-iso={s.settled_time} data-format="datetime">
                                     {String.slice(s.settled_time, 0, 16) |> String.replace("T", " ")}
