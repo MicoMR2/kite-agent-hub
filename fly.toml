@@ -9,7 +9,7 @@ kill_timeout = "5s"
   release_command = "/app/bin/migrate"
 
 [env]
-  PHX_HOST = "kite-agent-hub.fly.dev"
+  PHX_HOST = "kiteagenthub.com"
   PORT = "8080"
   ECTO_IPV6 = "true"
   PHX_SERVER = "true"
