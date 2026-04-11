@@ -651,8 +651,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <span class="text-sm font-black text-white tracking-tight uppercase">
                   Kite Agent Hub
                 </span>
-                <span class="text-gray-600 mx-2">|</span>
-                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase hidden sm:inline truncate max-w-[120px] sm:max-w-none">
+                <span class="text-xs text-gray-400 font-mono tracking-widest uppercase hidden sm:inline truncate max-w-[120px] sm:max-w-none ml-2">
                   {if @organization, do: @organization.name, else: "No workspace"}
                 </span>
               </div>
@@ -679,13 +678,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
               >
                 <.icon name="hero-plus" class="w-3.5 h-3.5" /> New Agent
               </.link>
-              <%!-- Mobile hamburger (hidden on sm+) --%>
+              <%!-- Mobile menu button (hidden on sm+) --%>
               <button
-                class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-white/10 bg-white/[0.03] text-gray-400 hover:text-white hover:bg-white/[0.07] transition-all"
+                class="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-white/20 bg-white/[0.07] text-gray-300 hover:text-white hover:bg-white/[0.12] transition-all"
                 phx-click={JS.toggle(to: "#mobile-nav-drawer")}
                 aria-label="Menu"
               >
-                <.icon name="hero-bars-3" class="w-5 h-5" />
+                <.icon name="hero-cog-6-tooth" class="w-5 h-5" />
               </button>
               <%= if @selected_agent do %>
                 <button
@@ -994,7 +993,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]",
                         Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
                       ]}>
-                        {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${@pnl_stats.total_pnl}
+                        {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(@pnl_stats.total_pnl, 4)}
                       </p>
                       <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
                         {@pnl_stats.trade_count} Settled Trades
@@ -1269,7 +1268,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
                               Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
                             ]}>
-                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${trade.realized_pnl}
+                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${Decimal.round(trade.realized_pnl, 4)}
                             </p>
                           <% end %>
                           <%!-- PR #101: Kite chain attestation receipt. Every settled
