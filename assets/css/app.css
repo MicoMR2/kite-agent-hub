@@ -109,3 +109,19 @@
 @source inline("bg-stone-500 border-stone-400 text-stone-200");
 
 /* This file is for your main application CSS */
+
+/* Delay LiveView reconnect banners by 2s so the ~1s live_session boundary
+   transition (public → authenticated) never triggers a visible flash.
+   Banners only appear for genuine outages lasting longer than 2 seconds. */
+#client-error,
+#server-error {
+  opacity: 0;
+  transition-property: opacity;
+  transition-duration: 200ms;
+  transition-delay: 2000ms;
+}
+
+.phx-client-error #client-error,
+.phx-server-error #server-error {
+  opacity: 1;
+}
