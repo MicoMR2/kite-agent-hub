@@ -48,10 +48,12 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
 
   def handle_event("review", %{"kite_agent" => params}, socket) do
     agent_type = Map.get(params, "agent_type", socket.assigns.agent_type)
+    org = socket.assigns.organization
+    params_with_org = if org, do: Map.put(params, "organization_id", org.id), else: params
 
     changeset =
       %KiteAgent{}
-      |> KiteAgent.changeset(params)
+      |> KiteAgent.changeset(params_with_org)
       |> Map.put(:action, :validate)
 
     form = to_form(changeset)
