@@ -110,7 +110,8 @@ defmodule KiteAgentHub.Accounts.User do
   end
 
   @doc """
-  Direct registration changeset — email + password, auto-confirmed (no email required).
+  Registration changeset — email + password. confirmed_at is left nil so a
+  confirmation email is sent before the user can log in.
   """
   def registration_changeset(user, attrs, opts \\ []) do
     user
@@ -118,7 +119,6 @@ defmodule KiteAgentHub.Accounts.User do
     |> validate_email(opts)
     |> validate_confirmation(:password, message: "does not match password")
     |> validate_password(opts)
-    |> put_change(:confirmed_at, DateTime.utc_now(:second))
   end
 
   @doc """

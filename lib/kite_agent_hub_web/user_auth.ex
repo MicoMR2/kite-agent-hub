@@ -69,8 +69,19 @@ defmodule KiteAgentHubWeb.UserAuth do
 
   Redirects to the session's `:user_return_to` path
   or falls back to the `signed_in_path/1`.
+
+  Blocks login for unconfirmed users — they must click the confirmation link
+  emailed at registration before a session is issued.
   """
-  def log_in_user(conn, user, params \\ %{}) do
+  def log_in_user(conn, user, params \\ %{})
+
+  def log_in_user(conn, %{confirmed_at: nil}, _params) do
+    conn
+    |> put_flash(:error, "Please confirm your email before logging in.")
+    |> redirect(to: ~p"/users/log-in")
+  end
+
+  def log_in_user(conn, user, params) do
     user_return_to = get_session(conn, :user_return_to)
 
     conn
