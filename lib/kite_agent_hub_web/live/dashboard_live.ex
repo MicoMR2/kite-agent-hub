@@ -847,13 +847,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       ]}>
                         {agent.status}
                       </span>
-                      <%= if agent.agent_type && agent.agent_type != "trading" do %>
+                      <%= if agent.agent_type do %>
                         <span class={[
                           "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
-                          if(agent.agent_type == "research",
-                            do: "bg-blue-500/10 border-blue-500/20 text-blue-400",
-                            else: "bg-purple-500/10 border-purple-500/20 text-purple-400"
-                          )
+                          case agent.agent_type do
+                            "trading" -> "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                            "research" -> "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                            _ -> "bg-purple-500/10 border-purple-500/20 text-purple-400"
+                          end
                         ]}>
                           {agent.agent_type}
                         </span>
