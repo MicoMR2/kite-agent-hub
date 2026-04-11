@@ -206,18 +206,15 @@ defmodule KiteAgentHubWeb.ChatComponent do
               </div>
             <% end %>
             <%= for msg <- @messages do %>
-              <div class={["flex flex-col", msg.sender_type == "user" && "items-end"]}>
+              <% agent_type = agent_type_for_message(msg, @agents) %>
+              <div class={["flex flex-col min-w-0", msg.sender_type == "user" && "items-end"]}>
                 <span class={[
                   "text-[10px] font-bold uppercase tracking-widest mb-0.5",
-                  msg.sender_type == "user" && "text-blue-400",
-                  msg.sender_type == "agent" && "text-emerald-400",
-                  msg.sender_type == "system" && "text-gray-600"
+                  label_color(msg.sender_type, agent_type)
                 ]}>{msg.sender_name}</span>
                 <div class={[
-                  "max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed",
-                  msg.sender_type == "user" && "bg-blue-500/10 border border-blue-500/20 text-gray-200",
-                  msg.sender_type == "agent" && "bg-emerald-500/10 border border-emerald-500/20 text-gray-200",
-                  msg.sender_type == "system" && "bg-white/[0.02] border border-white/5 text-gray-500 italic"
+                  "max-w-[85%] min-w-0 rounded-xl px-3 py-2 text-xs leading-relaxed break-words overflow-hidden",
+                  bubble_classes(msg.sender_type, agent_type)
                 ]}>
                   {msg.text}
                 </div>
@@ -258,4 +255,49 @@ defmodule KiteAgentHubWeb.ChatComponent do
     </div>
     """
   end
+
+  # Look up the agent_type for a given chat message. Prefers the
+  # FK (`kite_agent_id`), then falls back to matching by sender_name
+  # so older messages written before the FK was populated still color
+  # correctly. Returns nil for user/system messages or unknown agents.
+  defp agent_type_for_message(%{sender_type: "agent"} = msg, agents) when is_list(agents) do
+    by_id =
+      case Map.get(msg, :kite_agent_id) do
+        nil -> nil
+        id -> Enum.find(agents, &(&1.id == id))
+      end
+
+    agent =
+      by_id ||
+        Enum.find(agents, fn a -> a.name == msg.sender_name end)
+
+    agent && (agent.agent_type || "trading")
+  end
+
+  defp agent_type_for_message(_msg, _agents), do: nil
+
+  defp label_color("user", _), do: "text-blue-400"
+  defp label_color("system", _), do: "text-gray-600"
+  defp label_color("agent", "research"), do: "text-blue-400"
+  defp label_color("agent", "conversational"), do: "text-purple-400"
+  defp label_color("agent", _), do: "text-emerald-400"
+  defp label_color(_, _), do: "text-gray-400"
+
+  defp bubble_classes("user", _),
+    do: "bg-blue-500/10 border border-blue-500/20 text-gray-200"
+
+  defp bubble_classes("system", _),
+    do: "bg-white/[0.02] border border-white/5 text-gray-500 italic"
+
+  defp bubble_classes("agent", "research"),
+    do: "bg-blue-500/10 border border-blue-500/20 text-gray-200"
+
+  defp bubble_classes("agent", "conversational"),
+    do: "bg-purple-500/10 border border-purple-500/20 text-gray-200"
+
+  defp bubble_classes("agent", _),
+    do: "bg-emerald-500/10 border border-emerald-500/20 text-gray-200"
+
+  defp bubble_classes(_, _),
+    do: "bg-white/[0.02] border border-white/5 text-gray-400"
 end
