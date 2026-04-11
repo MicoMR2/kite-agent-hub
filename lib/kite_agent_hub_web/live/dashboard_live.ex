@@ -706,14 +706,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
-          <nav class="flex gap-1" id="dashboard-tabs">
+          <nav class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="dashboard-tabs">
             <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
                 phx-value-tab={tab_key}
                 class={[
-                  "px-4 py-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2",
+                  "px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all border-b-2 whitespace-nowrap",
                   if(@active_tab == String.to_atom(tab_key),
                     do: "border-[#22c55e] text-white",
                     else: "border-transparent text-gray-500 hover:text-gray-300"
@@ -1282,7 +1282,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Copy
                       </button>
                     </div>
-                    <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
+                    <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
                     <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat.</p>
                   </div>
 
@@ -1299,7 +1299,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Copy
                       </button>
                     </div>
-                    <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
+                    <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-36 sm:max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
                     <p class="text-[10px] text-gray-600 mt-1">Add to claude_desktop_config.json, then restart Claude Desktop.</p>
                   </div>
                 </div>
