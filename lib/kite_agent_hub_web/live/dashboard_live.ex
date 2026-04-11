@@ -1082,8 +1082,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 </div>
 
-                <%!-- Vault Activation Banner --%>
-                <%= if @selected_agent.status == "pending" do %>
+                <%!-- Vault Activation Banner (trading agents only) --%>
+                <%= if @selected_agent.status == "pending" and (@selected_agent.agent_type == "trading" or is_nil(@selected_agent.agent_type)) do %>
                   <div class="rounded-2xl border border-gray-600/30 bg-gray-600/5 p-6 backdrop-blur-md">
                     <div class="flex flex-col md:flex-row items-start md:items-center gap-6">
                       <div class="h-12 w-12 rounded-xl border border-gray-500/30 bg-gray-500/10 flex items-center justify-center shrink-0">

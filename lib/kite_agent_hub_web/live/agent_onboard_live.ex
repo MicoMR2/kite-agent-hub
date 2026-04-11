@@ -10,7 +10,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
     orgs = Orgs.list_orgs_for_user(user.id)
     org = List.first(orgs)
 
-    form = to_form(KiteAgent.changeset(%KiteAgent{}, %{"agent_type" => "trading"}))
+    form = build_form(%{"agent_type" => "trading"}, org)
 
     {:ok,
      assign(socket,
@@ -22,26 +22,19 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
   end
 
   @impl true
-  def handle_event("select_type", %{"type" => type}, socket) when type in ~w(trading research conversational) do
-    params = %{"agent_type" => type, "name" => get_field_value(socket.assigns.form, :name)}
-
-    form =
-      %KiteAgent{}
-      |> KiteAgent.changeset(params)
-      |> Map.put(:action, :validate)
-      |> to_form()
+  def handle_event("select_type", %{"type" => type}, socket)
+      when type in ~w(trading research conversational) do
+    # Preserve whatever the user has typed; just swap the agent_type.
+    prior_params = current_form_params(socket)
+    params = Map.put(prior_params, "agent_type", type)
+    form = build_form(params, socket.assigns.organization)
 
     {:noreply, assign(socket, agent_type: type, form: form)}
   end
 
   def handle_event("validate", %{"kite_agent" => params}, socket) do
     agent_type = Map.get(params, "agent_type", socket.assigns.agent_type)
-
-    form =
-      %KiteAgent{}
-      |> KiteAgent.changeset(params)
-      |> Map.put(:action, :validate)
-      |> to_form()
+    form = build_form(params, socket.assigns.organization)
 
     {:noreply, assign(socket, form: form, agent_type: agent_type)}
   end
@@ -49,19 +42,25 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
   def handle_event("review", %{"kite_agent" => params}, socket) do
     agent_type = Map.get(params, "agent_type", socket.assigns.agent_type)
     org = socket.assigns.organization
-    params_with_org = if org, do: Map.put(params, "organization_id", org.id), else: params
 
-    changeset =
-      %KiteAgent{}
-      |> KiteAgent.changeset(params_with_org)
-      |> Map.put(:action, :validate)
+    changeset = changeset_with_org(params, org)
+    form = to_form(Map.put(changeset, :action, :validate))
 
-    form = to_form(changeset)
+    cond do
+      is_nil(org) ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "No workspace found. Create one first.")
+         |> assign(form: form, agent_type: agent_type, step: :configure)}
 
-    if changeset.valid? do
-      {:noreply, assign(socket, form: form, agent_type: agent_type, step: :confirm)}
-    else
-      {:noreply, assign(socket, form: form, agent_type: agent_type, step: :configure)}
+      changeset.valid? ->
+        {:noreply, assign(socket, form: form, agent_type: agent_type, step: :confirm)}
+
+      true ->
+        {:noreply,
+         socket
+         |> put_flash(:error, review_error_message(changeset))
+         |> assign(form: form, agent_type: agent_type, step: :configure)}
     end
   end
 
@@ -77,25 +76,63 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
         socket.assigns.form.params
         |> Map.put("organization_id", org.id)
         |> Map.put("agent_type", socket.assigns.agent_type)
+        |> Map.put("status", initial_status(socket.assigns.agent_type))
 
       case Trading.create_agent(params) do
         {:ok, agent} ->
           {:noreply,
            socket
-           |> put_flash(:info, "#{agent.name} created. Ready to deploy.")
+           |> put_flash(:info, "#{agent.name} created.")
            |> push_navigate(to: ~p"/dashboard?agent_id=#{agent.id}")}
 
         {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset), step: :configure)}
+          {:noreply,
+           socket
+           |> put_flash(:error, review_error_message(changeset))
+           |> assign(form: to_form(changeset), step: :configure)}
       end
     else
       {:noreply, put_flash(socket, :error, "No workspace found. Create one first.")}
     end
   end
 
-  defp get_field_value(form, field) do
-    Phoenix.HTML.Form.input_value(form, field) || ""
+  # --- helpers ---
+
+  defp build_form(params, org) do
+    params
+    |> changeset_with_org(org)
+    |> Map.put(:action, :validate)
+    |> to_form()
   end
+
+  defp changeset_with_org(params, nil), do: KiteAgent.changeset(%KiteAgent{}, params)
+
+  defp changeset_with_org(params, org) do
+    KiteAgent.changeset(%KiteAgent{}, Map.put(params, "organization_id", org.id))
+  end
+
+  defp current_form_params(socket) do
+    form = socket.assigns.form
+
+    %{
+      "name" => Phoenix.HTML.Form.input_value(form, :name) || "",
+      "wallet_address" => Phoenix.HTML.Form.input_value(form, :wallet_address) || ""
+    }
+  end
+
+  defp initial_status("trading"), do: "pending"
+  defp initial_status(_), do: "active"
+
+  defp review_error_message(changeset) do
+    case changeset.errors do
+      [{field, {msg, _}} | _] -> "#{humanize_field(field)} #{msg}"
+      _ -> "Please fix the errors below."
+    end
+  end
+
+  defp humanize_field(:wallet_address), do: "Wallet address"
+  defp humanize_field(:organization_id), do: "Workspace"
+  defp humanize_field(field), do: field |> Atom.to_string() |> String.capitalize()
 
   @impl true
   def render(assigns) do
@@ -221,7 +258,6 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                         end
                       }
                       spellcheck="false"
-                      required
                       class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                     />
                     <%= for {msg, _} <- @form[:name].errors do %>
@@ -449,7 +485,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                   <div class="pb-8">
                     <p class="text-sm font-bold text-white">Copy the system prompt</p>
                     <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      From the dashboard, copy your agent's system prompt and paste it into Claude or your LLM of choice.
+                      On the dashboard, click the <span class="text-emerald-400 font-semibold">Agent Context</span> button to reveal the system prompt. Paste it into Claude or your LLM.
                     </p>
                   </div>
                 </div>
