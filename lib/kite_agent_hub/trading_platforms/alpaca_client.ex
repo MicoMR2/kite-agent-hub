@@ -115,6 +115,18 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   or {:error, reason}. Empty list if Alpaca returns no bars.
   """
   def bars(key_id, secret, symbol, timeframe \\ "1Day", limit \\ 50) do
+    bars_with_retry(key_id, secret, symbol, timeframe, limit, 0)
+  end
+
+  # Alpaca's free tier caps the data API at 200 req/min. Under a burst
+  # of batch scoring, a single 429 would fail the whole ticker. Retry
+  # up to 2 times honoring Retry-After (capped at 10s so we don't hang
+  # the caller). After that, surface the 429 so the caller can serialize
+  # or back off at a higher level.
+  @max_bars_retries 2
+  @max_retry_after_ms 10_000
+
+  defp bars_with_retry(key_id, secret, symbol, timeframe, limit, attempt) do
     require Logger
 
     path = "/v2/stocks/#{symbol}/bars?timeframe=#{timeframe}&limit=#{limit}"
@@ -136,6 +148,20 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
         Logger.warning("Alpaca data API: 401 for #{symbol}")
         {:error, :unauthorized}
 
+      {:ok, %{status: 429, headers: resp_headers}} when attempt < @max_bars_retries ->
+        wait_ms = parse_retry_after(resp_headers, attempt)
+
+        Logger.info(
+          "Alpaca data API: 429 for #{symbol}, sleeping #{wait_ms}ms (attempt #{attempt + 1}/#{@max_bars_retries})"
+        )
+
+        Process.sleep(wait_ms)
+        bars_with_retry(key_id, secret, symbol, timeframe, limit, attempt + 1)
+
+      {:ok, %{status: 429}} ->
+        Logger.warning("Alpaca data API: 429 for #{symbol}, retries exhausted")
+        {:error, :rate_limited}
+
       {:ok, %{status: status}} ->
         Logger.warning("Alpaca data API: HTTP #{status} for #{symbol}")
         {:error, "alpaca data #{status}"}
@@ -145,6 +171,47 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
         {:error, "alpaca data HTTP: #{inspect(reason)}"}
     end
   end
+
+  # Retry-After can be a decimal-seconds string or an HTTP-date. Alpaca
+  # sends seconds. Fall back to exponential backoff (1s, 2s) if the
+  # header is missing or unparseable.
+  defp parse_retry_after(headers, attempt) do
+    raw =
+      Enum.find_value(headers, fn
+        {"retry-after", v} -> v
+        {"Retry-After", v} -> v
+        _ -> nil
+      end)
+
+    seconds =
+      case raw do
+        nil ->
+          nil
+
+        v when is_list(v) ->
+          v |> List.first() |> parse_retry_after_value()
+
+        v when is_binary(v) ->
+          parse_retry_after_value(v)
+
+        _ ->
+          nil
+      end
+
+    case seconds do
+      n when is_number(n) and n > 0 -> min(trunc(n * 1000), @max_retry_after_ms)
+      _ -> min((attempt + 1) * 1000, @max_retry_after_ms)
+    end
+  end
+
+  defp parse_retry_after_value(v) when is_binary(v) do
+    case Float.parse(v) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
+
+  defp parse_retry_after_value(_), do: nil
 
   defp parse_bar(b) do
     %{
