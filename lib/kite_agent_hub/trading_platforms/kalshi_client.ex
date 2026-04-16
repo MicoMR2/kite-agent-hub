@@ -45,6 +45,28 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     end
   end
 
+  @doc """
+  List Kalshi markets filtered by status. Used by the market-scan
+  endpoint to surface NEW contracts above a score threshold.
+
+  `status` default is `"open"`. `limit` 1..1000 (Kalshi caps at 1000).
+  Returns raw market maps (not parsed to a fixed shape) so the scorer
+  can pick whichever fields it needs without a second pass.
+  """
+  def list_markets(key_id, pem, opts \\ []) do
+    status = Keyword.get(opts, :status, "open")
+    limit = Keyword.get(opts, :limit, 200)
+    env = Keyword.get(opts, :env, "paper")
+
+    path = "/markets?status=#{status}&limit=#{limit}"
+
+    case get(path, key_id, pem, env) do
+      {:ok, %{"markets" => list}} when is_list(list) -> {:ok, list}
+      {:ok, _} -> {:ok, []}
+      err -> err
+    end
+  end
+
   @doc "Fetch open positions. Returns list of position maps."
   def positions(key_id, pem, env \\ "paper") do
     case get("/portfolio/positions?limit=50", key_id, pem, env) do
