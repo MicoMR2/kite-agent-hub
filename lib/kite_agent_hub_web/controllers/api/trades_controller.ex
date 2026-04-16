@@ -14,17 +14,20 @@ defmodule KiteAgentHubWeb.API.TradesController do
   only the secret api_token is accepted.
 
   Endpoints:
-    POST /api/v1/trades        — enqueue a trade signal
-    GET  /api/v1/trades        — list trades for the authenticated agent
-    GET  /api/v1/trades/:id    — get a single trade
-    GET  /api/v1/agents/me     — get agent info + P&L stats
+    POST   /api/v1/trades        — enqueue a trade signal
+    GET    /api/v1/trades        — list trades for the authenticated agent
+    GET    /api/v1/trades/:id    — get a single trade
+    DELETE /api/v1/trades/:id    — cancel an open trade (agent-owned only)
+    GET    /api/v1/agents/me     — get agent info + P&L stats
   """
 
   use KiteAgentHubWeb, :controller
 
   require Logger
 
+  alias KiteAgentHub.Credentials
   alias KiteAgentHub.Trading
+  alias KiteAgentHub.TradingPlatforms.AlpacaClient
   alias KiteAgentHub.Workers.TradeExecutionWorker
 
   # ── POST /api/v1/trades ───────────────────────────────────────────────────────
@@ -87,6 +90,78 @@ defmodule KiteAgentHubWeb.API.TradesController do
         conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
     end
   end
+
+  # ── DELETE /api/v1/trades/:id ─────────────────────────────────────────────────
+
+  @doc """
+  Cancel an open trade. The calling agent must own the trade (enforced
+  by `Trading.cancel_trade/2` which returns `:not_found` for anyone
+  else — we do not leak existence across agents).
+
+  Idempotent: cancelling a trade that is already in a terminal state
+  returns 200 with `already_terminal: true` instead of flipping the
+  status again. This lets the agent safely retry on network blips.
+
+  For Alpaca trades, we ALSO forward the cancel to Alpaca
+  (`DELETE /v2/orders/{platform_order_id}`) so the order leaves the
+  broker book — otherwise a ghost open order keeps blocking the
+  ticker via wash-trade rules even after the DB row flips.
+  """
+  def cancel(conn, %{"id" => id}) do
+    with {:ok, agent} <- authenticate(conn) do
+      case Trading.cancel_trade(id, agent.id) do
+        {:ok, trade} ->
+          maybe_cancel_on_broker(trade, agent)
+
+          conn
+          |> json(%{ok: true, trade: serialize_trade(trade), already_terminal: false})
+
+        {:ok, :already_terminal, trade} ->
+          conn
+          |> json(%{ok: true, trade: serialize_trade(trade), already_terminal: true})
+
+        {:error, :not_found} ->
+          conn |> put_status(:not_found) |> json(%{ok: false, error: "not found"})
+
+        {:error, _changeset} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{ok: false, error: "failed to cancel"})
+      end
+    else
+      {:error, :unauthorized} ->
+        conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
+    end
+  end
+
+  # Fire-and-log Alpaca cancel. We don't fail the hub-side cancel if the
+  # broker rejects — the DB row is already flipped and the sweep path
+  # treats broker 422/404 as idempotent. We do log every outcome so a
+  # stuck broker order shows up clearly in the logs.
+  defp maybe_cancel_on_broker(%{platform: "alpaca", platform_order_id: order_id}, agent)
+       when is_binary(order_id) do
+    case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
+      {:ok, {key_id, secret, env}} ->
+        case AlpacaClient.cancel_order(key_id, secret, order_id, env) do
+          {:ok, result} ->
+            Logger.info(
+              "TradesController: alpaca cancel #{order_id} ok (#{inspect(result)})"
+            )
+
+          {:error, reason} ->
+            Logger.warning(
+              "TradesController: alpaca cancel #{order_id} failed: #{inspect(reason)}"
+            )
+        end
+
+      {:error, reason} ->
+        Logger.warning(
+          "TradesController: alpaca cancel skipped — credentials unavailable: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp maybe_cancel_on_broker(_trade, _agent), do: :ok
 
   # ── GET /api/v1/agents/me ─────────────────────────────────────────────────────
 
