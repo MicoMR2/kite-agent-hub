@@ -78,7 +78,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   require Logger
 
   alias KiteAgentHub.Repo
-  alias KiteAgentHub.Trading.TradeRecord
+  alias KiteAgentHub.Trading.{KiteAgent, TradeRecord}
   alias KiteAgentHub.Kite.{RPC, TxSigner}
 
   # PR #106: switched from ERC-20 USDT transfer to NATIVE KITE transfer.
@@ -125,10 +125,41 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
         {:snooze, 30}
 
       %TradeRecord{} = trade ->
-        Logger.info("KiteAttestationWorker: trade #{trade.id} starting attestation")
-        attest(trade)
+        # Explicit guard before signing (CyberSec msg 6430, 6433): only
+        # trading agents with a configured wallet attest on-chain.
+        # Research / conversational agents (and trading agents whose
+        # wallet column is still null) skip cleanly — attempting a
+        # transfer with no wallet would either crash or send to the
+        # zero address, both strictly worse than a no-op.
+        case agent_for(trade) do
+          %KiteAgent{agent_type: "trading", wallet_address: wallet}
+          when is_binary(wallet) and wallet != "" ->
+            Logger.info("KiteAttestationWorker: trade #{trade.id} starting attestation")
+            attest(trade)
+
+          %KiteAgent{} = agent ->
+            Logger.info(
+              "KiteAttestationWorker: trade #{trade.id} skipped — agent #{agent.id} not wallet-capable (type=#{agent.agent_type}, wallet=#{inspect(agent.wallet_address)})"
+            )
+
+            :ok
+
+          nil ->
+            Logger.warning(
+              "KiteAttestationWorker: trade #{trade.id} skipped — agent not found"
+            )
+
+            :ok
+        end
     end
   end
+
+  # SECURITY DEFINER-equivalent: attestation runs from Oban without a
+  # user RLS scope, so use a direct Repo.get (the worker pool already
+  # has unrestricted read access to kite_agents for this exact use
+  # case — same pattern as active_agents_with_owners).
+  defp agent_for(%TradeRecord{kite_agent_id: nil}), do: nil
+  defp agent_for(%TradeRecord{kite_agent_id: id}), do: Repo.get(KiteAgent, id)
 
   defp attest(trade) do
     # PR #104: removed `fetch_agent` + `ensure_wallet` from the with chain.
