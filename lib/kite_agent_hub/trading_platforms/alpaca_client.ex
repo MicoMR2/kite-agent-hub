@@ -66,7 +66,19 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   Each order: %{id, symbol, side, qty, filled_qty, filled_avg_price, status, submitted_at}
   """
   def orders(key_id, secret, limit \\ 20, env \\ "paper") do
-    case get("/v2/orders?status=filled&limit=#{limit}&direction=desc", key_id, secret, env) do
+    list_orders(key_id, secret, "filled", limit, env)
+  end
+
+  @doc """
+  Fetch orders filtered by status ("open", "closed", "all", or any
+  Alpaca-supported status). Used by `/api/v1/broker/orders` to surface
+  live open broker orders so agents can catch ghost orders BEFORE
+  queueing a same-symbol entry and hitting a wash-block.
+  """
+  def list_orders(key_id, secret, status \\ "open", limit \\ 50, env \\ "paper") do
+    path = "/v2/orders?status=#{status}&limit=#{limit}&direction=desc"
+
+    case get(path, key_id, secret, env) do
       {:ok, list} when is_list(list) -> {:ok, Enum.map(list, &parse_order/1)}
       {:ok, _} -> {:ok, []}
       err -> err

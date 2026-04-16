@@ -41,6 +41,7 @@ defmodule KiteAgentHubWeb.Router do
     get "/score", ScoreController, :show
     post "/score/batch", ScoreController, :batch
     get "/portfolio", PortfolioController, :show
+    get "/broker/orders", BrokerOrdersController, :index
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
