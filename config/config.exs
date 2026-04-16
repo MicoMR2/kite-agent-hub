@@ -111,6 +111,11 @@ config :kite_agent_hub, Oban,
        # and any future transient failures. Bounded scan + idempotent
        # downstream worker = safe at any cadence.
        {"*/5 * * * *", KiteAgentHub.Workers.AttestationBackfillWorker},
+       # Every 5 minutes, snapshot the QRB edge score for every
+       # position in every active org so `/api/v1/edge-scores/history`
+       # can surface momentum inflection trends. Bounded rows-per-
+       # tick = num_orgs * num_positions, comfortably small.
+       {"*/5 * * * *", KiteAgentHub.Workers.EdgeScoreSnapshotWorker},
        # Sweep open trades older than 1h and auto-cancel them. Protects
        # against zombie orders piling up when a broker or downstream
        # settlement path never returns a terminal status — those stuck

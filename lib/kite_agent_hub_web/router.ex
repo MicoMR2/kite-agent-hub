@@ -41,6 +41,7 @@ defmodule KiteAgentHubWeb.Router do
     get "/chat", ChatController, :index
     get "/chat/wait", ChatController, :wait
     get "/edge-scores", EdgeScoresController, :index
+    get "/edge-scores/history", EdgeScoresHistoryController, :index
     get "/score", ScoreController, :show
     post "/score/batch", ScoreController, :batch
     get "/portfolio", PortfolioController, :show

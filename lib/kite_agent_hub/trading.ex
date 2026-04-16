@@ -399,6 +399,50 @@ defmodule KiteAgentHub.Trading do
   on a schedule and enqueues KiteAttestationWorker for each result; the
   attestation worker is idempotent so re-runs are safe. PR #105.
   """
+  # ── Edge-score snapshots ─────────────────────────────────────────────────────
+
+  alias KiteAgentHub.Kite.EdgeScoreSnapshot
+
+  @doc """
+  Insert a single edge-score snapshot row. Called by the cron worker
+  for each position returned by `PortfolioEdgeScorer.score_portfolio/1`.
+  Idempotent at the time-granularity level: the composite index on
+  (organization_id, ticker, inserted_at) keeps lookups fast even as
+  rows accumulate.
+  """
+  def insert_edge_score_snapshot(attrs) do
+    %EdgeScoreSnapshot{}
+    |> EdgeScoreSnapshot.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Return snapshot rows for the given org, newest first.
+
+  Options:
+    - :ticker   — filter to a specific ticker (case-insensitive exact match)
+    - :hours    — max age in hours (default 24, capped at 168 / 1 week)
+    - :platform — "alpaca" or "kalshi"
+    - :limit    — row cap (default 500, max 2000)
+  """
+  def list_edge_score_history(org_id, opts \\ []) do
+    hours = min(Keyword.get(opts, :hours, 24), 168)
+    limit = min(Keyword.get(opts, :limit, 500), 2000)
+    ticker = Keyword.get(opts, :ticker)
+    platform = Keyword.get(opts, :platform)
+
+    cutoff = DateTime.utc_now() |> DateTime.add(-hours * 3600, :second)
+
+    EdgeScoreSnapshot
+    |> where([s], s.organization_id == ^org_id)
+    |> where([s], s.inserted_at >= ^cutoff)
+    |> then(fn q -> if ticker, do: where(q, [s], s.ticker == ^ticker), else: q end)
+    |> then(fn q -> if platform, do: where(q, [s], s.platform == ^platform), else: q end)
+    |> order_by([s], desc: s.inserted_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
   def list_unattested_settled_trades(limit \\ 50) do
     TradeRecord
     |> where([t], t.status == "settled" and is_nil(t.attestation_tx_hash))
