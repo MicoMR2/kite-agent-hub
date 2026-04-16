@@ -130,6 +130,72 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     bars_with_retry(key_id, secret, symbol, timeframe, limit, 0)
   end
 
+  @doc """
+  Fetch latest-trade snapshots for one or more symbols from
+  `/v2/stocks/snapshots?symbols=...`. Returns a map of
+  `%{"AAPL" => 187.42, ...}` with only the symbols that came back
+  with a usable `latestTrade.p`. Symbols without a snapshot (or
+  without a valid latest trade price) are simply absent from the
+  map — callers fall back to their bar-close last_price for those.
+
+  Symbols are re-validated against the same whitelist regex
+  ScoreController uses before being interpolated into the URL, so
+  even a direct caller cannot smuggle raw input to Alpaca (CyberSec
+  pre-build guardrail, msg 6395).
+  """
+  @ticker_regex ~r/\A[A-Z0-9]{1,8}\z/
+
+  def snapshots(key_id, secret, symbols) when is_list(symbols) do
+    clean =
+      symbols
+      |> Enum.map(&(&1 |> to_string() |> String.trim() |> String.upcase()))
+      |> Enum.filter(&Regex.match?(@ticker_regex, &1))
+      |> Enum.uniq()
+
+    case clean do
+      [] ->
+        {:ok, %{}}
+
+      list ->
+        path = "/v2/stocks/snapshots?symbols=#{Enum.join(list, ",")}&feed=iex"
+        url = @data_base <> path
+
+        headers = [
+          {"APCA-API-KEY-ID", key_id},
+          {"APCA-API-SECRET-KEY", secret}
+        ]
+
+        case Req.get(url, headers: headers, retry: false) do
+          {:ok, %{status: 200, body: body}} when is_map(body) ->
+            {:ok, extract_latest_trade_prices(body)}
+
+          {:ok, %{status: 200, body: _}} ->
+            {:ok, %{}}
+
+          {:ok, %{status: 401}} ->
+            {:error, :unauthorized}
+
+          {:ok, %{status: status}} ->
+            {:error, "alpaca snapshots #{status}"}
+
+          {:error, reason} ->
+            {:error, "alpaca snapshots HTTP: #{inspect(reason)}"}
+        end
+    end
+  end
+
+  defp extract_latest_trade_prices(body) do
+    Enum.reduce(body, %{}, fn {sym, payload}, acc ->
+      price =
+        case payload do
+          %{"latestTrade" => %{"p" => p}} when is_number(p) and p > 0 -> p
+          _ -> nil
+        end
+
+      if price, do: Map.put(acc, sym, price), else: acc
+    end)
+  end
+
   # Alpaca's free tier caps the data API at 200 req/min. Under a burst
   # of batch scoring, a single 429 would fail the whole ticker. Retry
   # up to 2 times honoring Retry-After (capped at 10s so we don't hang

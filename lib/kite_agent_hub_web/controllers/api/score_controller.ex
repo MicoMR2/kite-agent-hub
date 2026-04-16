@@ -80,6 +80,14 @@ defmodule KiteAgentHubWeb.API.ScoreController do
           |> json(%{ok: false, error: "no bars returned for #{ticker}"})
 
         score ->
+          # Bar close runs a day behind until 4pm ET on 1Day timeframes.
+          # Batch scoring was returning last_price ~8% below live on
+          # intraday moves. Snapshot endpoint gives the latest trade
+          # print; fall back to bar close if snapshot is missing/nil
+          # (CyberSec guardrail, msg 6395).
+          live_prices = fetch_live_prices(key_id, secret, [ticker])
+          score = override_last_price(score, live_prices)
+
           conn |> json(Map.merge(%{ok: true, timeframe: timeframe}, serialize_score(score)))
       end
     else
@@ -130,9 +138,13 @@ defmodule KiteAgentHubWeb.API.ScoreController do
          {:ok, limit} <- fetch_limit(params),
          {:ok, {key_id, secret, _env}} <-
            Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
+      # One snapshots call for the whole batch — cheap and keeps
+      # last_price fresh across every scored ticker.
+      live_prices = fetch_live_prices(key_id, secret, tickers)
+
       scores =
         Enum.map(tickers, fn ticker ->
-          score_one(key_id, secret, ticker, timeframe, limit)
+          score_one(key_id, secret, ticker, timeframe, limit, live_prices)
         end)
 
       conn
@@ -173,13 +185,20 @@ defmodule KiteAgentHubWeb.API.ScoreController do
 
   # Per-ticker scoring inside a batch — failures come back as
   # `{ok: false, ticker, error}` rows so one bad symbol never fails
-  # the whole batch.
-  defp score_one(key_id, secret, ticker, timeframe, limit) do
+  # the whole batch. `live_prices` is the snapshot map from the
+  # batch-level fetch; missing entries fall back silently to the
+  # bar-close last_price so one unavailable symbol doesn't degrade
+  # the rest of the batch.
+  defp score_one(key_id, secret, ticker, timeframe, limit, live_prices) do
     case AlpacaClient.bars(key_id, secret, ticker, timeframe, limit) do
       {:ok, bars} ->
         case TickerScorer.score_ticker(ticker, bars) do
-          nil -> %{ok: false, ticker: ticker, error: "no bars returned"}
-          score -> Map.merge(%{ok: true}, serialize_score(score))
+          nil ->
+            %{ok: false, ticker: ticker, error: "no bars returned"}
+
+          score ->
+            score = override_last_price(score, live_prices)
+            Map.merge(%{ok: true}, serialize_score(score))
         end
 
       {:error, :rate_limited} ->
@@ -187,6 +206,24 @@ defmodule KiteAgentHubWeb.API.ScoreController do
 
       {:error, reason} ->
         %{ok: false, ticker: ticker, error: "bars fetch failed: #{inspect(reason)}"}
+    end
+  end
+
+  # Pull latest-trade prices for a list of tickers. Failures are
+  # treated as "no override" — the caller falls back to the bar-close
+  # last_price from the TickerScorer output. Never raises, never
+  # returns nil — always an empty-or-populated map.
+  defp fetch_live_prices(key_id, secret, tickers) do
+    case AlpacaClient.snapshots(key_id, secret, tickers) do
+      {:ok, prices} when is_map(prices) -> prices
+      _ -> %{}
+    end
+  end
+
+  defp override_last_price(%{ticker: ticker} = score, live_prices) do
+    case Map.get(live_prices, ticker) do
+      price when is_number(price) and price > 0 -> %{score | last_price: price}
+      _ -> score
     end
   end
 
