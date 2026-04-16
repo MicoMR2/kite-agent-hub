@@ -22,10 +22,12 @@ defmodule KiteAgentHubWeb.API.ScoreController do
   Supported `timeframe` values: `1Min`, `5Min`, `15Min`, `1Hour`, `1Day`
   (default `1Day`). `limit` is 1..1000 (default 50).
 
-  Batch is capped at 25 tickers per request so a single caller cannot
-  exhaust the Alpaca data-tier quota (200 req/min free tier). The
-  controller fetches bars serially — `AlpacaClient.bars/5` already
-  honors Retry-After on 429, so a temporary burst backpressures
+  Batch is capped at 10 tickers per request (Phorari PR #2 locked
+  scope — swing-strategy candidate sweeps rarely need more) so a
+  single caller cannot exhaust the Alpaca data-tier quota (200 req/min
+  free tier). The controller fans out bars fetches via
+  `Task.async_stream` with `max_concurrency: 5` — `AlpacaClient.bars/5`
+  already honors Retry-After on 429, so a temporary burst backpressures
   cleanly instead of failing the whole batch.
 
   ## Response (single)
@@ -45,7 +47,7 @@ defmodule KiteAgentHubWeb.API.ScoreController do
       "ok": true,
       "timeframe": "1Day",
       "limit": 50,
-      "scores": [
+      "results": [
         {"ok": true, "ticker": "AAPL", "score": 78, ...},
         {"ok": false, "ticker": "ZZZ", "error": "no bars returned"}
       ]
@@ -61,7 +63,8 @@ defmodule KiteAgentHubWeb.API.ScoreController do
   @default_timeframe "1Day"
   @default_limit 50
   @max_limit 1000
-  @max_batch_size 25
+  @max_batch_size 10
+  @batch_concurrency 5
 
   # ── GET /api/v1/score ─────────────────────────────────────────────────────────
 
@@ -130,13 +133,23 @@ defmodule KiteAgentHubWeb.API.ScoreController do
          {:ok, limit} <- fetch_limit(params),
          {:ok, {key_id, secret, _env}} <-
            Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
-      scores =
-        Enum.map(tickers, fn ticker ->
-          score_one(key_id, secret, ticker, timeframe, limit)
+      results =
+        tickers
+        |> Task.async_stream(
+          fn ticker -> score_one(key_id, secret, ticker, timeframe, limit) end,
+          max_concurrency: @batch_concurrency,
+          ordered: true,
+          on_timeout: :kill_task,
+          timeout: 15_000
+        )
+        |> Enum.zip(tickers)
+        |> Enum.map(fn
+          {{:ok, result}, _ticker} -> result
+          {{:exit, reason}, ticker} -> %{ok: false, ticker: ticker, error: "task exit: #{inspect(reason)}"}
         end)
 
       conn
-      |> json(%{ok: true, timeframe: timeframe, limit: limit, scores: scores})
+      |> json(%{ok: true, timeframe: timeframe, limit: limit, results: results})
     else
       {:error, :unauthorized} ->
         conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
@@ -149,7 +162,7 @@ defmodule KiteAgentHubWeb.API.ScoreController do
       {:error, :too_many_tickers} ->
         conn
         |> put_status(:bad_request)
-        |> json(%{ok: false, error: "batch capped at #{@max_batch_size} tickers per request"})
+        |> json(%{ok: false, error: "batch capped at #{@max_batch_size} tickers per request (got more)"})
 
       {:error, :bad_timeframe} ->
         conn
