@@ -523,15 +523,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
     def fetch_secret_with_env(_org_id, _provider), do: {:error, :not_configured}
   end
 
+  # Only trading agents have a wallet; research / conversational agents
+  # intentionally have no wallet_address. Firing a balance RPC for them
+  # hangs the dashboard on the "…" pulse forever because there is
+  # nothing to fetch. Skip the balance task entirely when the agent
+  # is not wallet-capable — the template guards on the same predicate
+  # so the Wallet Balance card also doesn't render for those agents.
+  # Block number is agent-agnostic and always fires.
   defp fetch_chain_data(agent) do
-    wallet = agent.wallet_address
-
-    Task.async(fn ->
-      case RPC.get_balance(wallet) do
-        {:ok, wei} -> {:wallet_balance, wei}
-        _ -> {:wallet_balance, nil}
-      end
-    end)
+    if wallet_capable?(agent) do
+      Task.async(fn ->
+        case RPC.get_balance(agent.wallet_address) do
+          {:ok, wei} -> {:wallet_balance, wei}
+          _ -> {:wallet_balance, nil}
+        end
+      end)
+    end
 
     Task.async(fn ->
       case RPC.block_number() do
@@ -540,6 +547,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
       end
     end)
   end
+
+  defp wallet_capable?(%{agent_type: type, wallet_address: wallet}) do
+    type == "trading" and is_binary(wallet) and wallet != ""
+  end
+
+  defp wallet_capable?(_), do: false
 
   defp replace_agent(agents, updated) do
     Enum.map(agents, fn a -> if a.id == updated.id, do: updated, else: a end)
@@ -1057,8 +1070,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                   </div>
 
-                  <%!-- Wallet Balance --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                  <%!-- Wallet Balance — hidden for non-trading agents or
+                       trading agents without a wallet configured.
+                       Otherwise the card sits on "…" forever because there
+                       is no wallet to query. --%>
+                  <div :if={wallet_capable?(@selected_agent)} class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
                     <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
                       Wallet Balance
                     </p>
