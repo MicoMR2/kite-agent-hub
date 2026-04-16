@@ -141,7 +141,17 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   defp bars_with_retry(key_id, secret, symbol, timeframe, limit, attempt) do
     require Logger
 
-    path = "/v2/stocks/#{symbol}/bars?timeframe=#{timeframe}&limit=#{limit}"
+    # Alpaca's data API will silently return only the most recent bar
+    # (or a tiny window) when `start` is omitted on the free tier —
+    # SMA-20 collapses to last_price, change_5d/20d_pct come back 0.0,
+    # and every downstream score is understated. Always pass an
+    # explicit `start` sized to comfortably cover `limit` bars for
+    # the requested timeframe.
+    start_iso = bars_start(timeframe, limit)
+
+    path =
+      "/v2/stocks/#{symbol}/bars?timeframe=#{timeframe}&limit=#{limit}&start=#{start_iso}&adjustment=raw&feed=iex"
+
     url = @data_base <> path
 
     headers = [
@@ -182,6 +192,31 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
         Logger.error("Alpaca data API: request failed for #{symbol}: #{inspect(reason)}")
         {:error, "alpaca data HTTP: #{inspect(reason)}"}
     end
+  end
+
+  # Pick a `start` ISO-8601 timestamp that guarantees at least `limit`
+  # bars fit inside the window for the given timeframe. The 2x
+  # multiplier on daily covers weekends/holidays; intraday frames use
+  # a slightly bigger buffer for market-hour gaps.
+  defp bars_start(timeframe, limit) do
+    seconds_per_bar =
+      case timeframe do
+        "1Min" -> 60
+        "5Min" -> 5 * 60
+        "15Min" -> 15 * 60
+        "1Hour" -> 3600
+        "1Day" -> 86_400
+        _ -> 86_400
+      end
+
+    multiplier = if timeframe == "1Day", do: 2.0, else: 3.0
+    window_seconds = trunc(seconds_per_bar * limit * multiplier)
+
+    DateTime.utc_now()
+    |> DateTime.add(-window_seconds, :second)
+    |> DateTime.truncate(:second)
+    |> DateTime.to_iso8601()
+    |> URI.encode_www_form()
   end
 
   # Retry-After can be a decimal-seconds string or an HTTP-date. Alpaca
