@@ -152,6 +152,99 @@ defmodule KiteAgentHub.Trading do
     end
   end
 
+  @doc """
+  Cancel a trade the agent owns. Ownership is enforced: the trade
+  must belong to `agent_id` or this returns `{:error, :not_found}`
+  (we don't leak existence across agents).
+
+  Returns:
+    - `{:ok, trade}`                   — flipped from `open` → `cancelled`
+    - `{:ok, :already_terminal, trade}` — idempotent: already in a terminal
+      state (cancelled / settled / failed); no DB write, caller can treat
+      as success
+    - `{:error, :not_found}`           — trade does not exist or isn't this
+      agent's
+    - `{:error, changeset}`            — update failed
+
+  For Alpaca trades with a `platform_order_id`, the caller is responsible
+  for forwarding the cancel to Alpaca (see the controller); this function
+  only moves the DB row. Keeping the two concerns separate lets the sweep
+  worker drive both without duplicating changeset logic.
+  """
+  def cancel_trade(trade_id, agent_id) do
+    case get_trade_for_agent(trade_id, agent_id) do
+      nil ->
+        {:error, :not_found}
+
+      %TradeRecord{status: "open"} = trade ->
+        case trade
+             |> TradeRecord.changeset(%{status: "cancelled"})
+             |> Repo.update() do
+          {:ok, updated} = ok ->
+            Phoenix.PubSub.broadcast(
+              @pubsub,
+              "agent:#{updated.kite_agent_id}",
+              {:trade_updated, updated}
+            )
+
+            ok
+
+          err ->
+            err
+        end
+
+      %TradeRecord{} = trade ->
+        {:ok, :already_terminal, trade}
+    end
+  end
+
+  @doc """
+  Sweep: flip any trade with status=`"open"` older than `cutoff` to
+  `"cancelled"`. Returns `{count, trades}` where `trades` is the list of
+  rows that were updated (so the caller can enqueue downstream work —
+  e.g. calling Alpaca's cancel endpoint — for each one). Scoped to the
+  caller's RLS context; the sweep worker re-establishes per-agent scope
+  before calling this.
+  """
+  def auto_cancel_stuck_trades(cutoff) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    stuck_query =
+      TradeRecord
+      |> where([t], t.status == "open" and t.inserted_at < ^cutoff)
+
+    # Load first so we can broadcast + hand the structs back to the
+    # caller (the sweep worker uses them to forward cancels to the
+    # broker). The set stays small because the worker runs every
+    # minute — unbounded growth isn't a realistic concern.
+    trades = Repo.all(stuck_query)
+
+    case trades do
+      [] ->
+        {0, []}
+
+      rows ->
+        ids = Enum.map(rows, & &1.id)
+
+        {count, _} =
+          TradeRecord
+          |> where([t], t.id in ^ids)
+          |> Repo.update_all(set: [status: "cancelled", updated_at: now])
+
+        updated = Enum.map(rows, &%{&1 | status: "cancelled", updated_at: now})
+
+        Enum.each(updated, fn trade ->
+          Phoenix.PubSub.broadcast(
+            @pubsub,
+            "agent:#{trade.kite_agent_id}",
+            {:trade_updated, trade}
+          )
+        end)
+
+        {count, updated}
+    end
+  end
+
   def settle_trade(%TradeRecord{} = record, pnl) do
     case record
          |> TradeRecord.settle_changeset(pnl)

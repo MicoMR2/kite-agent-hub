@@ -110,7 +110,13 @@ config :kite_agent_hub, Oban,
        # during the AGENT_PRIVATE_KEY misconfig window (~v112-v117),
        # and any future transient failures. Bounded scan + idempotent
        # downstream worker = safe at any cadence.
-       {"*/5 * * * *", KiteAgentHub.Workers.AttestationBackfillWorker}
+       {"*/5 * * * *", KiteAgentHub.Workers.AttestationBackfillWorker},
+       # Sweep open trades older than 1h and auto-cancel them. Protects
+       # against zombie orders piling up when a broker or downstream
+       # settlement path never returns a terminal status — those stuck
+       # rows block same-symbol re-entry via wash-trade rules until a
+       # human intervenes.
+       {"* * * * *", KiteAgentHub.Workers.StuckTradeSweeper}
      ]}
   ]
 

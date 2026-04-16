@@ -89,6 +89,20 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   @doc """
+  Cancel a single open Alpaca order by id (DELETE /v2/orders/{id}).
+
+  Alpaca returns 204 on success, 422 if the order is already in a
+  terminal state (filled/cancelled/rejected/expired) — we normalize
+  that to {:ok, :already_terminal} so the caller can treat it as an
+  idempotent no-op. 404 is also idempotent: the order doesn't exist
+  on Alpaca's side anymore, so from the hub's perspective there's
+  nothing to cancel.
+  """
+  def cancel_order(key_id, secret, order_id, env \\ "paper") do
+    delete("/v2/orders/#{order_id}", key_id, secret, env)
+  end
+
+  @doc """
   Fetch recent OHLCV bars for a symbol from the Alpaca Market Data API.
 
   symbol     — e.g. "AAPL", "SPY", "TSLA"
@@ -207,6 +221,39 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   defp parse_placed_order(err), do: err
+
+  defp delete(path, key_id, secret, env) do
+    require Logger
+
+    url = base_url(env) <> path
+
+    headers = [
+      {"APCA-API-KEY-ID", key_id},
+      {"APCA-API-SECRET-KEY", secret}
+    ]
+
+    case Req.delete(url, headers: headers, retry: false) do
+      {:ok, %{status: s}} when s in [200, 204] ->
+        {:ok, :cancelled}
+
+      {:ok, %{status: 404}} ->
+        Logger.info("Alpaca DELETE #{path} — 404, treating as already gone")
+        {:ok, :already_terminal}
+
+      {:ok, %{status: 422, body: body}} ->
+        Logger.info("Alpaca DELETE #{path} — 422 (already terminal): #{inspect(body)}")
+        {:ok, :already_terminal}
+
+      {:ok, %{status: 401}} ->
+        {:error, :unauthorized}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, "alpaca #{status}: #{inspect(body)}"}
+
+      {:error, reason} ->
+        {:error, "alpaca HTTP: #{inspect(reason)}"}
+    end
+  end
 
   defp get(path, key_id, secret, env \\ "paper") do
     require Logger
