@@ -22,11 +22,12 @@ defmodule KiteAgentHubWeb.SettingsNav do
 
   @tabs [
     {:account, "Account", "/users/settings"},
+    {:agents, "Agents", "/users/settings/agents"},
     {:api_keys, "API Keys", "/users/settings/api-keys"},
     {:workspace, "Workspace", "/users/settings/workspace"}
   ]
 
-  attr :active, :atom, required: true, values: [:account, :api_keys, :workspace]
+  attr :active, :atom, required: true, values: [:account, :agents, :api_keys, :workspace]
 
   def render(assigns) do
     assigns = assign(assigns, :tabs, @tabs)
