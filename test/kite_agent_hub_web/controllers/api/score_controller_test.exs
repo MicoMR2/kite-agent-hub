@@ -101,8 +101,8 @@ defmodule KiteAgentHubWeb.API.ScoreControllerTest do
       assert resp["error"] =~ "tickers"
     end
 
-    test "400 when batch exceeds the 25-ticker cap", %{conn: conn, agent: agent} do
-      too_many = Enum.map(1..30, fn i -> "T#{i}" end)
+    test "400 when batch exceeds the 10-ticker cap", %{conn: conn, agent: agent} do
+      too_many = Enum.map(1..15, fn i -> "T#{i}" end)
 
       resp =
         conn
@@ -110,7 +110,7 @@ defmodule KiteAgentHubWeb.API.ScoreControllerTest do
         |> post(~p"/api/v1/score/batch", %{tickers: too_many})
         |> json_response(400)
 
-      assert resp["error"] =~ "25"
+      assert resp["error"] =~ "10"
     end
   end
 end
