@@ -635,6 +635,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp format_attestation_fee(_), do: "0.00000"
 
+  # Per-trade attestation transfer amount — the fixed 0.00001 KITE that
+  # KiteAttestationWorker sends to the treasury on every settlement.
+  # Hardcoded server constant; `tx.value / 10^18` with no user input.
+  @per_trade_fee_kite "0.00001"
+  defp per_trade_fee_kite, do: @per_trade_fee_kite
+
+  # Static gas-cost estimate per attestation tx. Computed from the
+  # hardcoded KiteAttestationWorker @gas_limit (30_000) and the
+  # TxSigner default gas_price (1 gwei = 10^9 wei). CyberSec-cleared
+  # for display use because every input is a compile-time constant —
+  # no receipt data, no user-supplied value (msg 6420).
+  #
+  # 30_000 gas × 10^9 wei/gas ÷ 10^18 wei/KITE = 3e-5 KITE = 0.00003.
+  # Labeled "~approx" in the UI since live gas_price fluctuates.
+  @est_gas_kite "0.00003"
+  defp est_gas_kite, do: @est_gas_kite
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -1080,9 +1097,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <p class="text-2xl sm:text-3xl font-black text-white tracking-tight">
                           {@attestation_count} <span class="text-base font-mono text-gray-500">on-chain receipts</span>
                         </p>
-                        <p class="text-[11px] text-gray-400 mt-1 font-mono">
-                          Every settled trade pays {format_attestation_fee(@attestation_count)} KITE to treasury
-                        </p>
+                        <div class="text-[11px] text-gray-400 mt-1 font-mono space-y-0.5">
+                          <p>Per-trade fee: {per_trade_fee_kite()} KITE</p>
+                          <p class="text-gray-500">~Est. gas per tx: {est_gas_kite()} KITE</p>
+                          <p>Total attestation fees paid: {format_attestation_fee(@attestation_count)} KITE</p>
+                        </div>
                       </div>
                     </div>
                     <%= if @selected_agent && @selected_agent.wallet_address do %>
