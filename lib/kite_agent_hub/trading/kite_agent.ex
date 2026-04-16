@@ -5,7 +5,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @statuses ~w(pending active paused error)
+  @statuses ~w(pending active paused error archived)
   @agent_types ~w(trading research conversational)
 
   schema "kite_agents" do
@@ -16,6 +16,8 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :chain_id, :integer, default: 2368
     field :status, :string, default: "pending"
     field :api_token, :string
+    field :tags, {:array, :string}, default: []
+    field :bio, :string
 
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     has_many :trade_records, KiteAgentHub.Trading.TradeRecord
@@ -51,6 +53,53 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     agent
     |> cast(attrs, [:name])
     |> validate_required([:name])
+  end
+
+  @doc """
+  Profile update — the whitelist PATCH /agents/:id exposes. Explicitly
+  does NOT accept api_token, wallet_address, organization_id, or
+  status: API key rotation is server-driven, the wallet is
+  provisioned once, orgs can't be reassigned via this endpoint, and
+  status moves through its own lifecycle (activate / pause / archive).
+  """
+  def profile_changeset(agent, attrs) do
+    agent
+    |> cast(attrs, [:name, :tags, :bio])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: 120)
+    |> validate_length(:bio, max: 2000)
+    |> validate_tags()
+  end
+
+  @doc "Rotate the api_token to a new server-generated value."
+  def rotate_token_changeset(agent) do
+    token = "kite_" <> Base.encode16(:crypto.strong_rand_bytes(24), case: :lower)
+    cast(agent, %{api_token: token}, [:api_token])
+  end
+
+  @doc "Flip an agent to archived (soft-delete)."
+  def archive_changeset(agent) do
+    agent
+    |> cast(%{status: "archived"}, [:status])
+    |> validate_inclusion(:status, @statuses)
+  end
+
+  defp validate_tags(changeset) do
+    validate_change(changeset, :tags, fn _, tags ->
+      cond do
+        not is_list(tags) ->
+          [{:tags, "must be a list of strings"}]
+
+        length(tags) > 20 ->
+          [{:tags, "max 20 tags"}]
+
+        Enum.any?(tags, fn t -> not is_binary(t) or byte_size(t) == 0 or byte_size(t) > 64 end) ->
+          [{:tags, "each tag must be 1..64 chars"}]
+
+        true ->
+          []
+      end
+    end)
   end
 
   defp validate_wallet_for_trading(changeset) do

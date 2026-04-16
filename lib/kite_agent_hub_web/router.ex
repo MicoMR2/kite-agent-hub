@@ -34,6 +34,9 @@ defmodule KiteAgentHubWeb.Router do
     get "/trades/:id", TradesController, :show
     delete "/trades/:id", TradesController, :cancel
     get "/agents/me", TradesController, :agent_me
+    patch "/agents/:id", AgentsController, :update
+    post "/agents/:id/rotate_token", AgentsController, :rotate_token
+    delete "/agents/:id", AgentsController, :archive
     post "/chat", ChatController, :create
     get "/chat", ChatController, :index
     get "/chat/wait", ChatController, :wait

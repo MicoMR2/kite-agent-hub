@@ -64,6 +64,77 @@ defmodule KiteAgentHub.Trading do
     end
   end
 
+  @doc """
+  Profile-only update (name, tags, bio). Cannot change api_token,
+  wallet, org, or status — see `KiteAgent.profile_changeset/2`.
+  """
+  def update_agent_profile(%KiteAgent{} = agent, attrs) do
+    case agent
+         |> KiteAgent.profile_changeset(attrs)
+         |> Repo.update() do
+      {:ok, updated} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        ok
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Rotate the agent's api_token to a new server-generated value and
+  return the *updated* struct. The caller is responsible for showing
+  the plaintext to the user once — we don't retain it anywhere except
+  the DB column. Every call to this function invalidates the previous
+  token.
+  """
+  def rotate_agent_api_token(%KiteAgent{} = agent) do
+    case agent
+         |> KiteAgent.rotate_token_changeset()
+         |> Repo.update() do
+      {:ok, updated} = ok ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        ok
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Archive an agent (soft-delete). The row is retained so audit trail
+  stays intact (open trades, attestation history, etc.), but the agent
+  is flipped to `archived`, the runner is stopped, and every open
+  trade the agent still holds is auto-cancelled via the same path the
+  StuckTradeSweeper uses — so broker-side orders also clear, not just
+  the DB rows.
+
+  Returns `{:ok, %{agent, cancelled_count}}` on success.
+  """
+  def archive_agent(%KiteAgent{} = agent) do
+    case agent
+         |> KiteAgent.archive_changeset()
+         |> Repo.update() do
+      {:ok, archived} ->
+        # Stop the runner before cancelling — prevents it from queueing
+        # new trades mid-archive.
+        KiteAgentHub.Kite.AgentRunnerSupervisor.stop_agent(archived.id)
+
+        # Move every still-open trade owned by this agent into the
+        # cancelled path. cutoff = utc_now guarantees we catch every
+        # open row regardless of age.
+        {count, _trades} =
+          auto_cancel_stuck_trades(DateTime.utc_now() |> DateTime.truncate(:second))
+
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{archived.id}", {:agent_updated, archived})
+
+        {:ok, %{agent: archived, cancelled_count: count}}
+
+      err ->
+        err
+    end
+  end
+
   def pause_agent(%KiteAgent{} = agent) do
     case agent
          |> KiteAgent.changeset(%{status: "paused"})
