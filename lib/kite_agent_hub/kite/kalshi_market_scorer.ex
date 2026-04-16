@@ -12,12 +12,13 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
   not apply the same threshold rules across platforms without that
   distinction.
 
-  Formula:
+  Formula (Phorari lock msg 6325 — 40/30/30 vol/spread/time):
 
-    score = 0.5 * liquidity_score + 0.5 * time_score
+    score = 0.4 * volume_score
+          + 0.3 * spread_score
+          + 0.3 * time_score
 
-    liquidity_score = 0.6 * volume_score + 0.4 * spread_score
-    time_score      = max(0, 100 - days_to_close * 5)
+    time_score = max(0, 100 - days_to_close * 5)
 
   - `volume_score`   : `min(volume_24h / 1000, 1) * 100` — saturates at
     1000 contracts/24h which maps to a "liquid enough" threshold on
@@ -43,11 +44,9 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
   `/markets/trades` lookups for the top-N by liquidity.
   """
 
-  @liquidity_weight 0.5
-  @time_weight 0.5
-
-  @volume_weight 0.6
-  @spread_weight 0.4
+  @volume_weight 0.4
+  @spread_weight 0.3
+  @time_weight 0.3
 
   @volume_saturation 1000
   @max_spread_cents 20
@@ -69,7 +68,8 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
           close_time: String.t() | nil,
           title: String.t() | nil,
           breakdown: %{
-            liquidity: non_neg_integer(),
+            volume: non_neg_integer(),
+            spread: non_neg_integer(),
             time: non_neg_integer()
           }
         }
@@ -87,12 +87,12 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
 
     spread = spread_cents(yes_bid, yes_ask)
 
-    liquidity_score =
+    {volume_score, spread_score} =
       cond do
-        status != "open" -> 0.0
-        is_nil(volume_24h) or volume_24h < @min_volume -> 0.0
-        is_nil(spread) or spread > @max_spread_cents -> 0.0
-        true -> liquidity_component(volume_24h, spread)
+        status != "open" -> {0.0, 0.0}
+        is_nil(volume_24h) or volume_24h < @min_volume -> {0.0, 0.0}
+        is_nil(spread) or spread > @max_spread_cents -> {0.0, 0.0}
+        true -> {volume_component(volume_24h), spread_component(spread)}
       end
 
     time_score =
@@ -103,7 +103,10 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
         true -> max(0.0, 100.0 - days_to_close * @days_decay_slope)
       end
 
-    final = @liquidity_weight * liquidity_score + @time_weight * time_score
+    final =
+      @volume_weight * volume_score +
+        @spread_weight * spread_score +
+        @time_weight * time_score
 
     %{
       ticker: ticker,
@@ -118,7 +121,8 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
       close_time: close_time_raw,
       title: market["title"] || market["subtitle"],
       breakdown: %{
-        liquidity: liquidity_score |> Float.round() |> trunc(),
+        volume: volume_score |> Float.round() |> trunc(),
+        spread: spread_score |> Float.round() |> trunc(),
         time: time_score |> Float.round() |> trunc()
       }
     }
@@ -134,11 +138,10 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
     |> Enum.sort_by(& &1.score, :desc)
   end
 
-  defp liquidity_component(volume, spread) do
-    volume_component = min(volume / @volume_saturation, 1.0) * 100.0
-    spread_component = max(0.0, (@max_spread_cents - spread) / @max_spread_cents) * 100.0
-    @volume_weight * volume_component + @spread_weight * spread_component
-  end
+  defp volume_component(volume), do: min(volume / @volume_saturation, 1.0) * 100.0
+
+  defp spread_component(spread),
+    do: max(0.0, (@max_spread_cents - spread) / @max_spread_cents) * 100.0
 
   defp days_to_close(nil, _now), do: nil
 

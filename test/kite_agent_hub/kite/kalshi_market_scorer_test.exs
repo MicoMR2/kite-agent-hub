@@ -41,31 +41,38 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorerTest do
       assert row.score_type == "tradability"
       assert row.spread_cents == 2
       assert row.days_to_close < 1
-      assert row.breakdown.liquidity > 0
+
+      assert row.breakdown.volume > 0
+      assert row.breakdown.spread > 0
       assert row.breakdown.time > 90
     end
 
-    test "hard-zero when status is not open (both halves)" do
+    test "hard-zero all three components when status is not open" do
       row = KalshiMarketScorer.score_market(market(%{"status" => "closed"}), @now)
+
       assert row.score == 0
-      assert row.breakdown.liquidity == 0
+      assert row.breakdown.volume == 0
+      assert row.breakdown.spread == 0
       assert row.breakdown.time == 0
     end
 
-    test "hard-zero liquidity when volume under floor (time still contributes)" do
+    test "zero volume+spread when volume is under floor (time still contributes)" do
       m = market(%{"volume_24h" => 5, "close_time" => iso_from_now(6 * 3600)})
       row = KalshiMarketScorer.score_market(m, @now)
 
-      assert row.breakdown.liquidity == 0
+      assert row.breakdown.volume == 0
+      assert row.breakdown.spread == 0
       assert row.breakdown.time > 90
-      # 50/50 weight, so only time contributes; final ≈ 48
-      assert row.score > 40 and row.score < 60
+      # Only the 30% time weight contributes: ~0.3 * ~96 ≈ 29
+      assert row.score > 20 and row.score < 35
     end
 
-    test "hard-zero liquidity when spread exceeds max" do
+    test "zero volume+spread when spread exceeds max" do
       m = market(%{"yes_bid" => 20, "yes_ask" => 80})
       row = KalshiMarketScorer.score_market(m, @now)
-      assert row.breakdown.liquidity == 0
+
+      assert row.breakdown.volume == 0
+      assert row.breakdown.spread == 0
       assert row.spread_cents == 60
     end
 
@@ -77,7 +84,7 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorerTest do
       assert missing.breakdown.time == 0
     end
 
-    test "time_score decays at 5 points per day, clamped to zero at 20+ days" do
+    test "time_score decays linearly at 5 points per day, clamped at zero beyond 20 days" do
       near = KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(1 * 86_400)}), @now)
       mid = KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(5 * 86_400)}), @now)
       far = KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(30 * 86_400)}), @now)
@@ -100,26 +107,40 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorerTest do
       m = market(%{"volume_24h" => nil, "volume" => 300})
       row = KalshiMarketScorer.score_market(m, @now)
       assert row.volume_24h == 300
-      assert row.breakdown.liquidity > 0
+      assert row.breakdown.volume > 0
     end
   end
 
   describe "score_markets/2" do
     test "filters by min_score and sorts desc" do
       markets = [
-        market(%{"ticker" => "A", "volume_24h" => 50, "yes_bid" => 30, "yes_ask" => 50,
-                 "close_time" => iso_from_now(30 * 86_400)}),
-        market(%{"ticker" => "B", "volume_24h" => 800, "yes_bid" => 52, "yes_ask" => 54,
-                 "close_time" => iso_from_now(6 * 3600)}),
-        market(%{"ticker" => "C", "volume_24h" => 400, "yes_bid" => 49, "yes_ask" => 51,
-                 "close_time" => iso_from_now(3 * 86_400)})
+        market(%{
+          "ticker" => "A",
+          "volume_24h" => 50,
+          "yes_bid" => 30,
+          "yes_ask" => 50,
+          "close_time" => iso_from_now(30 * 86_400)
+        }),
+        market(%{
+          "ticker" => "B",
+          "volume_24h" => 800,
+          "yes_bid" => 52,
+          "yes_ask" => 54,
+          "close_time" => iso_from_now(6 * 3600)
+        }),
+        market(%{
+          "ticker" => "C",
+          "volume_24h" => 400,
+          "yes_bid" => 49,
+          "yes_ask" => 51,
+          "close_time" => iso_from_now(3 * 86_400)
+        })
       ]
 
       rows = KalshiMarketScorer.score_markets(markets, 50)
       tickers = Enum.map(rows, & &1.ticker)
 
       assert "A" not in tickers
-      # B (short-dated liquid) should outrank C (mid-dated).
       assert hd(rows).ticker == "B"
       assert Enum.all?(rows, &(&1.score_type == "tradability"))
     end
