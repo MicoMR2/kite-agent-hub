@@ -96,84 +96,56 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
     end
   end
 
-  # DELETE /api/v1/broker/orders/:id — cancel a trading agent's own
-  # open Alpaca order. Guards:
-  #   - bearer token auth (reused from index/2)
-  #   - agent.agent_type must be "trading"; research/strategy agents 403
-  #   - order_id validated as UUID before any Alpaca URL interpolation
-  #   - ownership confirmed by looking it up in this agent's open-orders
-  #     list from Alpaca (404 if not found) — prevents cancel on an
-  #     order not issued through this agent's Alpaca credentials
-  def delete(conn, %{"id" => order_id}) do
+  def cancel(conn, %{"order_id" => order_id}) do
     with {:ok, agent} <- authenticate(conn),
          :ok <- require_trading_agent(agent),
-         {:ok, order_id} <- validate_order_id(order_id),
+         {:ok, _} <- validate_uuid(order_id),
          {:ok, {key_id, secret, env}} <-
            Credentials.fetch_secret_with_env(agent.organization_id, :alpaca),
-         {:ok, open_orders} <- AlpacaClient.list_orders(key_id, secret, "open", @max_limit, env),
-         :ok <- assert_order_belongs_to_agent(open_orders, order_id),
          {:ok, _} <- AlpacaClient.cancel_order(key_id, secret, order_id, env) do
       Logger.info(
         "BrokerOrdersController: agent #{agent.id} cancelled Alpaca order #{order_id} (env=#{env})"
       )
 
-      conn |> json(%{ok: true, cancelled: order_id})
+      json(conn, %{ok: true})
     else
-      {:error, :unauthorized} ->
-        conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
-
-      {:error, :forbidden} ->
+      {:error, :not_trading_agent} ->
         conn
         |> put_status(:forbidden)
-        |> json(%{ok: false, error: "only trading agents may cancel orders"})
+        |> json(%{ok: false, error: "only trading agents can cancel orders"})
 
-      {:error, :bad_order_id} ->
+      {:error, :bad_uuid} ->
         conn
         |> put_status(:bad_request)
-        |> json(%{ok: false, error: "order_id must be a UUID"})
+        |> json(%{ok: false, error: "invalid order_id format"})
 
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{ok: false, error: "order not found in agent's open orders"})
+      {:error, :unauthorized} ->
+        conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
 
       {:error, :not_configured} ->
         conn
         |> put_status(:bad_request)
-        |> json(%{ok: false, error: "alpaca credentials not configured for this org"})
+        |> json(%{ok: false, error: "alpaca credentials not configured"})
 
       {:error, reason} ->
         Logger.warning("BrokerOrdersController: cancel failed: #{inspect(reason)}")
 
         conn
         |> put_status(:bad_gateway)
-        |> json(%{ok: false, error: "order cancel failed: #{inspect(reason)}"})
+        |> json(%{ok: false, error: "cancel failed: #{inspect(reason)}"})
     end
   end
 
   defp require_trading_agent(%{agent_type: "trading"}), do: :ok
-  defp require_trading_agent(_), do: {:error, :forbidden}
+  defp require_trading_agent(_), do: {:error, :not_trading_agent}
 
-  defp validate_order_id(id) when is_binary(id) do
-    if Regex.match?(
-         ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/,
-         id
-       ) do
-      {:ok, id}
-    else
-      {:error, :bad_order_id}
-    end
+  defp validate_uuid(id) when is_binary(id) do
+    if Regex.match?(~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/, id),
+      do: {:ok, id},
+      else: {:error, :bad_uuid}
   end
 
-  defp validate_order_id(_), do: {:error, :bad_order_id}
-
-  defp assert_order_belongs_to_agent(open_orders, order_id) do
-    if Enum.any?(open_orders, fn o -> o.id == order_id end) do
-      :ok
-    else
-      {:error, :not_found}
-    end
-  end
+  defp validate_uuid(_), do: {:error, :bad_uuid}
 
   defp serialize(order) do
     %{
