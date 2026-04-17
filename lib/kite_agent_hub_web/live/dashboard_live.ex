@@ -309,15 +309,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, assign(socket, :pnl_stats, stats)}
   end
 
-  # Async edge scorer loading
+  # Async edge scorer loading. Wrapped in try/rescue so a scorer raise
+  # (e.g. nil field from a partially-loaded broker position) never kills
+  # the LiveView, which used to propagate as a page-reload storm for
+  # every dashboard visitor.
   def handle_info(:load_edge_scores, socket) do
-    scores = EdgeScorer.score_all()
+    require Logger
 
-    portfolio = if socket.assigns.organization do
-      PortfolioEdgeScorer.score_portfolio(socket.assigns.organization.id)
-    else
-      nil
-    end
+    scores =
+      try do
+        EdgeScorer.score_all()
+      rescue
+        e ->
+          Logger.warning("DashboardLive: EdgeScorer crashed: #{inspect(e)}")
+          socket.assigns[:edge_scores] || []
+      end
+
+    portfolio =
+      if socket.assigns.organization do
+        try do
+          PortfolioEdgeScorer.score_portfolio(socket.assigns.organization.id)
+        rescue
+          e ->
+            Logger.warning("DashboardLive: PortfolioEdgeScorer crashed: #{inspect(e)}")
+            socket.assigns[:portfolio_scores]
+        end
+      else
+        nil
+      end
 
     {:noreply,
      socket

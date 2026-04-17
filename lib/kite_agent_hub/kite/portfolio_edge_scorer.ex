@@ -116,9 +116,9 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   end
 
   defp score_kalshi_position(pos) do
-    entry = pos.avg_price
-    current = pos.current_price
-    contracts = pos.contracts
+    entry = pos.avg_price || 0.0
+    current = pos.current_price || 0.0
+    contracts = pos.contracts || 0
 
     # Kalshi: edge = how far current price moved from your entry
     pnl_pct = if entry > 0, do: (current - entry) / entry * 100, else: 0.0
