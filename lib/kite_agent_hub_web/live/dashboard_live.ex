@@ -552,16 +552,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp fetch_chain_data(agent) do
     if wallet_capable?(agent) do
       Task.async(fn ->
-        case RPC.get_balance(agent.wallet_address) do
-          {:ok, wei} -> {:wallet_balance, wei}
+        try do
+          case RPC.get_balance(agent.wallet_address) do
+            {:ok, wei} -> {:wallet_balance, wei}
+            _ -> {:wallet_balance, nil}
+          end
+        rescue
           _ -> {:wallet_balance, nil}
         end
       end)
     end
 
     Task.async(fn ->
-      case RPC.block_number() do
-        {:ok, n} -> {:block_number, n}
+      try do
+        case RPC.block_number() do
+          {:ok, n} -> {:block_number, n}
+          _ -> {:block_number, nil}
+        end
+      rescue
         _ -> {:block_number, nil}
       end
     end)
