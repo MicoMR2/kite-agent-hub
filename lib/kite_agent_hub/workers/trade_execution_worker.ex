@@ -27,7 +27,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   use Oban.Worker,
     queue: :trade_execution,
     max_attempts: 3,
-    unique: [period: 30, fields: [:args]]
+    unique: [period: 5, states: [:available, :executing], fields: [:args]]
 
   require Logger
 
@@ -238,7 +238,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       {:ok, positions} ->
         case Enum.find(positions, fn p -> p.symbol == symbol end) do
           nil ->
-            {:noop, "no open position"}
+            cancel_ghost_orders(key_id, secret, env, symbol)
+            {:noop, "no open position (ghost orders cancelled if any)"}
 
           %{qty: held} when is_number(held) and held > 0 ->
             qty = min(requested, held)
@@ -258,6 +259,37 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         # before this PR. We don't want a transient positions outage to
         # block every sell.
         {:ok, requested}
+    end
+  end
+
+  # Ghost-order sweeper: after a failed buy that tripped a wash-trade
+  # 403, Alpaca can leave a `new`/`accepted` order on the book forever.
+  # When the agent later tries the matching sell, clamp_sell_qty sees
+  # no position and would noop silently, leaving the ghost behind and
+  # blocking every subsequent sell for that symbol. Cancelling here
+  # clears the path so the next run either finds a real position or
+  # cleanly fails with no_open_position.
+  defp cancel_ghost_orders(key_id, secret, env, symbol) do
+    case AlpacaClient.list_orders(key_id, secret, "open", 50, env) do
+      {:ok, orders} ->
+        orders
+        |> Enum.filter(fn o -> o.symbol == symbol end)
+        |> Enum.each(fn o ->
+          case AlpacaClient.cancel_order(key_id, secret, o.id, env) do
+            {:ok, _} ->
+              Logger.info(
+                "TradeExecutionWorker: cancelled ghost order #{o.id} for #{symbol} (env=#{env})"
+              )
+
+            {:error, reason} ->
+              Logger.warning(
+                "TradeExecutionWorker: ghost-cancel failed for #{o.id}: #{inspect(reason)}"
+              )
+          end
+        end)
+
+      {:error, reason} ->
+        Logger.warning("TradeExecutionWorker: ghost-sweep list_orders failed: #{inspect(reason)}")
     end
   end
 

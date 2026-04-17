@@ -96,6 +96,59 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
     end
   end
 
+  def delete(conn, %{"id" => order_id}) do
+    with {:ok, agent} <- authenticate(conn),
+         :ok <- require_trading_agent(agent),
+         {:ok, order_id} <- validate_order_id(order_id),
+         {:ok, {key_id, secret, env}} <-
+           Credentials.fetch_secret_with_env(agent.organization_id, :alpaca),
+         {:ok, _} <- AlpacaClient.cancel_order(key_id, secret, order_id, env) do
+      Logger.info(
+        "BrokerOrdersController: agent #{agent.id} cancelled Alpaca order #{order_id} (env=#{env})"
+      )
+
+      conn |> json(%{ok: true, cancelled: order_id})
+    else
+      {:error, :unauthorized} ->
+        conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
+
+      {:error, :forbidden} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{ok: false, error: "only trading agents may cancel orders"})
+
+      {:error, :bad_order_id} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{ok: false, error: "order_id must be a UUID"})
+
+      {:error, :not_configured} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{ok: false, error: "alpaca credentials not configured for this org"})
+
+      {:error, reason} ->
+        Logger.warning("BrokerOrdersController: cancel failed: #{inspect(reason)}")
+
+        conn
+        |> put_status(:bad_gateway)
+        |> json(%{ok: false, error: "order cancel failed: #{inspect(reason)}"})
+    end
+  end
+
+  defp require_trading_agent(%{agent_type: "trading"}), do: :ok
+  defp require_trading_agent(_), do: {:error, :forbidden}
+
+  defp validate_order_id(id) when is_binary(id) do
+    if Regex.match?(~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/, id) do
+      {:ok, id}
+    else
+      {:error, :bad_order_id}
+    end
+  end
+
+  defp validate_order_id(_), do: {:error, :bad_order_id}
+
   defp serialize(order) do
     %{
       id: order.id,
