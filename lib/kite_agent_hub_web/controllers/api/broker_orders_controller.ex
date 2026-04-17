@@ -102,6 +102,8 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
          {:ok, order_id} <- validate_order_id(order_id),
          {:ok, {key_id, secret, env}} <-
            Credentials.fetch_secret_with_env(agent.organization_id, :alpaca),
+         {:ok, open_orders} <- AlpacaClient.list_orders(key_id, secret, "open", @max_limit, env),
+         :ok <- assert_order_belongs_to_agent(open_orders, order_id),
          {:ok, _} <- AlpacaClient.cancel_order(key_id, secret, order_id, env) do
       Logger.info(
         "BrokerOrdersController: agent #{agent.id} cancelled Alpaca order #{order_id} (env=#{env})"
@@ -122,6 +124,11 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
         |> put_status(:bad_request)
         |> json(%{ok: false, error: "order_id must be a UUID"})
 
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{ok: false, error: "order not found in agent's open orders"})
+
       {:error, :not_configured} ->
         conn
         |> put_status(:bad_request)
@@ -138,6 +145,14 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
 
   defp require_trading_agent(%{agent_type: "trading"}), do: :ok
   defp require_trading_agent(_), do: {:error, :forbidden}
+
+  defp assert_order_belongs_to_agent(open_orders, order_id) do
+    if Enum.any?(open_orders, fn o -> o.id == order_id end) do
+      :ok
+    else
+      {:error, :not_found}
+    end
+  end
 
   defp validate_order_id(id) when is_binary(id) do
     if Regex.match?(~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/, id) do

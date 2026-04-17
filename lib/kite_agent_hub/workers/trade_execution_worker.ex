@@ -433,7 +433,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   defp compute_notional(args) do
     contracts = args["contracts"] || 0
     price = Decimal.new(to_string(args["fill_price"] || "0"))
-    Decimal.mult(price, Decimal.new(contracts))
+    Decimal.mult(price, Decimal.new(to_string(contracts)))
   end
 
   # Coerce the agent's `contracts` field into a positive integer for
