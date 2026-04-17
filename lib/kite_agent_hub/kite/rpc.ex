@@ -144,6 +144,8 @@ defmodule KiteAgentHub.Kite.RPC do
     end
   end
 
+  defp decode_hex_integer({:ok, "0x"}), do: {:ok, 0}
+
   defp decode_hex_integer({:ok, "0x" <> hex}) do
     {:ok, String.to_integer(hex, 16)}
   end
