@@ -129,8 +129,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  defp format_failure_reason(reason) when is_binary(reason), do: String.slice(reason, 0, 500)
-  defp format_failure_reason(reason), do: reason |> inspect() |> String.slice(0, 500)
+  defp format_failure_reason(reason) when is_binary(reason), do: String.slice(reason, 0, 4000)
+  defp format_failure_reason(reason), do: reason |> inspect() |> String.slice(0, 4000)
 
   # Detect which platform to execute on based on market.
   #
