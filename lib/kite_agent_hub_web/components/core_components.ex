@@ -465,6 +465,34 @@ defmodule KiteAgentHubWeb.CoreComponents do
     """
   end
 
+  @doc ~S"""
+  Renders the Kite Agent Hub "Quorum" logomark inline.
+
+  Four nodes converge on an emerald signing center — blue=research,
+  purple=coordinator, white=you, emerald=decision. Geometry matches
+  the design-system spec (`priv/static/images/logo.svg`).
+
+      <.kah_logo class="w-8 h-8" />
+  """
+  attr :class, :any, default: "w-8 h-8"
+
+  def kah_logo(assigns) do
+    ~H"""
+    <svg class={@class} viewBox="0 0 180 180" fill="none" aria-label="Kite Agent Hub">
+      <circle cx="90" cy="90" r="36" fill="#22c55e" fill-opacity="0.12" />
+      <line x1="24" y1="30" x2="90" y2="90" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" />
+      <line x1="156" y1="30" x2="90" y2="90" stroke="#c084fc" stroke-width="3" stroke-linecap="round" />
+      <line x1="90" y1="168" x2="90" y2="90" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+      <circle cx="24" cy="30" r="9" fill="#60a5fa" />
+      <circle cx="156" cy="30" r="9" fill="#c084fc" />
+      <circle cx="90" cy="168" r="9" fill="#ffffff" />
+      <circle cx="90" cy="90" r="22" stroke="#22c55e" stroke-opacity="0.35" stroke-width="1.5" />
+      <circle cx="90" cy="90" r="13" fill="#22c55e" />
+      <circle cx="90" cy="90" r="4" fill="#0a0a0f" />
+    </svg>
+    """
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
