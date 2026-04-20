@@ -66,6 +66,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:wallet_tokens, nil)
       |> assign(:show_agent_context, false)
       |> assign(:agent_context_text, nil)
+      |> assign(:show_agent_token, false)
+      |> assign(:show_option_a, false)
+      |> assign(:show_option_b, false)
+      |> assign(:show_option_c, false)
       |> assign(:attestation_count, attestation_count(selected_agent))
       |> assign(:recent_attestations, recent_attestations(selected_agent))
       |> assign(:all_attestations, [])
@@ -174,7 +178,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
           socket
       end
 
+    # Always collapse any revealed secrets when the user navigates
+    # away — prevents api_token / prompt text from sitting exposed
+    # on a screen the operator isn't actively looking at.
+    socket =
+      socket
+      |> assign(:show_agent_token, false)
+      |> assign(:show_option_a, false)
+      |> assign(:show_option_b, false)
+      |> assign(:show_option_c, false)
+
     {:noreply, assign(socket, :active_tab, tab_atom)}
+  end
+
+  def handle_event("toggle_reveal", %{"target" => target}, socket) do
+    key =
+      case target do
+        "agent_token" -> :show_agent_token
+        "option_a" -> :show_option_a
+        "option_b" -> :show_option_b
+        "option_c" -> :show_option_c
+        _ -> nil
+      end
+
+    socket =
+      if key do
+        assign(socket, key, !Map.get(socket.assigns, key, false))
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   # Re-fetches live account data every 30 seconds while the tab is
@@ -1484,60 +1518,133 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
 
-                <%!-- Connect Your LLM (at bottom) --%>
+                <%!-- Connect Your LLM (at bottom) — all secrets collapsed by default --%>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
                   <div>
                     <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">How to Connect Your LLM</h3>
                     <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
-                      <li>Copy your Agent Token below (secret — do not share)</li>
-                      <li>Choose your LLM: Claude Code (terminal) or Claude Desktop (MCP)</li>
-                      <li>Paste the matching block — your LLM now trades on KAH</li>
+                      <li>Reveal your Agent Token and copy it (secret — do not share)</li>
+                      <li>Pick a path: Claude Code, Claude Desktop, or a local Ollama model</li>
+                      <li>Reveal the matching block, substitute your token where it says <code class="text-gray-500">kite_your_token_here</code>, paste into your client</li>
                     </ol>
+                    <p class="text-[10px] text-gray-600 mt-2">Switching tabs collapses every revealed block automatically.</p>
                   </div>
 
-                  <%!-- Agent Token --%>
+                  <%!-- Agent Token (masked by default) --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token</span>
-                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">Secret</span>
+                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token · Secret</span>
+                      <button
+                        phx-click="toggle_reveal"
+                        phx-value-target="agent_token"
+                        class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+                      >
+                        {if @show_agent_token, do: "Hide", else: "Reveal"}
+                      </button>
                     </div>
                     <code class="block bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono truncate">
-                      {if @selected_agent.api_token, do: @selected_agent.api_token, else: "Generating..."}
+                      <%= cond do %>
+                        <% is_nil(@selected_agent.api_token) -> %>Generating...
+                        <% @show_agent_token -> %>{@selected_agent.api_token}
+                        <% true -> %>{mask_token(@selected_agent.api_token)}
+                      <% end %>
                     </code>
                   </div>
 
-                  <%!-- Claude Code / Terminal paste block --%>
+                  <%!-- Option A — Claude Code / Terminal --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Option A — Claude Code / Terminal</span>
-                      <button
-                        id={"copy-claude-code-#{@selected_agent.id}"}
-                        phx-hook="CopyToClipboard"
-                        data-text={claude_code_prompt(@selected_agent)}
-                        class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
-                      >
-                        Copy
-                      </button>
+                      <div class="flex items-center gap-3">
+                        <%= if @show_option_a do %>
+                          <button
+                            id={"copy-claude-code-#{@selected_agent.id}"}
+                            phx-hook="CopyToClipboard"
+                            data-text={claude_code_prompt(@selected_agent)}
+                            class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
+                          >
+                            Copy
+                          </button>
+                        <% end %>
+                        <button
+                          phx-click="toggle_reveal"
+                          phx-value-target="option_a"
+                          class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+                        >
+                          {if @show_option_a, do: "Hide", else: "Reveal"}
+                        </button>
+                      </div>
                     </div>
-                    <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
-                    <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat.</p>
+                    <%= if @show_option_a do %>
+                      <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
+                      <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat. Substitute your token where it says <code class="text-gray-500">kite_your_token_here</code>.</p>
+                    <% else %>
+                      <p class="text-[10px] text-gray-600">Paste-ready system prompt for a terminal-based LLM client. Reveal to copy.</p>
+                    <% end %>
                   </div>
 
-                  <%!-- Claude Desktop MCP config --%>
+                  <%!-- Option B — Claude Desktop (MCP) --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Option B — Claude Desktop (MCP)</span>
-                      <button
-                        id={"copy-mcp-#{@selected_agent.id}"}
-                        phx-hook="CopyToClipboard"
-                        data-text={mcp_config_json(@selected_agent)}
-                        class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
-                      >
-                        Copy
-                      </button>
+                      <div class="flex items-center gap-3">
+                        <%= if @show_option_b do %>
+                          <button
+                            id={"copy-mcp-#{@selected_agent.id}"}
+                            phx-hook="CopyToClipboard"
+                            data-text={mcp_config_json(@selected_agent)}
+                            class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                          >
+                            Copy
+                          </button>
+                        <% end %>
+                        <button
+                          phx-click="toggle_reveal"
+                          phx-value-target="option_b"
+                          class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+                        >
+                          {if @show_option_b, do: "Hide", else: "Reveal"}
+                        </button>
+                      </div>
                     </div>
-                    <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-36 sm:max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
-                    <p class="text-[10px] text-gray-600 mt-1">Add to claude_desktop_config.json, then restart Claude Desktop.</p>
+                    <%= if @show_option_b do %>
+                      <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-36 sm:max-h-40 overflow-y-auto"><%= mcp_config_json(@selected_agent) %></pre>
+                      <p class="text-[10px] text-gray-600 mt-1">Add to claude_desktop_config.json, substitute your token, restart Claude Desktop.</p>
+                    <% else %>
+                      <p class="text-[10px] text-gray-600">MCP server config for Claude Desktop / Claude Code. Reveal to copy.</p>
+                    <% end %>
+                  </div>
+
+                  <%!-- Option C — Local model (Ollama) --%>
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] font-black text-purple-400 uppercase tracking-widest">Option C — Local Model (Ollama)</span>
+                      <div class="flex items-center gap-3">
+                        <%= if @show_option_c do %>
+                          <button
+                            id={"copy-ollama-#{@selected_agent.id}"}
+                            phx-hook="CopyToClipboard"
+                            data-text={ollama_setup(@selected_agent)}
+                            class="text-[10px] font-bold text-purple-400 hover:text-purple-300 uppercase tracking-widest"
+                          >
+                            Copy
+                          </button>
+                        <% end %>
+                        <button
+                          phx-click="toggle_reveal"
+                          phx-value-target="option_c"
+                          class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+                        >
+                          {if @show_option_c, do: "Hide", else: "Reveal"}
+                        </button>
+                      </div>
+                    </div>
+                    <%= if @show_option_c do %>
+                      <pre class="bg-black/40 border border-purple-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= ollama_setup(@selected_agent) %></pre>
+                      <p class="text-[10px] text-gray-600 mt-1">Runs locally — zero SaaS cost. Full walkthrough in <code class="text-gray-500">docs/byo-local-agent.md</code>.</p>
+                    <% else %>
+                      <p class="text-[10px] text-gray-600">Run a model on your own machine (qwen2.5 / llama3.1 / etc.). Reveal to copy setup.</p>
+                    <% end %>
                   </div>
                 </div>
             </div>
@@ -2431,9 +2538,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp alpaca_period_to_api("All"), do: {"10A", "1D"}
   defp alpaca_period_to_api(_), do: {"1M", "1D"}
 
+  # The real api_token is NEVER interpolated into the pastable
+  # prompt blocks — it only lives in the masked Agent Token card
+  # so it's not duplicated on screen. Users substitute the
+  # placeholder after copying.
+  @token_placeholder "kite_your_token_here"
+
   defp claude_code_prompt(agent) do
-    token = if agent && agent.api_token, do: agent.api_token, else: "YOUR_TOKEN"
     name = if agent, do: agent.name, else: "Agent"
+    token = @token_placeholder
 
     """
     You are #{name}, an autonomous trading agent connected to Kite Agent Hub (KAH).
@@ -2493,20 +2606,45 @@ defmodule KiteAgentHubWeb.DashboardLive do
     """
   end
 
-  defp mcp_config_json(agent) do
-    token = if agent && agent.api_token, do: agent.api_token, else: "YOUR_TOKEN"
-
+  defp mcp_config_json(_agent) do
     Jason.encode!(%{
       "mcpServers" => %{
         "kah" => %{
           "command" => "node",
           "args" => ["mcp-server/index.js"],
           "env" => %{
-            "KAH_AGENT_TOKEN" => token,
+            "KAH_AGENT_TOKEN" => @token_placeholder,
             "KAH_BASE_URL" => "https://kite-agent-hub.fly.dev"
           }
         }
       }
     }, pretty: true)
+  end
+
+  defp ollama_setup(_agent) do
+    """
+    # 1. Install Ollama (macOS / Linux)
+    curl -fsSL https://ollama.com/install.sh | sh
+    ollama pull qwen2.5:7b
+
+    # 2. Run the reference BYO runner
+    export KAH_AGENT_TOKEN=#{@token_placeholder}
+    export KAH_BASE_URL=https://kite-agent-hub.fly.dev
+    export OLLAMA_MODEL=qwen2.5:7b
+    python3 priv/byo/qwen_runner.py
+
+    # Full guide: docs/byo-local-agent.md
+    """
+  end
+
+  # Token mask: show first 8 chars + dots when collapsed.
+  # e.g. "kite_abc12345••••••••"
+  defp mask_token(nil), do: "(none)"
+
+  defp mask_token(token) when is_binary(token) do
+    case String.length(token) do
+      n when n > 8 -> String.slice(token, 0, 8) <> "••••••••"
+      _ -> String.duplicate("•", 12)
+    end
   end
 end
