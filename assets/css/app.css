@@ -1,6 +1,10 @@
 /* See the Tailwind configuration guide for advanced usage
    https://tailwindcss.com/docs/configuration */
 
+/* Design system fonts — Inter (sans) + JetBrains Mono (mono).
+   See project/design-system for the canonical token set. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
 @import "tailwindcss" source(none);
 @source "../css";
 @source "../js";
@@ -26,9 +30,11 @@
   default: false;
   prefersdark: true;
   color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
+  /* base-100/200/300 aligned to design-system canvas #0a0a0f + surface-02/-05
+     so non-hardcoded daisyUI surfaces blend with the shipped dashboard. */
+  --color-base-100: oklch(7.61% 0.0091 266.37);
+  --color-base-200: oklch(11% 0.007 266);
+  --color-base-300: oklch(15% 0.006 266);
   --color-base-content: oklch(97.807% 0.029 256.847);
   --color-primary: oklch(58% 0.233 277.117);
   --color-primary-content: oklch(96% 0.018 272.314);
@@ -89,6 +95,113 @@
   --border: 1.5px;
   --depth: 1;
   --noise: 0;
+}
+
+/* =========================================================================
+   Kite Agent Hub — Design System Tokens
+   Canonical source: project/design-system/colors_and_type.css
+   The shipped dashboard hardcodes #0a0a0f as the canvas and layers
+   rgba(255,255,255,α) surfaces on top. These tokens formalize the
+   values already baked into Tailwind utility strings in dashboard_live.ex
+   and chat_component.ex so future components can reference them directly.
+   ========================================================================= */
+:root {
+  /* ─── FONTS ──────────────────────────────────────────────────────────── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+               "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular,
+               Menlo, Monaco, Consolas, "Courier New", monospace;
+
+  /* ─── BRAND / SURFACE ────────────────────────────────────────────────── */
+  --canvas:            #0a0a0f;
+  --canvas-80:         rgba(10,10,15,0.80);
+  --canvas-95:         rgba(10,10,15,0.95);
+
+  --surface-01:        rgba(255,255,255,0.01);
+  --surface-02:        rgba(255,255,255,0.02);
+  --surface-03:        rgba(255,255,255,0.03);
+  --surface-05:        rgba(255,255,255,0.05);
+  --surface-08:        rgba(255,255,255,0.08);
+  --surface-12:        rgba(255,255,255,0.12);
+
+  --border-hair:       rgba(255,255,255,0.05);
+  --border-default:    rgba(255,255,255,0.10);
+  --border-strong:     rgba(255,255,255,0.20);
+
+  /* ─── TEXT / FG ──────────────────────────────────────────────────────── */
+  --fg-1:  #ffffff;
+  --fg-2:  #e5e7eb;
+  --fg-3:  #d1d5db;
+  --fg-4:  #9ca3af;
+  --fg-5:  #6b7280;
+  --fg-6:  #4b5563;
+  --fg-7:  #374151;
+
+  /* ─── SEMANTIC / STATUS ──────────────────────────────────────────────── */
+  --success:           #22c55e;
+  --success-glow:      0 0 8px #22c55e;
+  --success-tint-5:    rgba(34,197,94,0.05);
+  --success-tint-10:   rgba(34,197,94,0.10);
+  --success-tint-20:   rgba(34,197,94,0.20);
+  --success-tint-30:   rgba(34,197,94,0.30);
+
+  --danger:            #ef4444;
+  --danger-glow:       0 0 8px #ef4444;
+  --danger-tint-10:    rgba(239,68,68,0.10);
+  --danger-tint-20:    rgba(239,68,68,0.20);
+
+  --warn:              #facc15;
+  --warn-tint-10:      rgba(234,179,8,0.10);
+  --warn-tint-20:      rgba(234,179,8,0.20);
+
+  /* ─── AGENT-TYPE PALETTE ─────────────────────────────────────────────── */
+  --agent-trading:     #22c55e;
+  --agent-research:    #60a5fa;
+  --agent-convo:       #c084fc;
+  --user-bubble-bg:    #78716c;
+  --user-bubble-br:    #a8a29e;
+
+  /* ─── RADII ──────────────────────────────────────────────────────────── */
+  --radius-xs:         0.5rem;
+  --radius-sm:         0.75rem;
+  --radius-md:         1rem;
+  --radius-full:       9999px;
+
+  /* ─── SHADOW / GLOW ──────────────────────────────────────────────────── */
+  --shadow-card-faint:  0 0 15px rgba(255,255,255,0.02);
+  --shadow-card-soft:   0 0 20px rgba(255,255,255,0.05);
+  --shadow-emerald:     0 0 15px rgba(34,197,94,0.10);
+  --shadow-emerald-mid: 0 0 20px rgba(34,197,94,0.20);
+  --shadow-pnl-up:      0 0 15px rgba(34,197,94,0.30);
+  --shadow-pnl-down:    0 0 15px rgba(239,68,68,0.30);
+  --blur-card:          12px;
+
+  /* ─── SPACING ────────────────────────────────────────────────────────── */
+  --space-1:   0.25rem;
+  --space-2:   0.5rem;
+  --space-3:   0.75rem;
+  --space-4:   1rem;
+  --space-6:   1.5rem;
+  --space-8:   2rem;
+
+  /* ─── TYPOGRAPHIC DEFAULTS ───────────────────────────────────────────── */
+  --tracking-tight:    -0.02em;
+  --tracking-normal:    0em;
+  --tracking-wide:      0.05em;
+  --tracking-widest:    0.2em;
+  --leading-tight:      1.1;
+  --leading-relaxed:    1.6;
+}
+
+/* Canvas is fixed #0a0a0f regardless of daisyUI theme toggle — the
+   shipped dashboard hardcodes this value across every layout. */
+html,
+body {
+  background-color: var(--canvas);
+  color: var(--fg-2);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Add variants based on LiveView classes */
