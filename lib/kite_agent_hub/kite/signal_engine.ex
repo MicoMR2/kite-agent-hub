@@ -32,8 +32,10 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   require Logger
 
+  alias KiteAgentHub.Billing.LlmUsageLog
   alias KiteAgentHub.Credentials
   alias KiteAgentHub.Kite.LLM.{Anthropic, OpenAI, Ollama}
+  alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading.KiteAgent
 
   @doc """
@@ -54,14 +56,47 @@ defmodule KiteAgentHub.Kite.SignalEngine do
     case resolve_provider(agent) do
       {:ok, provider_mod, opts} ->
         case provider_mod.chat(prompt, opts) do
-          {:ok, text} -> parse_signal(text, context)
-          {:error, _} = err -> err
+          {:ok, text} ->
+            record_internal_usage(agent, provider_mod, opts)
+            parse_signal(text, context)
+
+          {:error, _} = err ->
+            err
         end
 
       :hold ->
         {:hold, "byo_llm_mode"}
     end
   end
+
+  # Fire-and-forget billing row. Repo.insert failure must NOT crash
+  # SignalEngine or propagate into the AgentRunner tick (CyberSec
+  # condition, msg 6886).
+  defp record_internal_usage(%KiteAgent{} = agent, provider_mod, opts) do
+    Task.start(fn ->
+      try do
+        %LlmUsageLog{}
+        |> LlmUsageLog.changeset(%{
+          org_id: agent.organization_id,
+          agent_id: agent.id,
+          provider: provider_name(provider_mod),
+          model: Map.get(opts, :model),
+          source: "internal"
+        })
+        |> Repo.insert()
+      rescue
+        e ->
+          Logger.warning("SignalEngine: LlmUsageLog insert raised — #{Exception.message(e)}")
+      end
+    end)
+
+    :ok
+  end
+
+  defp provider_name(Anthropic), do: "anthropic"
+  defp provider_name(OpenAI), do: "openai"
+  defp provider_name(Ollama), do: "ollama"
+  defp provider_name(_), do: "unknown"
 
   # ── Provider resolution ─────────────────────────────────────────────────────
 

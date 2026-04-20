@@ -25,7 +25,10 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   require Logger
 
+  alias KiteAgentHub.Api.RateLimiter
+  alias KiteAgentHub.Billing.LlmUsageLog
   alias KiteAgentHub.Credentials
+  alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
   alias KiteAgentHub.Workers.TradeExecutionWorker
@@ -35,9 +38,12 @@ defmodule KiteAgentHubWeb.API.TradesController do
   def create(conn, params) do
     with {:ok, agent} <- authenticate(conn),
          :ok <- require_trading_agent(agent),
+         :ok <- RateLimiter.check(agent.id),
          {:ok, job_args} <- validate_trade_params(params, agent) do
       case job_args |> TradeExecutionWorker.new() |> Oban.insert() do
         {:ok, job} ->
+          record_byo_usage(agent)
+
           conn
           |> put_status(:accepted)
           |> json(%{ok: true, job_id: job.id, status: "queued"})
@@ -58,9 +64,38 @@ defmodule KiteAgentHubWeb.API.TradesController do
         |> put_status(:forbidden)
         |> json(%{ok: false, error: "agent type is not permitted to execute trades"})
 
+      {:error, :rate_limited} ->
+        # 429 body is intentionally generic — no agent.id, bucket
+        # counts, or internal state per CyberSec condition (msg 6886).
+        conn
+        |> put_status(:too_many_requests)
+        |> json(%{ok: false, error: "rate limited"})
+
       {:error, message} when is_binary(message) ->
         conn |> put_status(:bad_request) |> json(%{ok: false, error: message})
     end
+  end
+
+  # Fire-and-forget billing row — a Repo.insert failure must NOT
+  # propagate into the response (CyberSec condition, msg 6886).
+  defp record_byo_usage(agent) do
+    Task.start(fn ->
+      try do
+        %LlmUsageLog{}
+        |> LlmUsageLog.changeset(%{
+          org_id: agent.organization_id,
+          agent_id: agent.id,
+          provider: "byo",
+          source: "byo_rest"
+        })
+        |> Repo.insert()
+      rescue
+        e ->
+          Logger.warning("TradesController: LlmUsageLog insert raised — #{Exception.message(e)}")
+      end
+    end)
+
+    :ok
   end
 
   # Only agents with agent_type == "trading" may submit orders. Research
