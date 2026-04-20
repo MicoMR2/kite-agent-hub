@@ -581,6 +581,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp wallet_capable?(_), do: false
 
+  defp agent_initials(name) when is_binary(name) do
+    name
+    |> String.split(~r/[-\s_]/, trim: true)
+    |> Enum.map(&String.first/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join()
+    |> String.slice(0, 2)
+    |> String.upcase()
+  end
+
+  defp agent_initials(_), do: "?"
+
+  defp agent_type_tint("trading"), do: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+  defp agent_type_tint("research"), do: "bg-blue-500/10 border-blue-500/20 text-blue-400"
+  defp agent_type_tint("conversational"), do: "bg-purple-500/10 border-purple-500/20 text-purple-400"
+  defp agent_type_tint(_), do: "bg-white/5 border-white/10 text-gray-400"
+
   defp replace_agent(agents, updated) do
     Enum.map(agents, fn a -> if a.id == updated.id, do: updated, else: a end)
   end
@@ -917,14 +934,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     ]}
                   >
                     <div class="flex items-start justify-between gap-2 mb-2">
-                      <span class={[
-                        "text-sm font-bold truncate tracking-wide transition-colors",
-                        @selected_agent && @selected_agent.id == agent.id && "text-white",
-                        (!@selected_agent || @selected_agent.id != agent.id) &&
-                          "text-gray-400 group-hover:text-gray-200"
-                      ]}>
-                        {agent.name}
-                      </span>
+                      <div class="flex items-center gap-3 min-w-0">
+                        <span class={[
+                          "w-8 h-8 rounded-[10px] border flex items-center justify-center shrink-0 text-[11px] font-black tracking-wide",
+                          agent_type_tint(agent.agent_type)
+                        ]}>
+                          {agent_initials(agent.name)}
+                        </span>
+                        <span class={[
+                          "text-sm font-bold truncate tracking-wide transition-colors",
+                          @selected_agent && @selected_agent.id == agent.id && "text-white",
+                          (!@selected_agent || @selected_agent.id != agent.id) &&
+                            "text-gray-400 group-hover:text-gray-200"
+                        ]}>
+                          {agent.name}
+                        </span>
+                      </div>
                       <span class={[
                         "w-2 h-2 rounded-full shrink-0 mt-1",
                         agent.status == "active" && "bg-[#22c55e] shadow-[0_0_8px_#22c55e]",
@@ -939,7 +964,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                     <div class="flex items-center gap-2">
                       <span class={[
-                        "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
+                        "text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-bold",
                         agent.status == "active" &&
                           "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
                         agent.status == "paused" &&
@@ -1045,9 +1070,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <p class={[
                         "text-2xl sm:text-3xl font-black tracking-tight break-all transition-all duration-300",
                         Decimal.gt?(@pnl_stats.total_pnl, 0) &&
-                          "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]",
+                          "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
                         Decimal.lt?(@pnl_stats.total_pnl, 0) &&
-                          "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]",
+                          "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
                         Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
                       ]}>
                         {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(@pnl_stats.total_pnl, 4)}
@@ -1130,7 +1155,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <div class="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/[0.06] to-emerald-500/[0.02] backdrop-blur-md p-6">
                   <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div class="flex items-start gap-4">
-                      <div class="h-12 w-12 rounded-xl border border-emerald-500/40 bg-emerald-500/10 flex items-center justify-center shrink-0 text-emerald-400 text-xl font-bold">
+                      <div class="h-8 w-8 rounded-full bg-emerald-500/[0.18] flex items-center justify-center shrink-0 text-emerald-400 text-base font-black shadow-[0_0_10px_rgba(34,197,94,0.3)]">
                         ✓
                       </div>
                       <div class="min-w-0">

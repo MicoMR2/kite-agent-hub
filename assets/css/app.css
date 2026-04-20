@@ -219,7 +219,7 @@ body {
    Tailwind v4's scanner does not reliably detect class strings in `defp` function
    bodies — only template literals are guaranteed to be scanned. Any class that
    appears exclusively in a `do: "..."` return must be listed here. */
-@source inline("bg-stone-500 border-stone-400 text-stone-200");
+@source inline("bg-stone-500/20 border-stone-400/30 text-stone-200");
 
 /* This file is for your main application CSS */
 

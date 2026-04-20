@@ -213,7 +213,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
                   label_color(msg.sender_type, agent_type)
                 ]}>{msg.sender_name}</span>
                 <div class={[
-                  "max-w-[85%] min-w-0 rounded-xl px-3 py-2 text-xs leading-relaxed break-words overflow-hidden",
+                  "max-w-[85%] min-w-0 rounded-2xl backdrop-blur-md px-3 py-2 text-xs leading-relaxed break-words overflow-hidden",
                   bubble_classes(msg.sender_type, agent_type)
                 ]}>
                   {msg.text}
@@ -284,7 +284,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
   defp label_color(_, _), do: "text-gray-400"
 
   defp bubble_classes("user", _),
-    do: "bg-stone-500 border border-stone-400 text-white"
+    do: "bg-stone-500/20 border border-stone-400/30 text-stone-200"
 
   defp bubble_classes("system", _),
     do: "bg-white/[0.02] border border-white/5 text-gray-500 italic"
