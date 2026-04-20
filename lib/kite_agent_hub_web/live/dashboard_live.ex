@@ -68,6 +68,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:agent_context_text, nil)
       |> assign(:attestation_count, attestation_count(selected_agent))
       |> assign(:recent_attestations, recent_attestations(selected_agent))
+      |> assign(:all_attestations, [])
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -97,6 +98,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:pnl_stats, stats)
      |> assign(:attestation_count, attestation_count(agent))
      |> assign(:recent_attestations, recent_attestations(agent))
+     |> assign(:all_attestations, if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: []))
      |> assign(:wallet_balance_eth, nil)
      |> assign(:block_number, nil)
      |> stream(:trades, trades, reset: true)}
@@ -109,12 +111,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     tab_atom = case tab do
-      "overview"    -> :overview
-      "wallet"      -> :wallet
-      "edge_scorer" -> :edge_scorer
-      "alpaca"      -> :alpaca
-      "kalshi"      -> :kalshi
-      _             -> :overview
+      "overview"     -> :overview
+      "attestations" -> :attestations
+      "wallet"       -> :wallet
+      "edge_scorer"  -> :edge_scorer
+      "alpaca"       -> :alpaca
+      "kalshi"       -> :kalshi
+      _              -> :overview
     end
 
     socket =
@@ -140,6 +143,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
           send(self(), :load_kalshi)
           schedule_tab_refresh(:kalshi)
           assign(socket, :kalshi_data, :loading)
+
+        :attestations ->
+          assign(socket, :all_attestations, all_attestations(socket.assigns.selected_agent))
 
         _ ->
           socket
@@ -269,6 +275,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:pnl_stats, stats)
      |> assign(:attestation_count, attestation_count(agent))
      |> assign(:recent_attestations, recent_attestations(agent))
+     |> assign(:all_attestations, if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: socket.assigns.all_attestations))
      |> stream_insert(:trades, trade)}
   end
 
@@ -679,6 +686,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp attestation_count(nil), do: 0
   defp attestation_count(%{id: id}), do: Trading.count_attestations(id)
 
+  # Full (or near-full) attestation history for the Attestations tab.
+  # Scoped to the selected agent; cross-agent rollups are out of scope.
+  defp all_attestations(nil), do: []
+  defp all_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 100)
+
   defp recent_attestations(nil), do: []
   defp recent_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 5)
 
@@ -825,7 +837,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
           <nav class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="dashboard-tabs">
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}] do %>
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
@@ -1435,6 +1447,139 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 </div>
             </div>
+          </div>
+          <% end %>
+
+          <%!-- ═══════════════ ATTESTATIONS TAB ═══════════════ --%>
+          <%= if @active_tab == :attestations do %>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-5xl">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">
+              Kite Chain Attestations
+            </h2>
+            <%= if @selected_agent do %>
+              <div class="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.04] to-emerald-500/[0.01] backdrop-blur-md overflow-hidden">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-5 border-b border-emerald-500/10">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <div class="h-8 w-8 rounded-full bg-emerald-500/[0.18] flex items-center justify-center shrink-0 text-emerald-400 text-base font-black shadow-[0_0_10px_rgba(34,197,94,0.3)]">
+                      ✓
+                    </div>
+                    <div class="min-w-0">
+                      <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                        On-Chain History
+                      </p>
+                      <p class="text-sm font-black text-white tracking-tight">
+                        {@attestation_count} <span class="text-xs font-mono text-gray-500">attested trades</span>
+                      </p>
+                    </div>
+                  </div>
+                  <%= if @selected_agent.wallet_address do %>
+                    <a
+                      href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                    >
+                      View on Kitescan →
+                    </a>
+                  <% end %>
+                </div>
+
+                <%= if @all_attestations == [] do %>
+                  <div class="px-6 py-20 text-center">
+                    <p class="text-sm font-bold text-gray-400">No attestations yet</p>
+                    <p class="text-xs text-gray-600 mt-2 font-mono">
+                      <%= if @selected_agent.status == "active" do %>
+                        Trades will appear here once they settle and sign to Kite chain
+                      <% else %>
+                        Activate this agent to begin writing trade attestations
+                      <% end %>
+                    </p>
+                  </div>
+                <% else %>
+                  <div class="divide-y divide-emerald-500/5">
+                    <div class="hidden md:grid md:grid-cols-12 gap-4 px-6 py-3 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                      <div class="col-span-1">Action</div>
+                      <div class="col-span-3">Market</div>
+                      <div class="col-span-3">Tx Hash</div>
+                      <div class="col-span-2">Time</div>
+                      <div class="col-span-2">PNL</div>
+                      <div class="col-span-1 text-right">Status</div>
+                    </div>
+                    <%= for att <- @all_attestations do %>
+                      <div class="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 px-6 py-4 hover:bg-emerald-500/[0.03] transition-colors items-center">
+                        <div class="col-span-1 md:col-span-1">
+                          <span class={[
+                            "inline-flex items-center justify-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest",
+                            att.action == "buy" && "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
+                            att.action == "sell" && "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]",
+                            att.action not in ["buy", "sell"] && "bg-gray-500/10 border-gray-500/20 text-gray-400"
+                          ]}>
+                            {att.action || "unkn"}
+                          </span>
+                        </div>
+                        <div class="col-span-1 md:col-span-3 min-w-0">
+                          <p class="text-sm font-black text-white tracking-tight truncate">
+                            {att.market}
+                          </p>
+                          <p class="text-[10px] text-gray-600 font-mono md:hidden">
+                            {att.contracts}x @ ${att.fill_price}
+                          </p>
+                        </div>
+                        <div class="col-span-2 md:col-span-3 min-w-0">
+                          <a
+                            href={"https://testnet.kitescan.ai/tx/" <> att.attestation_tx_hash}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors"
+                            title={att.attestation_tx_hash}
+                          >
+                            {String.slice(att.attestation_tx_hash, 0, 10)}…{String.slice(att.attestation_tx_hash, -6, 6)}
+                            <span class="text-emerald-500/60">↗</span>
+                          </a>
+                        </div>
+                        <div class="col-span-1 md:col-span-2">
+                          <p
+                            id={"attestation-time-#{att.id}"}
+                            phx-hook="LocalTime"
+                            data-iso={DateTime.to_iso8601(att.updated_at)}
+                            data-format="datetime"
+                            class="text-[11px] text-gray-400 font-mono"
+                          >
+                            {Calendar.strftime(att.updated_at, "%b %d %H:%M")}
+                          </p>
+                        </div>
+                        <div class="col-span-1 md:col-span-2">
+                          <%= if att.realized_pnl do %>
+                            <p class={[
+                              "text-sm font-bold font-mono",
+                              Decimal.gt?(att.realized_pnl, 0) && "text-[#22c55e]",
+                              Decimal.lt?(att.realized_pnl, 0) && "text-[#ef4444]",
+                              Decimal.eq?(att.realized_pnl, 0) && "text-gray-500"
+                            ]}>
+                              {if Decimal.gt?(att.realized_pnl, 0), do: "+"}${Decimal.round(att.realized_pnl, 4)}
+                            </p>
+                          <% else %>
+                            <p class="text-xs text-gray-600 font-mono">—</p>
+                          <% end %>
+                        </div>
+                        <div class="col-span-1 md:col-span-1 md:text-right">
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                            ✓ {att.status}
+                          </span>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            <% else %>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-20 text-center">
+                <p class="text-sm font-bold text-gray-400">Select an agent to view attestations</p>
+                <p class="text-xs text-gray-600 mt-2 font-mono">
+                  Each settled trade writes a signed receipt to the Kite chain
+                </p>
+              </div>
+            <% end %>
           </div>
           <% end %>
 
