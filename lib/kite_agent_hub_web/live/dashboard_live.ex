@@ -718,9 +718,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <div class="h-8 w-8 rounded-lg border border-white/10 bg-white/[0.03] flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.05)]">
-                <.icon name="hero-bolt" class="w-4 h-4 text-white" />
-              </div>
+              <.kah_logo class="w-8 h-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,197,94,0.35)]" />
               <div>
                 <span class="text-sm font-black text-white tracking-tight uppercase">
                   Kite Agent Hub
@@ -901,7 +899,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 navigate={~p"/agents/new"}
                 class="inline-flex items-center gap-2 px-10 py-4 rounded-xl border border-white/10 bg-white/[0.08] hover:bg-white/[0.12] text-white text-base font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.05)] hover:-translate-y-0.5 transform tracking-wide"
               >
-                <.icon name="hero-bolt" class="w-5 h-5" /> Launch Your First Agent
+                <.kah_logo class="w-5 h-5 shrink-0" /> Launch Your First Agent
               </.link>
               <p class="text-xs text-gray-600 mt-6 font-mono">
                 Chain ID 2368 · Powered by Claude
