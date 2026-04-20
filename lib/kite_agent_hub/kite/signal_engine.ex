@@ -44,11 +44,15 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   Provider dispatch order:
     1. per-agent `llm_provider` (uses agent.llm_model + the matching
-       per-org Credentials.fetch_llm_key/2 for Anthropic/OpenAI)
+       per-org `Credentials.fetch_llm_key/2` for Anthropic/OpenAI,
+       or a local Ollama server)
     2. per-org credential: Anthropic then OpenAI
-    3. shared `ANTHROPIC_API_KEY` shim (retired in a follow-up PR)
-    4. `{:hold, "byo_llm_mode"}` — agent sits idle, external clients
-       still drive trades via REST with the agent api_token
+    3. `{:hold, "byo_llm_mode"}` — agent sits idle, external clients
+       drive trades via `/api/v1/trades` with the agent api_token
+
+  The shared `ANTHROPIC_API_KEY` shim was retired in the cutover —
+  the platform never spends the owner's Anthropic credits on a
+  user's behalf.
   """
   def generate(%KiteAgent{} = agent, context) do
     prompt = build_prompt(agent, context)
@@ -123,27 +127,22 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   defp resolve_provider(%KiteAgent{} = agent), do: resolve_org_or_shim(agent)
 
+  # The shared ANTHROPIC_API_KEY shim has been retired — the
+  # platform never spends the owner's Anthropic credits on a user's
+  # behalf. Orgs supply their own key via the encrypted credentials
+  # vault, or agents run on a local Ollama, or the agent sits idle
+  # while an external BYO client drives trades via /api/v1/trades.
   defp resolve_org_or_shim(%KiteAgent{} = agent) do
-    with {:error, _} <- Credentials.fetch_llm_key(agent.organization_id, "anthropic"),
-         {:error, _} <- Credentials.fetch_llm_key(agent.organization_id, "openai") do
-      case shared_anthropic_key() do
-        key when is_binary(key) and key != "" -> {:ok, Anthropic, %{api_key: key}}
-        _ -> :hold
-      end
-    else
+    case Credentials.fetch_llm_key(agent.organization_id, "anthropic") do
       {:ok, key} ->
-        # First non-error clause above matched — dispatch to the
-        # corresponding provider. We re-check provider order to pick
-        # the right module; Anthropic wins if both configured.
-        case Credentials.fetch_llm_key(agent.organization_id, "anthropic") do
-          {:ok, ^key} -> {:ok, Anthropic, %{api_key: key}}
-          _ -> {:ok, OpenAI, %{api_key: key}}
+        {:ok, Anthropic, %{api_key: key}}
+
+      {:error, _} ->
+        case Credentials.fetch_llm_key(agent.organization_id, "openai") do
+          {:ok, key} -> {:ok, OpenAI, %{api_key: key}}
+          {:error, _} -> :hold
         end
     end
-  end
-
-  defp shared_anthropic_key do
-    Application.get_env(:kite_agent_hub, :anthropic_api_key, "")
   end
 
   # ── Private ───────────────────────────────────────────────────────────────────

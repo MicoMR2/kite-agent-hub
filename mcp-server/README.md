@@ -1,6 +1,11 @@
 # KAH MCP Server
 
-MCP (Model Context Protocol) server for Kite Agent Hub. Gives Claude Desktop native access to your trading platform.
+MCP (Model Context Protocol) server for Kite Agent Hub. Gives Claude
+Desktop native access to your trading platform.
+
+This is one of three BYO-LLM paths. See
+[`docs/byo-local-agent.md`](../docs/byo-local-agent.md) for the full
+picture (Ollama runner, Claude Desktop/MCP, direct HTTP).
 
 ## Setup
 

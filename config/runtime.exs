@@ -1,13 +1,20 @@
 import Config
 
-# WorkOS AuthKit + Anthropic — read from env in all environments
+# WorkOS AuthKit — read from env in all environments.
+#
+# LLM provider keys are no longer read at app scope: each org
+# supplies its own key via the encrypted credentials vault
+# (Anthropic / OpenAI), or points agents at a local Ollama via
+# per-agent config (see KiteAgentHub.Kite.LLM.*). The previous
+# shared `anthropic_api_key` has been retired — the platform
+# never spends the owner's Anthropic credits on a user's behalf.
 config :kite_agent_hub,
   workos_api_key: System.get_env("WORKOS_API_KEY") || "",
   workos_client_id: System.get_env("WORKOS_CLIENT_ID") || "",
   workos_redirect_uri:
     System.get_env("WORKOS_REDIRECT_URI") ||
       "http://localhost:4000/auth/workos/callback",
-  anthropic_api_key: System.get_env("ANTHROPIC_API_KEY") || "",
+  ollama_base_url: System.get_env("OLLAMA_BASE_URL"),
   agent_private_key: System.get_env("AGENT_PRIVATE_KEY") || "",
   # PR #101: Kite chain treasury address. KiteAttestationWorker sends a
   # tiny PYUSD transfer here from the agent wallet on every settled
