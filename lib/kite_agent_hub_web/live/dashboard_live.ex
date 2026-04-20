@@ -76,35 +76,58 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   @impl true
   def handle_params(%{"agent_id" => agent_id}, _uri, socket) do
-    agent = Trading.get_agent!(agent_id)
-    trades = Trading.list_trades(agent.id, limit: 20)
-    stats = safe_broker_stats(agent.organization_id, socket.assigns[:pnl_stats])
+    # Stale/invalid agent_id in the URL used to raise Ecto.NoResultsError
+    # via Trading.get_agent!/1 and crash-loop the LV. Fall back to the
+    # overview route if the agent is gone.
+    case safe_get_agent(agent_id) do
+      nil ->
+        {:noreply, push_patch(socket, to: ~p"/dashboard")}
 
-    if connected?(socket) do
-      if socket.assigns.selected_agent do
-        Phoenix.PubSub.unsubscribe(
-          KiteAgentHub.PubSub,
-          "agent:#{socket.assigns.selected_agent.id}"
-        )
-      end
+      agent ->
+        trades =
+          try do
+            Trading.list_trades(agent.id, limit: 20)
+          rescue
+            _ -> []
+          end
 
-      Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent.id}")
-      fetch_chain_data(agent)
+        stats = safe_broker_stats(agent.organization_id, socket.assigns[:pnl_stats])
+
+        if connected?(socket) do
+          if socket.assigns.selected_agent do
+            Phoenix.PubSub.unsubscribe(
+              KiteAgentHub.PubSub,
+              "agent:#{socket.assigns.selected_agent.id}"
+            )
+          end
+
+          Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent.id}")
+          fetch_chain_data(agent)
+        end
+
+        {:noreply,
+         socket
+         |> assign(:selected_agent, agent)
+         |> assign(:pnl_stats, stats)
+         |> assign(:attestation_count, attestation_count(agent))
+         |> assign(:recent_attestations, recent_attestations(agent))
+         |> assign(:all_attestations, if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: []))
+         |> assign(:wallet_balance_eth, nil)
+         |> assign(:block_number, nil)
+         |> stream(:trades, trades, reset: true)}
     end
-
-    {:noreply,
-     socket
-     |> assign(:selected_agent, agent)
-     |> assign(:pnl_stats, stats)
-     |> assign(:attestation_count, attestation_count(agent))
-     |> assign(:recent_attestations, recent_attestations(agent))
-     |> assign(:all_attestations, if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: []))
-     |> assign(:wallet_balance_eth, nil)
-     |> assign(:block_number, nil)
-     |> stream(:trades, trades, reset: true)}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp safe_get_agent(agent_id) do
+    try do
+      Trading.get_agent!(agent_id)
+    rescue
+      Ecto.NoResultsError -> nil
+      _ -> nil
+    end
+  end
 
   # ── Events ────────────────────────────────────────────────────────────────────
 
@@ -377,8 +400,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     txs =
       if agent && agent.wallet_address do
-        case KiteAgentHub.Kite.Blockscout.transactions(agent.wallet_address, 10) do
-          {:ok, txs} -> txs
+        try do
+          case KiteAgentHub.Kite.Blockscout.transactions(agent.wallet_address, 10) do
+            {:ok, txs} -> txs
+            _ -> []
+          end
+        rescue
           _ -> []
         end
       else
@@ -396,8 +423,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     tokens =
       if agent && agent.wallet_address do
-        case KiteAgentHub.Kite.Blockscout.token_balances(agent.wallet_address) do
-          {:ok, list} -> list
+        try do
+          case KiteAgentHub.Kite.Blockscout.token_balances(agent.wallet_address) do
+            {:ok, list} -> list
+            _ -> []
+          end
+        rescue
           _ -> []
         end
       else
@@ -407,13 +438,28 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, assign(socket, :wallet_tokens, tokens)}
   end
 
-  # Async Alpaca data loading
+  # Async Alpaca data loading. Wrapped so a client timeout / malformed
+  # response cannot crash the LV.
   def handle_info(:load_alpaca, socket) do
-    {:noreply, load_alpaca_data(socket)}
+    socket =
+      try do
+        load_alpaca_data(socket)
+      rescue
+        _ -> assign(socket, :alpaca_data, :error)
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info({:load_alpaca, period}, socket) do
-    {:noreply, load_alpaca_data(socket, period)}
+    socket =
+      try do
+        load_alpaca_data(socket, period)
+      rescue
+        _ -> assign(socket, :alpaca_data, :error)
+      end
+
+    {:noreply, socket}
   end
 
   # Periodic refresh for Alpaca/Kalshi tabs — keeps live portfolio
@@ -433,9 +479,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   def handle_info({:tab_refresh, _other}, socket), do: {:noreply, socket}
 
-  # Async Kalshi data loading
+  # Async Kalshi data loading. Wrapped — the with-chain internally uses
+  # {:ok, _} / {:error, _} but a raised exception from PEM decode or
+  # HTTP client would propagate and crash the LV.
   def handle_info(:load_kalshi, socket) do
-    {:noreply, load_kalshi_data(socket)}
+    socket =
+      try do
+        load_kalshi_data(socket)
+      rescue
+        _ -> assign(socket, :kalshi_data, :error)
+      end
+
+    {:noreply, socket}
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
@@ -703,7 +758,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Both safely no-op when there's no selected agent (e.g. fresh org
   # with no agents yet) so the dashboard never crashes on first load.
   defp attestation_count(nil), do: 0
-  defp attestation_count(%{id: id}), do: Trading.count_attestations(id)
+  defp attestation_count(%{id: id}) do
+    try do
+      Trading.count_attestations(id)
+    rescue
+      _ -> 0
+    end
+  end
 
   # Full (or near-full) attestation history for the Attestations tab.
   # Scoped to the selected agent; cross-agent rollups are out of scope.
@@ -719,7 +780,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp recent_attestations(nil), do: []
-  defp recent_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 5)
+  defp recent_attestations(%{id: id}) do
+    try do
+      Trading.list_recent_attestations(id, 5)
+    rescue
+      _ -> []
+    end
+  end
 
   # Render the running KITE total paid to the treasury. Each attestation
   # is exactly 0.00001 KITE (KiteAttestationWorker @attestation_amount_wei
