@@ -59,6 +59,21 @@ defmodule KiteAgentHub.Credentials do
   end
 
   @doc """
+  LLM-specific wrapper around `fetch_secret_with_env/2`. Returns the
+  decrypted API key for the given org + LLM provider, or
+  `{:error, :not_configured}` when the org has not set one up. The
+  `env` field is irrelevant for LLM providers, so we drop it.
+  """
+  def fetch_llm_key(org_id, provider) when provider in ~w(openai anthropic) do
+    case fetch_secret_with_env(org_id, provider) do
+      {:ok, {_key_id, secret, _env}} -> {:ok, secret}
+      {:error, _} = err -> err
+    end
+  end
+
+  def fetch_llm_key(_org_id, _provider), do: {:error, :not_supported}
+
+  @doc """
   Upsert a credential for an org + provider. Returns {:ok, credential} or {:error, changeset}.
   """
   def upsert_credential(org_id, provider, attrs) do

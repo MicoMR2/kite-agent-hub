@@ -14,7 +14,10 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @valid_providers ~w(alpaca kalshi)
+  # Broker providers (alpaca/kalshi) and LLM providers (openai/anthropic)
+  # share the same encrypted-secret storage. Ollama is omitted because it
+  # authenticates via a base URL only — no shared secret to store.
+  @valid_providers ~w(alpaca kalshi openai anthropic)
   @valid_envs ~w(paper live)
 
   schema "api_credentials" do
