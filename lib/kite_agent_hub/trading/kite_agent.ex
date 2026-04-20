@@ -7,6 +7,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
 
   @statuses ~w(pending active paused error archived)
   @agent_types ~w(trading research conversational)
+  @llm_providers ~w(anthropic openai ollama)
 
   schema "kite_agents" do
     field :name, :string
@@ -18,6 +19,14 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :api_token, :string
     field :tags, {:array, :string}, default: []
     field :bio, :string
+
+    # BYO-model fields. Null means "inherit from org default". The
+    # field validation below guards the provider string; SSRF
+    # validation for llm_endpoint_url lives with the provider
+    # dispatcher (follow-up PR) — this schema only stores the value.
+    field :llm_provider, :string
+    field :llm_model, :string
+    field :llm_endpoint_url, :string
 
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     has_many :trade_records, KiteAgentHub.Trading.TradeRecord
@@ -35,11 +44,15 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :vault_address,
       :chain_id,
       :status,
-      :organization_id
+      :organization_id,
+      :llm_provider,
+      :llm_model,
+      :llm_endpoint_url
     ])
     |> validate_required([:name, :organization_id])
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:agent_type, @agent_types)
+    |> validate_inclusion(:llm_provider, @llm_providers)
     |> validate_wallet_for_trading()
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
