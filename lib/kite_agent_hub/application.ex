@@ -14,6 +14,7 @@ defmodule KiteAgentHub.Application do
       {Phoenix.PubSub, name: KiteAgentHub.PubSub},
       {Oban, Application.fetch_env!(:kite_agent_hub, Oban)},
       {Registry, keys: :unique, name: KiteAgentHub.AgentRegistry},
+      KiteAgentHub.Api.RateLimiter,
       KiteAgentHub.Kite.AgentRunnerSupervisor,
       KiteAgentHubWeb.Endpoint
     ]
