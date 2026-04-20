@@ -267,15 +267,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
     # PR #103: refresh the on-chain attestation summary card whenever a
     # trade row updates. Cheap query (count + 5-row select) and only the
     # currently-selected agent's trades come through this PubSub topic,
-    # so we don't need to filter further.
+    # so we don't need to filter further. Wrapped in try/rescue so a
+    # transient DB failure cannot crash the LV on every trade update.
     agent = socket.assigns[:selected_agent]
+
+    {att_count, recent_att, all_att} =
+      try do
+        {
+          attestation_count(agent),
+          recent_attestations(agent),
+          if(socket.assigns.active_tab == :attestations,
+            do: all_attestations(agent),
+            else: socket.assigns.all_attestations)
+        }
+      rescue
+        _ ->
+          {
+            socket.assigns.attestation_count,
+            socket.assigns.recent_attestations,
+            socket.assigns.all_attestations
+          }
+      end
 
     {:noreply,
      socket
      |> assign(:pnl_stats, stats)
-     |> assign(:attestation_count, attestation_count(agent))
-     |> assign(:recent_attestations, recent_attestations(agent))
-     |> assign(:all_attestations, if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: socket.assigns.all_attestations))
+     |> assign(:attestation_count, att_count)
+     |> assign(:recent_attestations, recent_att)
+     |> assign(:all_attestations, all_att)
      |> stream_insert(:trades, trade)}
   end
 
