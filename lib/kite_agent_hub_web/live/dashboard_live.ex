@@ -688,8 +688,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # Full (or near-full) attestation history for the Attestations tab.
   # Scoped to the selected agent; cross-agent rollups are out of scope.
+  # Wrapped in try/rescue so a transient DB failure cannot crash the
+  # LiveView — matches the PR #165 fetch_chain_data rescue pattern.
   defp all_attestations(nil), do: []
-  defp all_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 100)
+  defp all_attestations(%{id: id}) do
+    try do
+      Trading.list_recent_attestations(id, 100)
+    rescue
+      _ -> []
+    end
+  end
 
   defp recent_attestations(nil), do: []
   defp recent_attestations(%{id: id}), do: Trading.list_recent_attestations(id, 5)
