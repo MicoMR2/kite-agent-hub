@@ -52,6 +52,17 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     agent = Trading.get_agent!(agent_id)
 
     cond do
+      agent.agent_type != "trading" ->
+        # Defense in depth: TradesController rejects non-trading agents
+        # at the API boundary, but AgentRunner enqueues jobs directly so
+        # the role gate must also live here. Research/conversational
+        # agents are signal-only by design.
+        Logger.warning(
+          "TradeExecutionWorker: agent #{agent_id} has agent_type=#{inspect(agent.agent_type)}, not 'trading' — cancelling job"
+        )
+
+        {:cancel, "agent type not permitted to trade"}
+
       agent.status != "active" ->
         Logger.warning("TradeExecutionWorker: agent #{agent_id} is #{agent.status}, skipping")
         {:cancel, "agent not active"}
