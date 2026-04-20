@@ -34,6 +34,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   def create(conn, params) do
     with {:ok, agent} <- authenticate(conn),
+         :ok <- require_trading_agent(agent),
          {:ok, job_args} <- validate_trade_params(params, agent) do
       case job_args |> TradeExecutionWorker.new() |> Oban.insert() do
         {:ok, job} ->
@@ -52,10 +53,22 @@ defmodule KiteAgentHubWeb.API.TradesController do
       {:error, :unauthorized} ->
         conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid api key"})
 
+      {:error, :forbidden} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{ok: false, error: "agent type is not permitted to execute trades"})
+
       {:error, message} when is_binary(message) ->
         conn |> put_status(:bad_request) |> json(%{ok: false, error: message})
     end
   end
+
+  # Only agents with agent_type == "trading" may submit orders. Research
+  # and conversational agents are signal/chat-only by design — this guard
+  # mirrors the one already enforced on DELETE /api/v1/broker/orders/:id
+  # in broker_orders_controller.ex.
+  defp require_trading_agent(%{agent_type: "trading"}), do: :ok
+  defp require_trading_agent(_), do: {:error, :forbidden}
 
   # ── GET /api/v1/trades ────────────────────────────────────────────────────────
 
