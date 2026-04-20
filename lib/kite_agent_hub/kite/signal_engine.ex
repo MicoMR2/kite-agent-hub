@@ -32,32 +32,83 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   require Logger
 
+  alias KiteAgentHub.Credentials
+  alias KiteAgentHub.Kite.LLM.{Anthropic, OpenAI, Ollama}
   alias KiteAgentHub.Trading.KiteAgent
-
-  @anthropic_api "https://api.anthropic.com/v1/messages"
-  @model "claude-haiku-4-5-20251001"
-  @max_tokens 512
 
   @doc """
   Generate a trade signal for the given agent and market context.
   Returns {:ok, signal_map}, {:hold, reason}, or {:error, reason}.
+
+  Provider dispatch order:
+    1. per-agent `llm_provider` (uses agent.llm_model + the matching
+       per-org Credentials.fetch_llm_key/2 for Anthropic/OpenAI)
+    2. per-org credential: Anthropic then OpenAI
+    3. shared `ANTHROPIC_API_KEY` shim (retired in a follow-up PR)
+    4. `{:hold, "byo_llm_mode"}` — agent sits idle, external clients
+       still drive trades via REST with the agent api_token
   """
   def generate(%KiteAgent{} = agent, context) do
-    case Application.get_env(:kite_agent_hub, :anthropic_api_key, "") do
-      "" ->
-        # BYO-LLM mode: no internal signal generation. Agents receive
-        # trading decisions from external LLMs (Claude Code, etc.) via
-        # the REST API using their api_token.
-        {:hold, "byo_llm_mode"}
+    prompt = build_prompt(agent, context)
 
-      api_key ->
-        prompt = build_prompt(agent, context)
-
-        case call_claude(api_key, prompt) do
+    case resolve_provider(agent) do
+      {:ok, provider_mod, opts} ->
+        case provider_mod.chat(prompt, opts) do
           {:ok, text} -> parse_signal(text, context)
           {:error, _} = err -> err
         end
+
+      :hold ->
+        {:hold, "byo_llm_mode"}
     end
+  end
+
+  # ── Provider resolution ─────────────────────────────────────────────────────
+
+  defp resolve_provider(%KiteAgent{llm_provider: "anthropic"} = agent) do
+    case Credentials.fetch_llm_key(agent.organization_id, "anthropic") do
+      {:ok, key} -> {:ok, Anthropic, %{api_key: key, model: agent.llm_model}}
+      _ -> resolve_org_or_shim(agent)
+    end
+  end
+
+  defp resolve_provider(%KiteAgent{llm_provider: "openai"} = agent) do
+    case Credentials.fetch_llm_key(agent.organization_id, "openai") do
+      {:ok, key} -> {:ok, OpenAI, %{api_key: key, model: agent.llm_model}}
+      _ -> resolve_org_or_shim(agent)
+    end
+  end
+
+  defp resolve_provider(%KiteAgent{llm_provider: "ollama"} = agent) do
+    # No API key needed. Deployer-controlled base URL is read inside
+    # the Ollama impl — agent-supplied URLs land in a later PR behind
+    # SSRF validation.
+    {:ok, Ollama, %{model: agent.llm_model}}
+  end
+
+  defp resolve_provider(%KiteAgent{} = agent), do: resolve_org_or_shim(agent)
+
+  defp resolve_org_or_shim(%KiteAgent{} = agent) do
+    with {:error, _} <- Credentials.fetch_llm_key(agent.organization_id, "anthropic"),
+         {:error, _} <- Credentials.fetch_llm_key(agent.organization_id, "openai") do
+      case shared_anthropic_key() do
+        key when is_binary(key) and key != "" -> {:ok, Anthropic, %{api_key: key}}
+        _ -> :hold
+      end
+    else
+      {:ok, key} ->
+        # First non-error clause above matched — dispatch to the
+        # corresponding provider. We re-check provider order to pick
+        # the right module; Anthropic wins if both configured.
+        case Credentials.fetch_llm_key(agent.organization_id, "anthropic") do
+          {:ok, ^key} -> {:ok, Anthropic, %{api_key: key}}
+          _ -> {:ok, OpenAI, %{api_key: key}}
+        end
+    end
+  end
+
+  defp shared_anthropic_key do
+    Application.get_env(:kite_agent_hub, :anthropic_api_key, "")
   end
 
   # ── Private ───────────────────────────────────────────────────────────────────
@@ -121,33 +172,6 @@ defmodule KiteAgentHub.Kite.SignalEngine do
       "reason": "<one sentence>"
     }
     """
-  end
-
-  defp call_claude(api_key, prompt) do
-    body = %{
-      model: @model,
-      max_tokens: @max_tokens,
-      messages: [%{role: "user", content: prompt}]
-    }
-
-    headers = [
-      {"x-api-key", api_key},
-      {"anthropic-version", "2023-06-01"},
-      {"content-type", "application/json"}
-    ]
-
-    case Req.post(@anthropic_api, json: body, headers: headers, receive_timeout: 15_000) do
-      {:ok, %{status: 200, body: %{"content" => [%{"text" => text} | _]}}} ->
-        {:ok, text}
-
-      {:ok, %{status: status, body: body}} ->
-        Logger.error("SignalEngine: Claude API error #{status}: #{inspect(body)}")
-        {:error, "claude_api_#{status}"}
-
-      {:error, reason} ->
-        Logger.error("SignalEngine: request failed: #{inspect(reason)}")
-        {:error, reason}
-    end
   end
 
   defp parse_signal(text, context) do
