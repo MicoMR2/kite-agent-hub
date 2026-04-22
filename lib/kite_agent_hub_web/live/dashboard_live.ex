@@ -556,11 +556,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Fully try/rescue wrapped per feedback_kah_lv_rescue — any transient
   # Gamma or Repo failure leaves the tab in an empty-but-usable state.
   def handle_info(:load_polymarket, socket) do
+    require Logger
+
     markets =
       try do
         Polymarket.list_markets(limit: 20)
       rescue
-        _ -> []
+        e ->
+          Logger.error("DashboardLive :load_polymarket markets crashed: #{inspect(e)}")
+          []
       end
 
     positions =
@@ -575,7 +579,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
               Polymarket.list_positions(org_id)
             end
           rescue
-            _ -> []
+            e ->
+              Logger.error("DashboardLive :load_polymarket positions crashed: #{inspect(e)}")
+              []
           end
 
         _ ->
