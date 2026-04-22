@@ -19,7 +19,11 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   # hex chars). For :tradelocker, key_id holds the login email,
   # encrypted_secret holds the password, server holds the brand code
   # (allowlisted) and account_id holds the numeric trading account id.
-  @valid_providers ~w(alpaca kalshi openai anthropic polymarket tradelocker oanda)
+  # oanda and oanda_live are separate rows — practice uses
+  # api-fxpractice.oanda.com, live uses api-fxtrade.oanda.com. The UI
+  # renders them as two connector cards so paper and real-money keys
+  # are never conflated.
+  @valid_providers ~w(alpaca kalshi openai anthropic polymarket tradelocker oanda oanda_live)
   @valid_envs ~w(paper live)
   @valid_tradelocker_servers ~w(PRDTL)
 
@@ -118,7 +122,7 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   # NNN-NNN-XXXXXXX-NNN format OANDA uses.
   defp validate_oanda_fields(changeset) do
     case get_field(changeset, :provider) do
-      "oanda" ->
+      p when p in ["oanda", "oanda_live"] ->
         validate_format(
           changeset,
           :account_id,
