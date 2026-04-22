@@ -211,7 +211,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
                 <span class={[
                   "text-[10px] font-bold uppercase tracking-widest mb-0.5",
                   label_color(msg.sender_type, agent_type)
-                ]}>{msg.sender_name}</span>
+                ]}>{display_name_for_message(msg, @agents)}</span>
                 <div class={[
                   "max-w-[85%] min-w-0 rounded-2xl backdrop-blur-md px-3 py-2 text-xs leading-relaxed break-words overflow-hidden",
                   bubble_classes(msg.sender_type, agent_type)
@@ -275,6 +275,22 @@ defmodule KiteAgentHubWeb.ChatComponent do
   end
 
   defp agent_type_for_message(_msg, _agents), do: nil
+
+  # Resolve the current display name for a chat message. Agent messages
+  # prefer the live agent.name looked up by FK so renames propagate to
+  # historical rows. Falls back to the stored sender_name snapshot when
+  # the agent has been deleted or the FK is unpopulated on older rows.
+  defp display_name_for_message(%{sender_type: "agent"} = msg, agents) when is_list(agents) do
+    by_id =
+      case Map.get(msg, :kite_agent_id) do
+        nil -> nil
+        id -> Enum.find(agents, &(&1.id == id))
+      end
+
+    (by_id && by_id.name) || msg.sender_name
+  end
+
+  defp display_name_for_message(msg, _agents), do: msg.sender_name
 
   defp label_color("user", _), do: "text-stone-200"
   defp label_color("system", _), do: "text-gray-600"
