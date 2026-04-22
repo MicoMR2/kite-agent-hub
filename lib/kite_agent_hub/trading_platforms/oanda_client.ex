@@ -40,6 +40,46 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
     get("/accounts/#{account_id}/pricing?" <> query, token, env)
   end
 
+  @doc """
+  POST /v3/accounts/{id}/orders — place a market order on the PRACTICE
+  endpoint only. Signed units: positive for buy, negative for sell per
+  OANDA v20 spec. Hardcoded to the practice base — live orders are
+  intentionally unimplemented here (requires its own security review).
+  """
+  def place_practice_order(token, account_id, instrument, units)
+      when is_binary(token) and is_binary(account_id) and is_binary(instrument) and
+             is_integer(units) do
+    body = %{
+      "order" => %{
+        "type" => "MARKET",
+        "instrument" => instrument,
+        "units" => Integer.to_string(units),
+        "timeInForce" => "FOK",
+        "positionFill" => "DEFAULT"
+      }
+    }
+
+    case Req.post(@base_practice <> "/accounts/#{account_id}/orders",
+           json: body,
+           headers: [
+             {"authorization", "Bearer " <> token},
+             {"accept", "application/json"}
+           ],
+           receive_timeout: @timeout
+         ) do
+      {:ok, %Req.Response{status: status, body: body}} when status in 200..201 ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: status}} ->
+        Logger.warning("OANDA practice order #{status} on /accounts/#{account_id}/orders")
+        {:error, {:http, status}}
+
+      {:error, reason} ->
+        Logger.warning("OANDA practice order transport error: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
   defp get(path, token, env) do
     case Req.get(base_url(env) <> path,
            headers: [
