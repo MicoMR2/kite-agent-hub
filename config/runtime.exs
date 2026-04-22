@@ -8,6 +8,14 @@ import Config
 # per-agent config (see KiteAgentHub.Kite.LLM.*). The previous
 # shared `anthropic_api_key` has been retired — the platform
 # never spends the owner's Anthropic credits on a user's behalf.
+# Polymarket operating mode. :paper simulates fills against live Gamma
+# prices without any CLOB calls; :live would route to the Polymarket
+# CLOB API (not yet wired — requires a funded wallet). Admin-only flip.
+# Pre-computed so the case/-> clauses do not land inside the config
+# keyword list (parse ambiguity in Elixir 1.17+).
+polymarket_mode =
+  if System.get_env("POLYMARKET_MODE") == "live", do: :live, else: :paper
+
 config :kite_agent_hub,
   workos_api_key: System.get_env("WORKOS_API_KEY") || "",
   workos_client_id: System.get_env("WORKOS_CLIENT_ID") || "",
@@ -20,14 +28,7 @@ config :kite_agent_hub,
   # tiny PYUSD transfer here from the agent wallet on every settled
   # trade — produces the on-chain proof the hackathon judges look for.
   kite_treasury_address: System.get_env("KITE_TREASURY_ADDRESS") || "",
-  # Polymarket operating mode. :paper simulates fills against live Gamma
-  # prices without any CLOB calls; :live would route to the Polymarket
-  # CLOB API (not yet wired — requires a funded wallet). Admin-only flip.
-  polymarket_mode:
-    case System.get_env("POLYMARKET_MODE") do
-      "live" -> :live
-      _ -> :paper
-    end
+  polymarket_mode: polymarket_mode
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the

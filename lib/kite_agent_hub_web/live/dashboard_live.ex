@@ -2485,19 +2485,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- ═══════════════ POLYMARKET TAB ═══════════════ --%>
           <%= if @active_tab == :polymarket do %>
+          <% agent_can_trade = @selected_agent && Polymarket.can_trade?(@selected_agent) %>
           <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
               <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
                 Polymarket
               </h2>
-              <span class={[
-                "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest",
-                if(@polymarket_mode == :live,
-                  do: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
-                  else: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30")
-              ]}>
-                {@polymarket_mode} mode
-              </span>
+              <div class="flex items-center gap-2">
+                <%= if @selected_agent && not agent_can_trade do %>
+                  <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
+                    View only
+                  </span>
+                <% end %>
+                <span class={[
+                  "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest",
+                  if(@polymarket_mode == :live,
+                    do: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
+                    else: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30")
+                ]}>
+                  {@polymarket_mode} mode
+                </span>
+              </div>
             </div>
 
             <%!-- Paper positions --%>
