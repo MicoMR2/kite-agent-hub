@@ -45,6 +45,7 @@ defmodule KiteAgentHubWeb.Router do
     get "/score", ScoreController, :show
     post "/score/batch", ScoreController, :batch
     get "/portfolio", PortfolioController, :show
+    get "/forex/portfolio", ForexPortfolioController, :show
     get "/broker/orders", BrokerOrdersController, :index
     delete "/broker/orders/:id", BrokerOrdersController, :delete
     get "/market-data/kalshi", KalshiMarketController, :show
