@@ -26,6 +26,13 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       hint: "Relayer credentials for gasless paper/live orders. Private key not stored here — wallet signing is a future release.",
       key_label: "Relayer Address (0x…)",
       secret_label: "Relayer API Key"
+    },
+    %{
+      id: "tradelocker",
+      label: "TradeLocker",
+      hint: "Demo account at demo.tradelocker.com. JWT is fetched on demand — password is AES-256-GCM encrypted.",
+      key_label: "Login Email",
+      secret_label: "Password"
     }
   ]
 
@@ -106,13 +113,18 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
         _ -> "paper"
       end
 
+    attrs =
+      %{
+        "key_id" => key_id,
+        "secret" => secret,
+        "env" => env
+      }
+      |> maybe_put(params, "account_id")
+      |> maybe_put(params, "server")
+
     result =
       try do
-        Credentials.upsert_credential(org.id, provider, %{
-          "key_id" => key_id,
-          "secret" => secret,
-          "env" => env
-        })
+        Credentials.upsert_credential(org.id, provider, attrs)
       rescue
         e -> {:error, {:exception, Exception.message(e)}}
       end
@@ -161,7 +173,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   end
 
   defp load_masked_credentials(org_id) do
-    ~w(alpaca kalshi polymarket)
+    ~w(alpaca kalshi polymarket tradelocker)
     |> Enum.reduce(%{}, fn provider, acc ->
       case Credentials.get_credential(org_id, provider) do
         nil ->
@@ -170,10 +182,20 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
         cred ->
           Map.put(acc, provider, %{
             key_id: Credentials.mask_key_id(cred.key_id),
-            env: cred.env || "paper"
+            env: cred.env || "paper",
+            server: Map.get(cred, :server),
+            account_id: Map.get(cred, :account_id)
           })
       end
     end)
+  end
+
+  defp maybe_put(attrs, params, key) do
+    case Map.get(params, key) do
+      nil -> attrs
+      "" -> attrs
+      v -> Map.put(attrs, key, v)
+    end
   end
 
   defp safe_configured(org_id) do
@@ -272,12 +294,16 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                       {provider.secret_label}
                     </label>
-                    <%= if provider.id == "polymarket" do %>
+                    <%= if provider.id in ["polymarket", "tradelocker"] do %>
                       <input
                         type="password"
                         name="secret"
                         autocomplete="off"
-                        placeholder="Paste your Relayer API key..."
+                        placeholder={
+                          if provider.id == "tradelocker",
+                            do: "TradeLocker account password...",
+                            else: "Paste your Relayer API key..."
+                        }
                         class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                       />
                     <% else %>
@@ -297,6 +323,42 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                       <p class="text-xs text-red-400 mt-1">{err}</p>
                     <% end %>
                   </div>
+
+                  <%= if provider.id == "tradelocker" do %>
+                    <div>
+                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                        Server / Brand
+                      </label>
+                      <input
+                        type="text"
+                        name="server"
+                        autocomplete="off"
+                        value={(existing && existing.server) || "PRDTL"}
+                        placeholder="PRDTL"
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                      <%= if err = get_in(@form_errors, [:server, Access.at(0)]) do %>
+                        <p class="text-xs text-red-400 mt-1">{err}</p>
+                      <% end %>
+                    </div>
+
+                    <div>
+                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                        Account ID
+                      </label>
+                      <input
+                        type="text"
+                        name="account_id"
+                        autocomplete="off"
+                        value={(existing && existing.account_id) || ""}
+                        placeholder="834788448504682889"
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                      <%= if err = get_in(@form_errors, [:account_id, Access.at(0)]) do %>
+                        <p class="text-xs text-red-400 mt-1">{err}</p>
+                      <% end %>
+                    </div>
+                  <% end %>
 
                   <%!-- Environment toggle: paper/demo is the safe default --%>
                   <% current_env = (existing && existing.env) || "paper" %>
