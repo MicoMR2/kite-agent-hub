@@ -13,9 +13,26 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     {agents, trades} =
       if org do
-        agents = Trading.list_agents(org.id)
+        agents =
+          try do
+            Trading.list_agents(org.id)
+          rescue
+            _ -> []
+          end
+
         selected = List.first(agents)
-        trades = if selected, do: Trading.list_trades(selected.id, limit: 20), else: []
+
+        trades =
+          if selected do
+            try do
+              Trading.list_trades(selected.id, limit: 20)
+            rescue
+              _ -> []
+            end
+          else
+            []
+          end
+
         {agents, trades}
       else
         {[], []}

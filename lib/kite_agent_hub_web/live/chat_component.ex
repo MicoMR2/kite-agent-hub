@@ -281,16 +281,20 @@ defmodule KiteAgentHubWeb.ChatComponent do
   # historical rows. Falls back to the stored sender_name snapshot when
   # the agent has been deleted or the FK is unpopulated on older rows.
   defp display_name_for_message(%{sender_type: "agent"} = msg, agents) when is_list(agents) do
-    by_id =
-      case Map.get(msg, :kite_agent_id) do
-        nil -> nil
-        id -> Enum.find(agents, &(&1.id == id))
-      end
+    try do
+      by_id =
+        case Map.get(msg, :kite_agent_id) do
+          nil -> nil
+          id -> Enum.find(agents, &(Map.get(&1, :id) == id))
+        end
 
-    (by_id && by_id.name) || msg.sender_name
+      (by_id && Map.get(by_id, :name)) || Map.get(msg, :sender_name)
+    rescue
+      _ -> Map.get(msg, :sender_name)
+    end
   end
 
-  defp display_name_for_message(msg, _agents), do: msg.sender_name
+  defp display_name_for_message(msg, _agents), do: Map.get(msg, :sender_name)
 
   defp label_color("user", _), do: "text-stone-200"
   defp label_color("system", _), do: "text-gray-600"
