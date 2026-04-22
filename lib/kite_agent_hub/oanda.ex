@@ -97,6 +97,48 @@ defmodule KiteAgentHub.Oanda do
   defp provider_for(_), do: "oanda"
 
   @doc """
+  Place a market order on the OANDA PRACTICE account for `org_id`.
+
+  Requires a trading-agent; non-trading agents get `:not_a_trading_agent`.
+  Live orders are intentionally not supported — this path hardcodes
+  to the practice endpoint via OandaClient.place_practice_order/4.
+
+  Returns `{:ok, body}` on 200/201 from OANDA, or `{:error, reason}`
+  on any failure (missing creds, decryption, auth, transport).
+  """
+  def place_practice_order(%{agent_type: "trading"}, org_id, instrument, units)
+      when is_binary(instrument) and is_integer(units) do
+    with_credential(org_id, :practice, fn token, account_id ->
+      OandaClient.place_practice_order(token, account_id, instrument, units)
+    end)
+  rescue
+    e ->
+      Logger.error("Oanda.place_practice_order crashed: #{inspect(e)}")
+      {:error, :exception}
+  end
+
+  def place_practice_order(%{agent_type: _}, _org, _inst, _u), do: {:error, :not_a_trading_agent}
+  def place_practice_order(_agent, _org, _inst, _u), do: {:error, :invalid_agent}
+
+  # Like with_token/3 but propagates {:error, _} instead of collapsing
+  # to []. Used by mutating paths (place_practice_order) where callers
+  # need to distinguish "not configured" from a successful empty list.
+  defp with_credential(org_id, env, fun) when is_function(fun, 2) do
+    provider = provider_for(env)
+
+    case Credentials.fetch_secret(org_id, String.to_atom(provider)) do
+      {:ok, {_label, token}} ->
+        case Credentials.get_credential(org_id, provider) do
+          %{account_id: id} when is_binary(id) -> fun.(token, id)
+          _ -> {:error, :missing_account_id}
+        end
+
+      _ ->
+        {:error, :not_configured}
+    end
+  end
+
+  @doc """
   Safely pull a string field from an OANDA position / instrument map.
   Returns `default` when the value is nil/empty or the row is not a map.
   Never raises.

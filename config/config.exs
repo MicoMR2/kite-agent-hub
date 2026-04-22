@@ -90,7 +90,11 @@ config :kite_agent_hub, Oban,
     # tracking required.
     attestation: 1,
     position_sync: 2,
-    maintenance: 1
+    maintenance: 1,
+    # PR #193: paper-mode executor (OANDA practice + Polymarket paper).
+    # Low concurrency — paper orders are lightweight but we want
+    # deterministic ordering per agent for simulated fills.
+    paper_execution: 3
   ],
   plugins: [
     {Oban.Plugins.Cron,
