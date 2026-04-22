@@ -50,15 +50,28 @@ defmodule KiteAgentHub.Polymarket do
   end
 
   @doc """
-  Simulate a paper order fill at `price` and upsert a position row.
+  Does this agent have permission to act on Polymarket?
+  Trading agents can place orders; research / conversational / other
+  types are view-only. Callers should gate any UI order-entry path on
+  this predicate (CyberSec condition ⑫/⑬).
+  """
+  def can_trade?(%{agent_type: "trading"}), do: true
+  def can_trade?(_), do: false
+
+  @doc """
+  Simulate a paper order fill at `price` and insert a position row.
+
+  Enforces the trading-agent gate: the `agent` argument must be a
+  struct with `agent_type == "trading"` or we return
+  `{:error, :not_a_trading_agent}`.
 
   `attrs` must include `:market_id`, `:token_id`, `:outcome`, `:size`,
-  `:price`, `:organization_id`, and optionally `:kite_agent_id`.
-  Returns `{:ok, position}` or `{:error, changeset}`. Only runs in
-  :paper mode — returns `{:error, :live_mode_disabled}` otherwise,
-  since live CLOB execution is not yet wired.
+  `:price`, `:organization_id`. Returns `{:ok, position}`,
+  `{:error, :not_a_trading_agent}`, `{:error, :live_mode_disabled}`,
+  `{:error, :invalid_agent}`, or `{:error, changeset}`.
   """
-  def place_paper_order(attrs) when is_map(attrs) do
+  def place_paper_order(%{agent_type: "trading", id: agent_id}, attrs)
+      when is_map(attrs) do
     if mode() == :paper do
       %Position{}
       |> Position.changeset(%{
@@ -68,7 +81,7 @@ defmodule KiteAgentHub.Polymarket do
         size: Map.get(attrs, :size, 0),
         avg_price: Map.get(attrs, :price, 0),
         organization_id: Map.get(attrs, :organization_id),
-        kite_agent_id: Map.get(attrs, :kite_agent_id),
+        kite_agent_id: agent_id,
         mode: "paper",
         status: "open"
       })
@@ -77,4 +90,7 @@ defmodule KiteAgentHub.Polymarket do
       {:error, :live_mode_disabled}
     end
   end
+
+  def place_paper_order(%{agent_type: _}, _attrs), do: {:error, :not_a_trading_agent}
+  def place_paper_order(_agent, _attrs), do: {:error, :invalid_agent}
 end

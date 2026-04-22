@@ -17,7 +17,10 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   # Broker providers (alpaca/kalshi) and LLM providers (openai/anthropic)
   # share the same encrypted-secret storage. Ollama is omitted because it
   # authenticates via a base URL only — no shared secret to store.
-  @valid_providers ~w(alpaca kalshi openai anthropic)
+  # Broker, LLM, and prediction-market providers share this table.
+  # For :polymarket, key_id holds the Relayer address (0x + 40 hex
+  # chars, validated below) and secret holds the Relayer API key.
+  @valid_providers ~w(alpaca kalshi openai anthropic polymarket)
   @valid_envs ~w(paper live)
 
   schema "api_credentials" do
@@ -43,6 +46,7 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
     |> validate_inclusion(:env, @valid_envs)
     |> validate_length(:key_id, min: 4)
     |> validate_length(:secret, min: 8)
+    |> validate_polymarket_address()
     |> encrypt_secret()
   end
 
@@ -53,7 +57,26 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
     |> validate_inclusion(:env, @valid_envs)
     |> validate_length(:key_id, min: 4)
     |> validate_length(:secret, min: 8)
+    |> validate_polymarket_address()
     |> encrypt_secret()
+  end
+
+  # Polymarket-specific: key_id must be an EVM address (0x + 40 hex).
+  # Public value, no encryption needed — but invalid format should
+  # never hit the DB.
+  defp validate_polymarket_address(changeset) do
+    case get_field(changeset, :provider) do
+      "polymarket" ->
+        validate_format(
+          changeset,
+          :key_id,
+          ~r/^0x[a-fA-F0-9]{40}$/,
+          message: "must be a 0x-prefixed 40-hex-character EVM address"
+        )
+
+      _ ->
+        changeset
+    end
   end
 
   defp encrypt_secret(%{valid?: true, changes: %{secret: secret}} = changeset)

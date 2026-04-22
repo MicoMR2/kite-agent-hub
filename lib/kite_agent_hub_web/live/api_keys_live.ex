@@ -17,6 +17,13 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       hint: "Demo trading at demo-api.kalshi.co",
       key_label: "API Key ID",
       secret_label: "RSA Private Key (PEM)"
+    },
+    %{
+      id: "polymarket",
+      label: "Polymarket",
+      hint: "Relayer credentials for gasless paper/live orders. Private key not stored here — wallet signing is a future release.",
+      key_label: "Relayer Address (0x…)",
+      secret_label: "Relayer API Key"
     }
   ]
 
@@ -104,7 +111,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   end
 
   defp load_masked_credentials(org_id) do
-    ~w(alpaca kalshi)
+    ~w(alpaca kalshi polymarket)
     |> Enum.reduce(%{}, fn provider, acc ->
       case Credentials.get_credential(org_id, provider) do
         nil ->
@@ -195,17 +202,27 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                       {provider.secret_label}
                     </label>
-                    <textarea
-                      name="secret"
-                      autocomplete="off"
-                      rows={if provider.id == "kalshi", do: 6, else: 2}
-                      placeholder={
-                        if provider.id == "kalshi",
-                          do: "-----BEGIN RSA PRIVATE KEY-----\n...",
-                          else: "Paste your secret key..."
-                      }
-                      class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono resize-none"
-                    ></textarea>
+                    <%= if provider.id == "polymarket" do %>
+                      <input
+                        type="password"
+                        name="secret"
+                        autocomplete="off"
+                        placeholder="Paste your Relayer API key..."
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                    <% else %>
+                      <textarea
+                        name="secret"
+                        autocomplete="off"
+                        rows={if provider.id == "kalshi", do: 6, else: 2}
+                        placeholder={
+                          if provider.id == "kalshi",
+                            do: "-----BEGIN RSA PRIVATE KEY-----\n...",
+                            else: "Paste your secret key..."
+                        }
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono resize-none"
+                      ></textarea>
+                    <% end %>
                     <%= if err = get_in(@form_errors, [:secret, Access.at(0)]) do %>
                       <p class="text-xs text-red-400 mt-1">{err}</p>
                     <% end %>
