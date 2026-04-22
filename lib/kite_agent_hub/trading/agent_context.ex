@@ -47,11 +47,15 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
     ### Endpoints
     - POST /api/v1/trades — execute a trade
-      Body: {"ticker": "...", "side": "buy|sell", "platform": "alpaca|kalshi", "amount": 100, "reason": "..."}
+      Alpaca/Kalshi body: {"ticker": "...", "side": "buy|sell", "platform": "alpaca|kalshi", "amount": 100, "reason": "..."}
+      OANDA practice body: {"provider": "oanda_practice", "symbol": "EUR_USD", "side": "buy|sell", "units": 1000}
+      Polymarket paper body: {"provider": "polymarket", "symbol": "<condition_id>", "token_id": "...", "side": "yes|no", "units": 10, "price": "0.50", "mode": "paper"}
     - GET /api/v1/trades — list your trade history
     - GET /api/v1/trades/:id — get trade details
     - GET /api/v1/agents/me — your agent profile
     - GET /api/v1/edge-scores — live QRB edge scores for all open positions + suggestions
+    - GET /api/v1/portfolio — Alpaca account, buying power, positions
+    - GET /api/v1/forex/portfolio — OANDA practice balance, NAV, P&L, open positions
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
