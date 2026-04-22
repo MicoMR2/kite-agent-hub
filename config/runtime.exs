@@ -19,7 +19,15 @@ config :kite_agent_hub,
   # PR #101: Kite chain treasury address. KiteAttestationWorker sends a
   # tiny PYUSD transfer here from the agent wallet on every settled
   # trade — produces the on-chain proof the hackathon judges look for.
-  kite_treasury_address: System.get_env("KITE_TREASURY_ADDRESS") || ""
+  kite_treasury_address: System.get_env("KITE_TREASURY_ADDRESS") || "",
+  # Polymarket operating mode. :paper simulates fills against live Gamma
+  # prices without any CLOB calls; :live would route to the Polymarket
+  # CLOB API (not yet wired — requires a funded wallet). Admin-only flip.
+  polymarket_mode:
+    case System.get_env("POLYMARKET_MODE") do
+      "live" -> :live
+      _ -> :paper
+    end
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
