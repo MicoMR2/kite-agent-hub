@@ -1,6 +1,8 @@
 defmodule KiteAgentHubWeb.ApiKeysLive do
   use KiteAgentHubWeb, :live_view
 
+  require Logger
+
   alias KiteAgentHub.{Credentials, Orgs, Trading}
 
   @providers [
@@ -35,7 +37,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       try do
         Orgs.get_org_for_user(user.id)
       rescue
-        _ -> nil
+        e ->
+          Logger.error("ApiKeysLive mount: Orgs.get_org_for_user crashed: #{inspect(e)}")
+          nil
       end
 
     configured =
@@ -43,7 +47,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
         try do
           Credentials.configured_providers(org.id)
         rescue
-          _ -> []
+          e ->
+            Logger.error("ApiKeysLive mount: configured_providers crashed: #{inspect(e)}")
+            []
         end
       else
         []
@@ -54,7 +60,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
         try do
           load_masked_credentials(org.id)
         rescue
-          _ -> %{}
+          e ->
+            Logger.error("ApiKeysLive mount: load_masked_credentials crashed: #{inspect(e)}")
+            %{}
         end
       else
         %{}
@@ -137,7 +145,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     try do
       Credentials.delete_credential(org.id, provider)
     rescue
-      _ -> :ok
+      e ->
+        Logger.error("ApiKeysLive: delete_credential crashed: #{inspect(e)}")
+        :ok
     end
 
     configured = safe_configured(org.id)
@@ -170,7 +180,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     try do
       Credentials.configured_providers(org_id)
     rescue
-      _ -> []
+      e ->
+        Logger.error("ApiKeysLive: configured_providers crashed: #{inspect(e)}")
+        []
     end
   end
 
@@ -178,7 +190,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     try do
       load_masked_credentials(org_id)
     rescue
-      _ -> %{}
+      e ->
+        Logger.error("ApiKeysLive: load_masked_credentials crashed: #{inspect(e)}")
+        %{}
     end
   end
 

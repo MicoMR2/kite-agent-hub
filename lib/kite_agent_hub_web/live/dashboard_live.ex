@@ -92,7 +92,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:all_attestations, [])
       |> assign(:polymarket_data, nil)
       |> assign(:polymarket_positions, [])
-      |> assign(:polymarket_mode, Polymarket.mode())
+      |> assign(:polymarket_mode, safe_polymarket_mode())
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -150,6 +150,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
     rescue
       Ecto.NoResultsError -> nil
       _ -> nil
+    end
+  end
+
+  # Polymarket.mode/0 reads Application env. Wrap anyway so a boot-order
+  # race or config read failure cannot crash mount.
+  defp safe_polymarket_mode do
+    try do
+      Polymarket.mode()
+    rescue
+      e ->
+        require Logger
+        Logger.error("DashboardLive: Polymarket.mode/0 crashed: #{inspect(e)}")
+        :paper
     end
   end
 
@@ -543,11 +556,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Fully try/rescue wrapped per feedback_kah_lv_rescue — any transient
   # Gamma or Repo failure leaves the tab in an empty-but-usable state.
   def handle_info(:load_polymarket, socket) do
+    require Logger
+
     markets =
       try do
         Polymarket.list_markets(limit: 20)
       rescue
-        _ -> []
+        e ->
+          Logger.error("DashboardLive :load_polymarket markets crashed: #{inspect(e)}")
+          []
       end
 
     positions =
@@ -562,7 +579,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
               Polymarket.list_positions(org_id)
             end
           rescue
-            _ -> []
+            e ->
+              Logger.error("DashboardLive :load_polymarket positions crashed: #{inspect(e)}")
+              []
           end
 
         _ ->
