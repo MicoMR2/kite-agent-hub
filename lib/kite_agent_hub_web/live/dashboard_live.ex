@@ -97,6 +97,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_instruments, [])
       |> assign(:forex_loading, false)
       |> assign(:forex_provider, :none)
+      |> assign(:forex_oanda_env, nil)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -603,31 +604,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:polymarket_positions, positions)}
   end
 
-  # Async ForEx tab loader. Prefers OANDA when configured; falls back
-  # to TradeLocker. All errors swallow to [] so an auth failure or
-  # transient API outage cannot crash the LV.
+  # Async ForEx tab loader. Prefers OANDA live when configured, then
+  # OANDA practice, then TradeLocker. All errors swallow to [] so an
+  # auth failure or transient API outage cannot crash the LV.
   def handle_info(:load_forex, socket) do
     require Logger
 
-    {positions, instruments, provider} =
+    {positions, instruments, provider, oanda_env} =
       case socket.assigns[:organization] do
         %{id: org_id} ->
           try do
-            cond do
-              Oanda.configured?(org_id) ->
-                {Oanda.list_positions(org_id), Oanda.list_instruments(org_id), :oanda}
+            case Oanda.active_env(org_id) do
+              :live ->
+                {Oanda.list_positions(org_id, :live),
+                 Oanda.list_instruments(org_id, :live), :oanda, :live}
 
-              true ->
-                {TradeLocker.list_positions(org_id), TradeLocker.list_instruments(org_id), :tradelocker}
+              :practice ->
+                {Oanda.list_positions(org_id, :practice),
+                 Oanda.list_instruments(org_id, :practice), :oanda, :practice}
+
+              _ ->
+                {TradeLocker.list_positions(org_id),
+                 TradeLocker.list_instruments(org_id), :tradelocker, nil}
             end
           rescue
             e ->
               Logger.error("DashboardLive :load_forex crashed: #{inspect(e)}")
-              {[], [], :none}
+              {[], [], :none, nil}
           end
 
         _ ->
-          {[], [], :none}
+          {[], [], :none, nil}
       end
 
     {:noreply,
@@ -635,6 +642,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_positions, positions)
      |> assign(:forex_instruments, instruments)
      |> assign(:forex_provider, provider)
+     |> assign(:forex_oanda_env, oanda_env)
      |> assign(:forex_loading, false)}
   end
 
@@ -2654,9 +2662,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                @selected_agent &&
                  (Oanda.can_trade?(@selected_agent) || TradeLocker.can_trade?(@selected_agent)) %>
           <% forex_provider_label =
-               case @forex_provider do
-                 :oanda -> "OANDA"
-                 :tradelocker -> "TradeLocker"
+               case {@forex_provider, @forex_oanda_env} do
+                 {:oanda, :live} -> "OANDA Live"
+                 {:oanda, _} -> "OANDA Practice"
+                 {:tradelocker, _} -> "TradeLocker"
                  _ -> "no provider"
                end %>
           <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
@@ -2670,8 +2679,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     View only
                   </span>
                 <% end %>
-                <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                  {if @forex_provider == :oanda, do: "Practice", else: "Demo"}
+                <span class={[
+                  "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest border",
+                  if(@forex_oanda_env == :live,
+                    do: "bg-red-500/20 text-red-200 border-red-500/40",
+                    else: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30")
+                ]}>
+                  {cond do
+                    @forex_oanda_env == :live -> "Live"
+                    @forex_provider == :oanda -> "Practice"
+                    true -> "Demo"
+                  end}
                 </span>
               </div>
             </div>
@@ -2693,15 +2711,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                         <div class="min-w-0">
                           <p class="text-sm font-bold text-white">
-                            {Map.get(pos, "instrument") || Map.get(pos, "symbol") || "—"}
+                            {Oanda.field(pos, "instrument", Oanda.field(pos, "symbol", "—"))}
                           </p>
                           <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
-                            {Map.get(pos, "side") || Map.get(pos, "direction") || ""}
+                            {Oanda.field(pos, "side", Oanda.field(pos, "direction", ""))}
                           </p>
                         </div>
                         <div class="text-right">
                           <p class="text-sm font-mono text-white">
-                            {Map.get(pos, "quantity") || Map.get(pos, "qty") || "—"}
+                            {Oanda.field(pos, "quantity", Oanda.field(pos, "qty", "—"))}
                           </p>
                         </div>
                       </div>
@@ -2722,7 +2740,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <div class="flex flex-wrap gap-2">
                     <%= for inst <- @forex_instruments do %>
                       <span class="text-[10px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.02] text-gray-300">
-                        {Map.get(inst, "name") || Map.get(inst, "symbol") || "—"}
+                        {Oanda.field(inst, "name", Oanda.field(inst, "symbol", "—"))}
                       </span>
                     <% end %>
                   </div>

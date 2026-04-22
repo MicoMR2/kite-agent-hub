@@ -36,8 +36,15 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     },
     %{
       id: "oanda",
-      label: "OANDA",
+      label: "OANDA (Practice)",
       hint: "Practice account at api-fxpractice.oanda.com. Generate a Personal Access Token from My Account → Manage API Access.",
+      key_label: "Label",
+      secret_label: "Personal Access Token"
+    },
+    %{
+      id: "oanda_live",
+      label: "OANDA (Live)",
+      hint: "Real-money account at api-fxtrade.oanda.com. Orders placed with this key move real funds.",
       key_label: "Label",
       secret_label: "Personal Access Token"
     }
@@ -180,7 +187,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   end
 
   defp load_masked_credentials(org_id) do
-    ~w(alpaca kalshi polymarket tradelocker oanda)
+    ~w(alpaca kalshi polymarket tradelocker oanda oanda_live)
     |> Enum.reduce(%{}, fn provider, acc ->
       case Credentials.get_credential(org_id, provider) do
         nil ->
@@ -301,7 +308,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                       {provider.secret_label}
                     </label>
-                    <%= if provider.id in ["polymarket", "tradelocker", "oanda"] do %>
+                    <%= if provider.id in ["polymarket", "tradelocker", "oanda", "oanda_live"] do %>
                       <input
                         type="password"
                         name="secret"
@@ -309,7 +316,8 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                         placeholder={
                           case provider.id do
                             "tradelocker" -> "TradeLocker account password..."
-                            "oanda" -> "Paste your OANDA Personal Access Token..."
+                            "oanda" -> "Paste your OANDA practice access token..."
+                            "oanda_live" -> "Paste your OANDA LIVE access token..."
                             _ -> "Paste your Relayer API key..."
                           end
                         }
@@ -369,7 +377,12 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     </div>
                   <% end %>
 
-                  <%= if provider.id == "oanda" do %>
+                  <%= if provider.id in ["oanda", "oanda_live"] do %>
+                    <%= if provider.id == "oanda_live" do %>
+                      <div class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200 font-bold">
+                        ⚠ LIVE MONEY — Orders placed with this key execute against your real OANDA account.
+                      </div>
+                    <% end %>
                     <div>
                       <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                         Account ID
