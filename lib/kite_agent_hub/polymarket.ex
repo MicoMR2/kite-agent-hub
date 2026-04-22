@@ -55,8 +55,57 @@ defmodule KiteAgentHub.Polymarket do
   types are view-only. Callers should gate any UI order-entry path on
   this predicate (CyberSec condition ⑫/⑬).
   """
+  def can_trade?(nil), do: false
   def can_trade?(%{agent_type: "trading"}), do: true
   def can_trade?(_), do: false
+
+  @doc """
+  Format a Polymarket price value for display. Accepts numbers,
+  numeric strings, or `nil` — never raises. Returns a 3-decimal
+  string or "--" when no price is available.
+  """
+  def format_price(value) do
+    num =
+      cond do
+        is_number(value) ->
+          value * 1.0
+
+        is_binary(value) ->
+          case Float.parse(value) do
+            {n, _} -> n
+            :error -> nil
+          end
+
+        true ->
+          nil
+      end
+
+    case num do
+      nil -> "--"
+      n -> :erlang.float_to_binary(n, decimals: 3)
+    end
+  rescue
+    _ -> "--"
+  end
+
+  @doc """
+  Safely read a string field from a Gamma market map. Returns `default`
+  when `market` is not a map or the value is nil/empty.
+  """
+  def market_field(market, key, default \\ "—")
+
+  def market_field(%{} = market, key, default) do
+    case Map.get(market, key) do
+      nil -> default
+      "" -> default
+      v when is_binary(v) -> v
+      other -> to_string(other)
+    end
+  rescue
+    _ -> default
+  end
+
+  def market_field(_, _, default), do: default
 
   @doc """
   Simulate a paper order fill at `price` and insert a position row.

@@ -2573,19 +2573,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <div class="flex items-start justify-between gap-4">
                           <div class="min-w-0 flex-1">
                             <p class="text-sm font-bold text-white">
-                              {Map.get(market, "question") || Map.get(market, "slug") || "—"}
+                              {Polymarket.market_field(market, "question", Polymarket.market_field(market, "slug", "—"))}
                             </p>
                             <p class="text-[10px] text-gray-500 font-mono mt-1 truncate">
-                              {Map.get(market, "conditionId") || Map.get(market, "id")}
+                              {Polymarket.market_field(market, "conditionId", Polymarket.market_field(market, "id", ""))}
                             </p>
                           </div>
                           <div class="text-right shrink-0">
-                            <% prices = KiteAgentHub.TradingPlatforms.PolymarketClient.extract_prices(market) %>
+                            <% prices =
+                              try do
+                                KiteAgentHub.TradingPlatforms.PolymarketClient.extract_prices(market)
+                              rescue
+                                _ -> %{}
+                              end %>
                             <p class="text-xs font-mono text-emerald-300">
-                              YES {:erlang.float_to_binary(Map.get(prices, "yes", 0.0) * 1.0, decimals: 3)}
+                              YES {Polymarket.format_price(Map.get(prices || %{}, "yes"))}
                             </p>
                             <p class="text-xs font-mono text-red-300">
-                              NO {:erlang.float_to_binary(Map.get(prices, "no", 0.0) * 1.0, decimals: 3)}
+                              NO {Polymarket.format_price(Map.get(prices || %{}, "no"))}
                             </p>
                           </div>
                         </div>
