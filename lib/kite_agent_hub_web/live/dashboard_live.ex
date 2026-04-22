@@ -874,7 +874,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Top nav bar --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center justify-between">
-            <div class="flex items-center gap-3">
+            <.link navigate={~p"/"} class="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <.kah_logo class="w-8 h-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,197,94,0.35)]" />
               <div>
                 <span class="text-sm font-black text-white tracking-tight uppercase">
@@ -884,7 +884,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   {if @organization, do: @organization.name, else: "No workspace"}
                 </span>
               </div>
-            </div>
+            </.link>
             <div class="flex items-center gap-4">
               <%= if @block_number do %>
                 <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
