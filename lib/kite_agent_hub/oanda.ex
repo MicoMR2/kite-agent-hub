@@ -95,4 +95,24 @@ defmodule KiteAgentHub.Oanda do
 
   defp provider_for(:live), do: "oanda_live"
   defp provider_for(_), do: "oanda"
+
+  @doc """
+  Safely pull a string field from an OANDA position / instrument map.
+  Returns `default` when the value is nil/empty or the row is not a map.
+  Never raises.
+  """
+  def field(row, key, default \\ "—")
+
+  def field(%{} = row, key, default) do
+    case Map.get(row, key) do
+      nil -> default
+      "" -> default
+      v when is_binary(v) -> v
+      other -> to_string(other)
+    end
+  rescue
+    _ -> default
+  end
+
+  def field(_, _, default), do: default
 end

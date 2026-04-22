@@ -2711,15 +2711,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                         <div class="min-w-0">
                           <p class="text-sm font-bold text-white">
-                            {Map.get(pos, "instrument") || Map.get(pos, "symbol") || "—"}
+                            {Oanda.field(pos, "instrument", Oanda.field(pos, "symbol", "—"))}
                           </p>
                           <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
-                            {Map.get(pos, "side") || Map.get(pos, "direction") || ""}
+                            {Oanda.field(pos, "side", Oanda.field(pos, "direction", ""))}
                           </p>
                         </div>
                         <div class="text-right">
                           <p class="text-sm font-mono text-white">
-                            {Map.get(pos, "quantity") || Map.get(pos, "qty") || "—"}
+                            {Oanda.field(pos, "quantity", Oanda.field(pos, "qty", "—"))}
                           </p>
                         </div>
                       </div>
@@ -2740,7 +2740,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <div class="flex flex-wrap gap-2">
                     <%= for inst <- @forex_instruments do %>
                       <span class="text-[10px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.02] text-gray-300">
-                        {Map.get(inst, "name") || Map.get(inst, "symbol") || "—"}
+                        {Oanda.field(inst, "name", Oanda.field(inst, "symbol", "—"))}
                       </span>
                     <% end %>
                   </div>
