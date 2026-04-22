@@ -1653,7 +1653,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- ═══════════════ ATTESTATIONS TAB ═══════════════ --%>
           <%= if @active_tab == :attestations do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-5xl">
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
             <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">
               Kite Chain Attestations
             </h2>
@@ -1786,7 +1786,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- ═══════════════ KITE WALLET TAB ═══════════════ --%>
           <%= if @active_tab == :wallet do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-3xl">
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
             <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">Kite Wallet</h2>
             <%= if @selected_agent do %>
               <div class="space-y-4">
