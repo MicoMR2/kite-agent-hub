@@ -30,10 +30,35 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
-    org = Orgs.get_org_for_user(user.id)
 
-    configured = if org, do: Credentials.configured_providers(org.id), else: []
-    credentials = if org, do: load_masked_credentials(org.id), else: %{}
+    org =
+      try do
+        Orgs.get_org_for_user(user.id)
+      rescue
+        _ -> nil
+      end
+
+    configured =
+      if org do
+        try do
+          Credentials.configured_providers(org.id)
+        rescue
+          _ -> []
+        end
+      else
+        []
+      end
+
+    credentials =
+      if org do
+        try do
+          load_masked_credentials(org.id)
+        rescue
+          _ -> %{}
+        end
+      else
+        %{}
+      end
 
     {:ok,
      socket
@@ -73,14 +98,21 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
         _ -> "paper"
       end
 
-    case Credentials.upsert_credential(org.id, provider, %{
-           "key_id" => key_id,
-           "secret" => secret,
-           "env" => env
-         }) do
+    result =
+      try do
+        Credentials.upsert_credential(org.id, provider, %{
+          "key_id" => key_id,
+          "secret" => secret,
+          "env" => env
+        })
+      rescue
+        e -> {:error, {:exception, Exception.message(e)}}
+      end
+
+    case result do
       {:ok, _} ->
-        configured = Credentials.configured_providers(org.id)
-        credentials = load_masked_credentials(org.id)
+        configured = safe_configured(org.id)
+        credentials = safe_load_masked(org.id)
 
         {:noreply,
          socket
@@ -90,18 +122,26 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
          |> assign(:form_errors, %{})
          |> put_flash(:info, "#{String.capitalize(provider)} credentials saved.")}
 
-      {:error, changeset} ->
+      {:error, %Ecto.Changeset{} = changeset} ->
         errors = Ecto.Changeset.traverse_errors(changeset, fn {msg, _opts} -> msg end)
         {:noreply, assign(socket, :form_errors, errors)}
+
+      {:error, _other} ->
+        {:noreply, put_flash(socket, :error, "Could not save credentials. Please try again.")}
     end
   end
 
   def handle_event("delete", %{"provider" => provider}, socket) do
     org = socket.assigns.org
-    Credentials.delete_credential(org.id, provider)
 
-    configured = Credentials.configured_providers(org.id)
-    credentials = load_masked_credentials(org.id)
+    try do
+      Credentials.delete_credential(org.id, provider)
+    rescue
+      _ -> :ok
+    end
+
+    configured = safe_configured(org.id)
+    credentials = safe_load_masked(org.id)
 
     {:noreply,
      socket
@@ -124,6 +164,22 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
           })
       end
     end)
+  end
+
+  defp safe_configured(org_id) do
+    try do
+      Credentials.configured_providers(org_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_load_masked(org_id) do
+    try do
+      load_masked_credentials(org_id)
+    rescue
+      _ -> %{}
+    end
   end
 
   @impl true
