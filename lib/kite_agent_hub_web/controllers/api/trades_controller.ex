@@ -31,7 +31,9 @@ defmodule KiteAgentHubWeb.API.TradesController do
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
-  alias KiteAgentHub.Workers.TradeExecutionWorker
+  alias KiteAgentHub.Workers.{TradeExecutionWorker, PaperExecutionWorker}
+
+  @paper_providers ~w(oanda_practice polymarket)
 
   # ── POST /api/v1/trades ───────────────────────────────────────────────────────
 
@@ -39,8 +41,8 @@ defmodule KiteAgentHubWeb.API.TradesController do
     with {:ok, agent} <- authenticate(conn),
          :ok <- require_trading_agent(agent),
          :ok <- RateLimiter.check(agent.id),
-         {:ok, job_args} <- validate_trade_params(params, agent) do
-      case job_args |> TradeExecutionWorker.new() |> Oban.insert() do
+         {:ok, job_args, worker} <- build_job(params, agent) do
+      case job_args |> worker.new() |> Oban.insert() do
         {:ok, job} ->
           record_byo_usage(agent)
 
@@ -251,6 +253,71 @@ defmodule KiteAgentHubWeb.API.TradesController do
         {:error, :unauthorized}
     end
   end
+
+  # Route the inbound trade to the correct Oban worker based on the
+  # optional "provider" field. Paper providers (oanda_practice,
+  # polymarket) take a separate arg shape and go to PaperExecutionWorker;
+  # legacy flows (no provider, or provider not in the allowlist) keep
+  # the existing TradeExecutionWorker contract unchanged.
+  defp build_job(params, agent) do
+    case Map.get(params, "provider") do
+      p when p in @paper_providers ->
+        with {:ok, args} <- validate_paper_params(params, agent, p) do
+          {:ok, args, PaperExecutionWorker}
+        end
+
+      _ ->
+        with {:ok, args} <- validate_trade_params(params, agent) do
+          {:ok, args, TradeExecutionWorker}
+        end
+    end
+  end
+
+  defp validate_paper_params(params, agent, provider) do
+    symbol = params["symbol"] || params["market"]
+    side = params["side"]
+    units = parse_units(params["units"] || params["contracts"])
+    org_id = agent.organization_id
+
+    cond do
+      is_nil(symbol) or symbol == "" ->
+        {:error, "symbol is required"}
+
+      side not in ["buy", "sell", "yes", "no"] ->
+        {:error, "side must be buy, sell, yes, or no"}
+
+      is_nil(units) ->
+        {:error, "units must be a positive integer"}
+
+      is_nil(org_id) ->
+        {:error, "agent is not attached to an organization"}
+
+      true ->
+        {:ok,
+         %{
+           "agent_id" => agent.id,
+           "organization_id" => org_id,
+           "provider" => provider,
+           "symbol" => symbol,
+           "side" => side,
+           "units" => units,
+           "token_id" => params["token_id"],
+           "price" => params["price"],
+           "mode" => params["mode"] || "paper"
+         }}
+    end
+  end
+
+  defp parse_units(n) when is_integer(n) and n > 0, do: n
+
+  defp parse_units(n) when is_binary(n) do
+    case Integer.parse(n) do
+      {i, ""} when i > 0 -> i
+      _ -> nil
+    end
+  end
+
+  defp parse_units(_), do: nil
 
   defp validate_trade_params(params, agent) do
     market = TradeExecutionWorker.normalize_market(params["market"])
