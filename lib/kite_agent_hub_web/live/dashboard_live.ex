@@ -92,7 +92,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:all_attestations, [])
       |> assign(:polymarket_data, nil)
       |> assign(:polymarket_positions, [])
-      |> assign(:polymarket_mode, Polymarket.mode())
+      |> assign(:polymarket_mode, safe_polymarket_mode())
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -150,6 +150,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
     rescue
       Ecto.NoResultsError -> nil
       _ -> nil
+    end
+  end
+
+  # Polymarket.mode/0 reads Application env. Wrap anyway so a boot-order
+  # race or config read failure cannot crash mount.
+  defp safe_polymarket_mode do
+    try do
+      Polymarket.mode()
+    rescue
+      e ->
+        require Logger
+        Logger.error("DashboardLive: Polymarket.mode/0 crashed: #{inspect(e)}")
+        :paper
     end
   end
 
