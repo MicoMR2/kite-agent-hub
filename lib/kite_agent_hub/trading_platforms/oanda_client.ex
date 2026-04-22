@@ -40,6 +40,36 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
     get("/accounts/#{account_id}/pricing?" <> query, token, env)
   end
 
+  @valid_granularities ~w(M1 M5 M15 M30 H1 H4 D)
+
+  @doc """
+  GET /v3/instruments/{name}/candles — OHLC candles for chart rendering.
+
+  `instrument` must match the OANDA symbol convention (e.g. EUR_USD);
+  validated against a strict regex before URL interpolation to prevent
+  path traversal. `granularity` must be one of `@valid_granularities`
+  (M1..D). `count` is clamped to 1..500.
+  """
+  def candles(token, instrument, granularity \\ "M5", count \\ 120, env \\ :practice)
+      when is_binary(token) and is_binary(instrument) do
+    cond do
+      not valid_instrument?(instrument) ->
+        {:error, :invalid_instrument}
+
+      granularity not in @valid_granularities ->
+        {:error, :invalid_granularity}
+
+      true ->
+        clamped = count |> max(1) |> min(500)
+        query = URI.encode_query(%{"granularity" => granularity, "count" => clamped, "price" => "M"})
+
+        get("/instruments/" <> instrument <> "/candles?" <> query, token, env)
+    end
+  end
+
+  defp valid_instrument?(s) when is_binary(s), do: Regex.match?(~r/^[A-Z]{2,8}_[A-Z]{2,8}$/, s)
+  defp valid_instrument?(_), do: false
+
   @doc """
   POST /v3/accounts/{id}/orders — place a market order on the PRACTICE
   endpoint only. Signed units: positive for buy, negative for sell per
