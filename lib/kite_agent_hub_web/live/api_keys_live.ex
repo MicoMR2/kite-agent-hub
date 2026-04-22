@@ -38,14 +38,14 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       id: "oanda",
       label: "OANDA (Practice)",
       hint: "Practice account at api-fxpractice.oanda.com. Generate a Personal Access Token from My Account → Manage API Access.",
-      key_label: "Label",
+      key_label: "Display Name",
       secret_label: "Personal Access Token"
     },
     %{
       id: "oanda_live",
       label: "OANDA (Live)",
       hint: "Real-money account at api-fxtrade.oanda.com. Orders placed with this key move real funds.",
-      key_label: "Label",
+      key_label: "Display Name",
       secret_label: "Personal Access Token"
     }
   ]
@@ -296,9 +296,16 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                       type="text"
                       name="key_id"
                       autocomplete="off"
-                      placeholder="Paste your key ID..."
+                      placeholder={
+                        if provider.id in ["oanda", "oanda_live"],
+                          do: "e.g. My Practice Account",
+                          else: "Paste your key ID..."
+                      }
                       class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                     />
+                    <%= if provider.id in ["oanda", "oanda_live"] do %>
+                      <p class="text-[10px] text-gray-500 mt-1">Display name only — not sent to OANDA.</p>
+                    <% end %>
                     <%= if err = get_in(@form_errors, [:key_id, Access.at(0)]) do %>
                       <p class="text-xs text-red-400 mt-1">{err}</p>
                     <% end %>
