@@ -1,7 +1,7 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Orgs, Trading, Chat}
+  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket}
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
@@ -90,6 +90,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:attestation_count, attestation_count(selected_agent))
       |> assign(:recent_attestations, recent_attestations(selected_agent))
       |> assign(:all_attestations, [])
+      |> assign(:polymarket_data, nil)
+      |> assign(:polymarket_positions, [])
+      |> assign(:polymarket_mode, Polymarket.mode())
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -161,6 +164,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       "edge_scorer"  -> :edge_scorer
       "alpaca"       -> :alpaca
       "kalshi"       -> :kalshi
+      "polymarket"   -> :polymarket
       _              -> :overview
     end
 
@@ -190,6 +194,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         :attestations ->
           assign(socket, :all_attestations, all_attestations(socket.assigns.selected_agent))
+
+        :polymarket ->
+          send(self(), :load_polymarket)
+          assign(socket, :polymarket_data, :loading)
 
         _ ->
           socket
@@ -529,6 +537,43 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   def handle_info({:tab_refresh, _other}, socket), do: {:noreply, socket}
+
+  # Async Polymarket tab loader. Fetches live Gamma markets (no auth)
+  # and any paper positions for the current org + selected agent.
+  # Fully try/rescue wrapped per feedback_kah_lv_rescue — any transient
+  # Gamma or Repo failure leaves the tab in an empty-but-usable state.
+  def handle_info(:load_polymarket, socket) do
+    markets =
+      try do
+        Polymarket.list_markets(limit: 20)
+      rescue
+        _ -> []
+      end
+
+    positions =
+      case socket.assigns[:organization] do
+        %{id: org_id} ->
+          try do
+            agent = socket.assigns[:selected_agent]
+
+            if agent do
+              Polymarket.list_agent_positions(org_id, agent.id)
+            else
+              Polymarket.list_positions(org_id)
+            end
+          rescue
+            _ -> []
+          end
+
+        _ ->
+          []
+      end
+
+    {:noreply,
+     socket
+     |> assign(:polymarket_data, markets)
+     |> assign(:polymarket_positions, positions)}
+  end
 
   # Async Kalshi data loading. Wrapped — the with-chain internally uses
   # {:ok, _} / {:error, _} but a raised exception from PEM decode or
@@ -982,7 +1027,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
           <nav class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="dashboard-tabs">
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}] do %>
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
@@ -2436,6 +2481,95 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <% end %>
               <% end %>
             </div>
+          <% end %>
+
+          <%!-- ═══════════════ POLYMARKET TAB ═══════════════ --%>
+          <%= if @active_tab == :polymarket do %>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                Polymarket
+              </h2>
+              <span class={[
+                "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest",
+                if(@polymarket_mode == :live,
+                  do: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
+                  else: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30")
+              ]}>
+                {@polymarket_mode} mode
+              </span>
+            </div>
+
+            <%!-- Paper positions --%>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                {if @selected_agent, do: "Agent Paper Positions", else: "All Org Paper Positions"}
+              </p>
+              <%= cond do %>
+                <% @polymarket_positions == [] -> %>
+                  <p class="text-xs text-gray-500 py-2">No paper positions yet.</p>
+                <% true -> %>
+                  <div class="space-y-2">
+                    <%= for pos <- @polymarket_positions do %>
+                      <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                        <div class="min-w-0">
+                          <p class="text-sm font-bold text-white truncate">{pos.market_id}</p>
+                          <p class="text-[10px] text-gray-500 uppercase tracking-widest">
+                            {pos.outcome} · {pos.mode}
+                          </p>
+                        </div>
+                        <div class="text-right">
+                          <p class="text-sm font-mono text-white">{pos.size}</p>
+                          <p class="text-[10px] text-gray-500 font-mono">@ {pos.avg_price}</p>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+              <% end %>
+            </div>
+
+            <%!-- Market browser --%>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                Trending Markets (Gamma API)
+              </p>
+              <%= cond do %>
+                <% @polymarket_data == :loading -> %>
+                  <div class="flex items-center gap-3 text-gray-500 py-4">
+                    <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+                    <span class="text-xs">Loading markets...</span>
+                  </div>
+                <% is_list(@polymarket_data) && @polymarket_data != [] -> %>
+                  <div class="space-y-3">
+                    <%= for market <- @polymarket_data do %>
+                      <div class="py-3 border-b border-white/5 last:border-0">
+                        <div class="flex items-start justify-between gap-4">
+                          <div class="min-w-0 flex-1">
+                            <p class="text-sm font-bold text-white">
+                              {Map.get(market, "question") || Map.get(market, "slug") || "—"}
+                            </p>
+                            <p class="text-[10px] text-gray-500 font-mono mt-1 truncate">
+                              {Map.get(market, "conditionId") || Map.get(market, "id")}
+                            </p>
+                          </div>
+                          <div class="text-right shrink-0">
+                            <% prices = KiteAgentHub.TradingPlatforms.PolymarketClient.extract_prices(market) %>
+                            <p class="text-xs font-mono text-emerald-300">
+                              YES {:erlang.float_to_binary(Map.get(prices, "yes", 0.0) * 1.0, decimals: 3)}
+                            </p>
+                            <p class="text-xs font-mono text-red-300">
+                              NO {:erlang.float_to_binary(Map.get(prices, "no", 0.0) * 1.0, decimals: 3)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                <% true -> %>
+                  <p class="text-xs text-gray-500 py-2">No markets returned. Gamma API may be rate-limited or unreachable.</p>
+              <% end %>
+            </div>
+          </div>
           <% end %>
 
         <% end %>
