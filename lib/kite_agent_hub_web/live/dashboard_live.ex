@@ -98,6 +98,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_loading, false)
       |> assign(:forex_provider, :none)
       |> assign(:forex_oanda_env, nil)
+      |> assign(:forex_account, nil)
+      |> assign(:forex_candles, [])
+      |> assign(:forex_symbol, "EUR_USD")
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -605,36 +608,43 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   # Async ForEx tab loader. Prefers OANDA live when configured, then
-  # OANDA practice, then TradeLocker. All errors swallow to [] so an
-  # auth failure or transient API outage cannot crash the LV.
+  # OANDA practice, then TradeLocker. Also pulls balance + candles for
+  # the selected symbol so the tab header and chart can render. All
+  # errors swallow so a transient API outage cannot crash the LV.
   def handle_info(:load_forex, socket) do
     require Logger
 
-    {positions, instruments, provider, oanda_env} =
+    symbol = socket.assigns[:forex_symbol] || "EUR_USD"
+
+    {positions, instruments, provider, oanda_env, account, candles} =
       case socket.assigns[:organization] do
         %{id: org_id} ->
           try do
             case Oanda.active_env(org_id) do
               :live ->
                 {Oanda.list_positions(org_id, :live),
-                 Oanda.list_instruments(org_id, :live), :oanda, :live}
+                 Oanda.list_instruments(org_id, :live), :oanda, :live,
+                 Oanda.account_summary(org_id, :live),
+                 Oanda.candles(org_id, symbol, "M5", 120, :live)}
 
               :practice ->
                 {Oanda.list_positions(org_id, :practice),
-                 Oanda.list_instruments(org_id, :practice), :oanda, :practice}
+                 Oanda.list_instruments(org_id, :practice), :oanda, :practice,
+                 Oanda.account_summary(org_id, :practice),
+                 Oanda.candles(org_id, symbol, "M5", 120, :practice)}
 
               _ ->
                 {TradeLocker.list_positions(org_id),
-                 TradeLocker.list_instruments(org_id), :tradelocker, nil}
+                 TradeLocker.list_instruments(org_id), :tradelocker, nil, nil, []}
             end
           rescue
             e ->
               Logger.error("DashboardLive :load_forex crashed: #{inspect(e)}")
-              {[], [], :none, nil}
+              {[], [], :none, nil, nil, []}
           end
 
         _ ->
-          {[], [], :none, nil}
+          {[], [], :none, nil, nil, []}
       end
 
     {:noreply,
@@ -643,7 +653,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_instruments, instruments)
      |> assign(:forex_provider, provider)
      |> assign(:forex_oanda_env, oanda_env)
+     |> assign(:forex_account, account)
+     |> assign(:forex_candles, candles)
      |> assign(:forex_loading, false)}
+  end
+
+  # Symbol change: re-queue a load with the new symbol so the chart
+  # refreshes against the correct instrument's candles.
+  def handle_event("forex_symbol", %{"symbol" => symbol}, socket) do
+    safe =
+      if is_binary(symbol) and Regex.match?(~r/^[A-Z]{2,8}_[A-Z]{2,8}$/, symbol),
+        do: symbol,
+        else: "EUR_USD"
+
+    send(self(), :load_forex)
+
+    {:noreply,
+     socket
+     |> assign(:forex_symbol, safe)
+     |> assign(:forex_loading, true)}
   end
 
   # Async Kalshi data loading. Wrapped — the with-chain internally uses
@@ -2693,6 +2721,54 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </span>
               </div>
             </div>
+
+            <%!-- Account summary (OANDA only) --%>
+            <%= if @forex_provider == :oanda and is_map(@forex_account) do %>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <%= for {label, key, tone} <- [
+                    {"Balance", "balance", "text-white"},
+                    {"NAV", "NAV", "text-emerald-400"},
+                    {"Unrealized P&L", "unrealizedPL", "text-blue-400"},
+                    {"Margin Used", "marginUsed", "text-gray-300"}
+                  ] do %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                      {label}
+                    </p>
+                    <p class={["text-lg font-mono tabular-nums mt-1", tone]}>
+                      {Oanda.field(@forex_account, key, "—")}
+                    </p>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+
+            <%!-- Chart (OANDA candles only) --%>
+            <%= if @forex_provider == :oanda and @forex_candles != [] do %>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                <div class="flex items-center justify-between mb-3">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                    {@forex_symbol} — 5m candles (last 120)
+                  </p>
+                  <span class="text-[10px] text-gray-600 font-mono">mid close</span>
+                </div>
+                <% pts = Oanda.sparkline_points(@forex_candles, 640, 120) %>
+                <%= if pts != "" do %>
+                  <svg viewBox="0 0 640 120" preserveAspectRatio="none" class="w-full h-32">
+                    <polyline
+                      points={pts}
+                      fill="none"
+                      stroke="#22c55e"
+                      stroke-width="1.5"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                <% else %>
+                  <p class="text-xs text-gray-500 py-2">No chart data yet.</p>
+                <% end %>
+              </div>
+            <% end %>
 
             <%!-- Open positions --%>
             <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">

@@ -66,6 +66,36 @@ defmodule KiteAgentHub.Oanda do
     end)
   end
 
+  @doc """
+  Fetch the account summary (balance, NAV, unrealized P&L) for the
+  given env. Returns the raw `%{"account" => map}` payload or `nil`
+  on any failure so the template can render `"—"`.
+  """
+  def account_summary(org_id, env \\ :practice) do
+    case with_token(org_id, env, fn token, account_id ->
+           case OandaClient.account_summary(token, account_id, env) do
+             {:ok, %{"account" => account}} -> account
+             _ -> nil
+           end
+         end) do
+      [] -> nil
+      v -> v
+    end
+  end
+
+  @doc """
+  Fetch OHLC candles for a single instrument. Returns a list of candle
+  maps (as returned by OANDA) or `[]` on any failure.
+  """
+  def candles(org_id, instrument, granularity \\ "M5", count \\ 120, env \\ :practice) do
+    with_token(org_id, env, fn token, _account_id ->
+      case OandaClient.candles(token, instrument, granularity, count, env) do
+        {:ok, %{"candles" => list}} when is_list(list) -> list
+        _ -> []
+      end
+    end)
+  end
+
   # Run `fun.(token, account_id)` with a decrypted token scoped to a
   # single request. All failure modes (missing creds, decrypt error,
   # raised exception) collapse to [] so callers never get surprised.
@@ -157,4 +187,65 @@ defmodule KiteAgentHub.Oanda do
   end
 
   def field(_, _, default), do: default
+
+  @doc """
+  Build a polyline `points` string from a list of OANDA candles, scaled
+  to `width` × `height`. Uses the mid close price. Returns `""` when
+  no usable prices are available so the template can omit the chart.
+  """
+  def sparkline_points(candles, width \\ 640, height \\ 120)
+
+  def sparkline_points(candles, width, height) when is_list(candles) and candles != [] do
+    closes =
+      candles
+      |> Enum.map(fn c -> get_in(c, ["mid", "c"]) end)
+      |> Enum.map(fn
+        s when is_binary(s) ->
+          case Float.parse(s) do
+            {f, _} -> f
+            :error -> nil
+          end
+
+        n when is_number(n) ->
+          n * 1.0
+
+        _ ->
+          nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    case closes do
+      [] ->
+        ""
+
+      [_single] ->
+        ""
+
+      list ->
+        min_v = Enum.min(list)
+        max_v = Enum.max(list)
+        range = max_v - min_v
+
+        if range == 0 do
+          ""
+        else
+          last_idx = length(list) - 1
+          pad_y = 4.0
+          inner_h = height - 2 * pad_y
+
+          list
+          |> Enum.with_index()
+          |> Enum.map(fn {v, i} ->
+            x = i / last_idx * width
+            y = height - pad_y - (v - min_v) / range * inner_h
+            "#{Float.round(x, 2)},#{Float.round(y, 2)}"
+          end)
+          |> Enum.join(" ")
+        end
+    end
+  rescue
+    _ -> ""
+  end
+
+  def sparkline_points(_, _, _), do: ""
 end
