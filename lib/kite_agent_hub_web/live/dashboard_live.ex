@@ -1,7 +1,7 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket}
+  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket, TradeLocker}
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
@@ -93,6 +93,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:polymarket_data, nil)
       |> assign(:polymarket_positions, [])
       |> assign(:polymarket_mode, safe_polymarket_mode())
+      |> assign(:forex_positions, [])
+      |> assign(:forex_instruments, [])
+      |> assign(:forex_loading, false)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -178,6 +181,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       "alpaca"       -> :alpaca
       "kalshi"       -> :kalshi
       "polymarket"   -> :polymarket
+      "forex"        -> :forex
       _              -> :overview
     end
 
@@ -211,6 +215,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
         :polymarket ->
           send(self(), :load_polymarket)
           assign(socket, :polymarket_data, :loading)
+
+        :forex ->
+          send(self(), :load_forex)
+          assign(socket, :forex_loading, true)
 
         _ ->
           socket
@@ -592,6 +600,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
      socket
      |> assign(:polymarket_data, markets)
      |> assign(:polymarket_positions, positions)}
+  end
+
+  # Async TradeLocker tab loader. Fetches live positions + instruments
+  # from the authenticated demo account. All errors swallow to [] so
+  # an auth failure or transient API outage cannot crash the LV.
+  def handle_info(:load_forex, socket) do
+    require Logger
+
+    {positions, instruments} =
+      case socket.assigns[:organization] do
+        %{id: org_id} ->
+          try do
+            {TradeLocker.list_positions(org_id), TradeLocker.list_instruments(org_id)}
+          rescue
+            e ->
+              Logger.error("DashboardLive :load_forex crashed: #{inspect(e)}")
+              {[], []}
+          end
+
+        _ ->
+          {[], []}
+      end
+
+    {:noreply,
+     socket
+     |> assign(:forex_positions, positions)
+     |> assign(:forex_instruments, instruments)
+     |> assign(:forex_loading, false)}
   end
 
   # Async Kalshi data loading. Wrapped — the with-chain internally uses
@@ -1046,7 +1082,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
           <nav class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="dashboard-tabs">
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}] do %>
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
@@ -2599,6 +2635,83 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 <% true -> %>
                   <p class="text-xs text-gray-500 py-2">No markets returned. Gamma API may be rate-limited or unreachable.</p>
+              <% end %>
+            </div>
+          </div>
+          <% end %>
+
+          <%!-- ═══════════════ FOREX TAB ═══════════════ --%>
+          <%= if @active_tab == :forex do %>
+          <% forex_agent_can_trade = @selected_agent && TradeLocker.can_trade?(@selected_agent) %>
+          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
+              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                ForEx (TradeLocker)
+              </h2>
+              <div class="flex items-center gap-2">
+                <%= if @selected_agent && not forex_agent_can_trade do %>
+                  <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
+                    View only
+                  </span>
+                <% end %>
+                <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                  Demo
+                </span>
+              </div>
+            </div>
+
+            <%!-- Open positions --%>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                Open Positions
+              </p>
+              <%= cond do %>
+                <% @forex_loading -> %>
+                  <div class="flex items-center gap-3 text-gray-500 py-4">
+                    <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+                    <span class="text-xs">Loading…</span>
+                  </div>
+                <% is_list(@forex_positions) && @forex_positions != [] -> %>
+                  <div class="space-y-2">
+                    <%= for pos <- @forex_positions do %>
+                      <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                        <div class="min-w-0">
+                          <p class="text-sm font-bold text-white">
+                            {Map.get(pos, "instrument") || Map.get(pos, "symbol") || "—"}
+                          </p>
+                          <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
+                            {Map.get(pos, "side") || Map.get(pos, "direction") || ""}
+                          </p>
+                        </div>
+                        <div class="text-right">
+                          <p class="text-sm font-mono text-white">
+                            {Map.get(pos, "quantity") || Map.get(pos, "qty") || "—"}
+                          </p>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                <% true -> %>
+                  <p class="text-xs text-gray-500 py-2">No open positions. Add TradeLocker credentials in Settings to connect.</p>
+              <% end %>
+            </div>
+
+            <%!-- Instruments --%>
+            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                Available Instruments
+              </p>
+              <%= cond do %>
+                <% is_list(@forex_instruments) && @forex_instruments != [] -> %>
+                  <div class="flex flex-wrap gap-2">
+                    <%= for inst <- @forex_instruments do %>
+                      <span class="text-[10px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.02] text-gray-300">
+                        {Map.get(inst, "name") || Map.get(inst, "symbol") || "—"}
+                      </span>
+                    <% end %>
+                  </div>
+                <% true -> %>
+                  <p class="text-xs text-gray-500 py-2">No instruments loaded.</p>
               <% end %>
             </div>
           </div>
