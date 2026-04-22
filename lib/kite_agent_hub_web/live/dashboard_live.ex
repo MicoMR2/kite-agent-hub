@@ -1,7 +1,7 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket, TradeLocker}
+  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket, TradeLocker, Oanda}
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
@@ -96,6 +96,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_positions, [])
       |> assign(:forex_instruments, [])
       |> assign(:forex_loading, false)
+      |> assign(:forex_provider, :none)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -602,31 +603,38 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:polymarket_positions, positions)}
   end
 
-  # Async TradeLocker tab loader. Fetches live positions + instruments
-  # from the authenticated demo account. All errors swallow to [] so
-  # an auth failure or transient API outage cannot crash the LV.
+  # Async ForEx tab loader. Prefers OANDA when configured; falls back
+  # to TradeLocker. All errors swallow to [] so an auth failure or
+  # transient API outage cannot crash the LV.
   def handle_info(:load_forex, socket) do
     require Logger
 
-    {positions, instruments} =
+    {positions, instruments, provider} =
       case socket.assigns[:organization] do
         %{id: org_id} ->
           try do
-            {TradeLocker.list_positions(org_id), TradeLocker.list_instruments(org_id)}
+            cond do
+              Oanda.configured?(org_id) ->
+                {Oanda.list_positions(org_id), Oanda.list_instruments(org_id), :oanda}
+
+              true ->
+                {TradeLocker.list_positions(org_id), TradeLocker.list_instruments(org_id), :tradelocker}
+            end
           rescue
             e ->
               Logger.error("DashboardLive :load_forex crashed: #{inspect(e)}")
-              {[], []}
+              {[], [], :none}
           end
 
         _ ->
-          {[], []}
+          {[], [], :none}
       end
 
     {:noreply,
      socket
      |> assign(:forex_positions, positions)
      |> assign(:forex_instruments, instruments)
+     |> assign(:forex_provider, provider)
      |> assign(:forex_loading, false)}
   end
 
@@ -2642,11 +2650,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- ═══════════════ FOREX TAB ═══════════════ --%>
           <%= if @active_tab == :forex do %>
-          <% forex_agent_can_trade = @selected_agent && TradeLocker.can_trade?(@selected_agent) %>
+          <% forex_agent_can_trade =
+               @selected_agent &&
+                 (Oanda.can_trade?(@selected_agent) || TradeLocker.can_trade?(@selected_agent)) %>
+          <% forex_provider_label =
+               case @forex_provider do
+                 :oanda -> "OANDA"
+                 :tradelocker -> "TradeLocker"
+                 _ -> "no provider"
+               end %>
           <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
             <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
               <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                ForEx (TradeLocker)
+                ForEx ({forex_provider_label})
               </h2>
               <div class="flex items-center gap-2">
                 <%= if @selected_agent && not forex_agent_can_trade do %>
@@ -2655,7 +2671,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </span>
                 <% end %>
                 <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                  Demo
+                  {if @forex_provider == :oanda, do: "Practice", else: "Demo"}
                 </span>
               </div>
             </div>
@@ -2692,7 +2708,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
                 <% true -> %>
-                  <p class="text-xs text-gray-500 py-2">No open positions. Add TradeLocker credentials in Settings to connect.</p>
+                  <p class="text-xs text-gray-500 py-2">No open positions. Add OANDA or TradeLocker credentials in Settings to connect.</p>
               <% end %>
             </div>
 

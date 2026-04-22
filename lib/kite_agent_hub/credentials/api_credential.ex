@@ -19,7 +19,7 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   # hex chars). For :tradelocker, key_id holds the login email,
   # encrypted_secret holds the password, server holds the brand code
   # (allowlisted) and account_id holds the numeric trading account id.
-  @valid_providers ~w(alpaca kalshi openai anthropic polymarket tradelocker)
+  @valid_providers ~w(alpaca kalshi openai anthropic polymarket tradelocker oanda)
   @valid_envs ~w(paper live)
   @valid_tradelocker_servers ~w(PRDTL)
 
@@ -50,6 +50,7 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
     |> validate_length(:secret, min: 8)
     |> validate_polymarket_address()
     |> validate_tradelocker_fields()
+    |> validate_oanda_fields()
     |> encrypt_secret()
   end
 
@@ -62,6 +63,7 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
     |> validate_length(:secret, min: 8)
     |> validate_polymarket_address()
     |> validate_tradelocker_fields()
+    |> validate_oanda_fields()
     |> encrypt_secret()
   end
 
@@ -104,6 +106,24 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
           :account_id,
           ~r/^\d{4,20}$/,
           message: "must be a 4-20 digit account id"
+        )
+
+      _ ->
+        changeset
+    end
+  end
+
+  # OANDA: key_id holds a human label (optional name like "practice"),
+  # secret holds the Personal Access Token, account_id must match the
+  # NNN-NNN-XXXXXXX-NNN format OANDA uses.
+  defp validate_oanda_fields(changeset) do
+    case get_field(changeset, :provider) do
+      "oanda" ->
+        validate_format(
+          changeset,
+          :account_id,
+          ~r/^\d{3}-\d{3}-\d{6,8}-\d{3}$/,
+          message: "must match OANDA format NNN-NNN-XXXXXXX-NNN"
         )
 
       _ ->

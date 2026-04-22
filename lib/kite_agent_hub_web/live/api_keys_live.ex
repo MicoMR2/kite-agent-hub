@@ -33,6 +33,13 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       hint: "Demo account at demo.tradelocker.com. JWT is fetched on demand — password is AES-256-GCM encrypted.",
       key_label: "Login Email",
       secret_label: "Password"
+    },
+    %{
+      id: "oanda",
+      label: "OANDA",
+      hint: "Practice account at api-fxpractice.oanda.com. Generate a Personal Access Token from My Account → Manage API Access.",
+      key_label: "Label",
+      secret_label: "Personal Access Token"
     }
   ]
 
@@ -173,7 +180,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   end
 
   defp load_masked_credentials(org_id) do
-    ~w(alpaca kalshi polymarket tradelocker)
+    ~w(alpaca kalshi polymarket tradelocker oanda)
     |> Enum.reduce(%{}, fn provider, acc ->
       case Credentials.get_credential(org_id, provider) do
         nil ->
@@ -294,15 +301,17 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
                       {provider.secret_label}
                     </label>
-                    <%= if provider.id in ["polymarket", "tradelocker"] do %>
+                    <%= if provider.id in ["polymarket", "tradelocker", "oanda"] do %>
                       <input
                         type="password"
                         name="secret"
                         autocomplete="off"
                         placeholder={
-                          if provider.id == "tradelocker",
-                            do: "TradeLocker account password...",
-                            else: "Paste your Relayer API key..."
+                          case provider.id do
+                            "tradelocker" -> "TradeLocker account password..."
+                            "oanda" -> "Paste your OANDA Personal Access Token..."
+                            _ -> "Paste your Relayer API key..."
+                          end
                         }
                         class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                       />
@@ -352,6 +361,25 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                         autocomplete="off"
                         value={(existing && existing.account_id) || ""}
                         placeholder="834788448504682889"
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
+                      />
+                      <%= if err = get_in(@form_errors, [:account_id, Access.at(0)]) do %>
+                        <p class="text-xs text-red-400 mt-1">{err}</p>
+                      <% end %>
+                    </div>
+                  <% end %>
+
+                  <%= if provider.id == "oanda" do %>
+                    <div>
+                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                        Account ID
+                      </label>
+                      <input
+                        type="text"
+                        name="account_id"
+                        autocomplete="off"
+                        value={(existing && existing.account_id) || ""}
+                        placeholder="001-001-1234567-001"
                         class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                       />
                       <%= if err = get_in(@form_errors, [:account_id, Access.at(0)]) do %>
