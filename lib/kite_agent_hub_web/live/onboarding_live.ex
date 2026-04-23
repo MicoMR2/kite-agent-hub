@@ -36,9 +36,24 @@ defmodule KiteAgentHubWeb.OnboardingLive do
       |> assign(:step, :welcome)
       |> assign(:steps, @steps)
       |> assign(:wallet, wallet)
+      |> assign(:balance_display, balance_display(wallet))
 
     {:ok, socket}
   end
+
+  # Precompute the balance string so the render path never hits a
+  # function call that could raise on odd Ecto return types. If the
+  # wallet or its field is missing/unexpected, fall back to $0.00
+  # rather than crashing the LV and triggering a mount-loop.
+  defp balance_display(nil), do: "$0.00"
+
+  defp balance_display(%{balance_usd: %Decimal{} = d}) do
+    "$" <> Decimal.to_string(d, :normal)
+  end
+
+  defp balance_display(%{balance_usd: n}) when is_number(n), do: "$#{n}"
+  defp balance_display(%{balance_usd: s}) when is_binary(s), do: "$#{s}"
+  defp balance_display(_), do: "$0.00"
 
   defp backfill_if_needed(user) do
     try do
@@ -73,6 +88,13 @@ defmodule KiteAgentHubWeb.OnboardingLive do
       end
 
     {:noreply, assign(socket, :step, prev_step)}
+  end
+
+  # Catch-all so a stray phx-click event can never crash the LV and
+  # trigger the mount-reconnect loop.
+  def handle_event(event, params, socket) do
+    Logger.warning("OnboardingLive: unhandled event #{inspect(event)} #{inspect(params)}")
+    {:noreply, socket}
   end
 
   def handle_event("finish", _params, socket) do
@@ -133,7 +155,7 @@ defmodule KiteAgentHubWeb.OnboardingLive do
                     Current balance
                   </p>
                   <p class="text-3xl font-black text-emerald-400 font-mono mt-1">
-                    ${@wallet && Decimal.to_string(@wallet.balance_usd)}
+                    {@balance_display}
                   </p>
                   <p class="text-xs text-gray-500 mt-3">
                     Funding (Stripe + crypto) is coming soon. For now, you
