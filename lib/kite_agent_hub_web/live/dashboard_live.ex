@@ -8,7 +8,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
-    orgs = Orgs.list_orgs_for_user(user.id)
+
+    # Wrap every DB call reachable from mount so a transient failure
+    # cannot crash the LV and trigger the mount-reconnect loop (KAH
+    # rule — see feedback_kah_lv_rescue).
+    orgs =
+      try do
+        Orgs.list_orgs_for_user(user.id)
+      rescue
+        _ -> []
+      end
+
     org = List.first(orgs)
 
     {agents, trades} =
@@ -64,13 +74,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     # Load the initial chat messages here so the parent LV owns the
     # messages list. The ChatComponent renders it as a pure prop.
+    # Wrapped in try/rescue because a DB blip in mount would trigger
+    # the LV mount-reconnect loop (PR #199/#200 taught us this).
     chat_messages =
-      if org do
-        org.id
-        |> Chat.list_messages(limit: 50)
-        |> Enum.map(&sanitize_broadcast/1)
-      else
-        []
+      try do
+        if org do
+          org.id
+          |> Chat.list_messages(limit: 50)
+          |> Enum.map(&sanitize_broadcast/1)
+        else
+          []
+        end
+      rescue
+        _ -> []
       end
 
     socket =
