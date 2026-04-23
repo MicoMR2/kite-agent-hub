@@ -11,6 +11,7 @@ defmodule KiteAgentHub.Accounts.User do
     field :workos_id, :string
     field :first_name, :string
     field :last_name, :string
+    field :onboarding_completed_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
   end
