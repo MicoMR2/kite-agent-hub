@@ -7,13 +7,29 @@ defmodule KiteAgentHubWeb.OnboardingLive do
 
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Onboarding, Wallets}
+  require Logger
+  alias KiteAgentHub.{Onboarding, Orgs, Wallets}
 
   @steps [:welcome, :fund, :connect, :ready]
 
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
-    wallet = Wallets.get_for_user(user)
+
+    # Users who registered before PR #198 shipped do not have a
+    # wallet/vault/agent provisioned yet. Backfill idempotently so
+    # legacy accounts can still walk through the wizard. Every DB
+    # call is wrapped so a transient failure doesn't crash mount
+    # and trigger a reconnect loop (per the KAH mount-loop rule).
+    backfill_if_needed(user)
+
+    wallet =
+      try do
+        Wallets.get_for_user(user)
+      rescue
+        e ->
+          Logger.warning("OnboardingLive: Wallets.get_for_user failed: #{inspect(e)}")
+          nil
+      end
 
     socket =
       socket
@@ -22,6 +38,21 @@ defmodule KiteAgentHubWeb.OnboardingLive do
       |> assign(:wallet, wallet)
 
     {:ok, socket}
+  end
+
+  defp backfill_if_needed(user) do
+    try do
+      case Orgs.list_orgs_for_user(user.id) do
+        [org | _] -> Onboarding.provision_for_user(user, org)
+        _ -> :ok
+      end
+    rescue
+      e ->
+        # Mount must never crash on a DB blip — the wizard can still
+        # render with a nil wallet, and the user can retry.
+        Logger.warning("OnboardingLive backfill failed: #{inspect(e)}")
+        :ok
+    end
   end
 
   def handle_event("next", _params, socket) do
@@ -45,20 +76,24 @@ defmodule KiteAgentHubWeb.OnboardingLive do
   end
 
   def handle_event("finish", _params, socket) do
-    user = socket.assigns.current_scope.user
-
-    case Onboarding.complete_onboarding(user) do
-      {:ok, _user} ->
-        {:noreply, push_navigate(socket, to: ~p"/dashboard")}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Could not complete onboarding. Try again.")}
-    end
+    finish_and_go(socket)
   end
 
   def handle_event("skip", _params, socket) do
+    finish_and_go(socket)
+  end
+
+  defp finish_and_go(socket) do
     user = socket.assigns.current_scope.user
-    {:ok, _user} = Onboarding.complete_onboarding(user)
+
+    try do
+      Onboarding.complete_onboarding(user)
+    rescue
+      e ->
+        Logger.warning("Onboarding.complete_onboarding failed: #{inspect(e)}")
+        :error
+    end
+
     {:noreply, push_navigate(socket, to: ~p"/dashboard")}
   end
 
