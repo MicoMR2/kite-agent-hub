@@ -20,7 +20,7 @@ defmodule KiteAgentHub.Onboarding do
   alias KiteAgentHub.Trading.KiteAgent
   alias KiteAgentHub.{Vaults, Wallets}
 
-  @default_agent_name "My Agent"
+  @default_agent_name "Trading Agent"
 
   @doc """
   Provision the default agent, wallet, and vault for a user. Returns

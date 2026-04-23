@@ -130,7 +130,7 @@ defmodule KiteAgentHubWeb.OnboardingLive do
               <% :ready -> %>
                 <h2 class="text-2xl font-black text-white">Your agent is ready</h2>
                 <p class="text-sm text-gray-400 leading-relaxed">
-                  We created a default agent named <strong class="text-white">My Agent</strong>
+                  We created a default agent named <strong class="text-white">Trading Agent</strong>
                   for you. You can rename it, switch its type to research
                   or conversational, or wire up its LLM provider from the
                   dashboard.
