@@ -124,15 +124,15 @@ defmodule KiteAgentHubWeb.OnboardingLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="max-w-2xl mx-auto py-12 px-4">
         <div class="rounded-3xl border border-white/10 bg-[#0a0a0f] p-8 shadow-2xl">
-          <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center justify-between mb-6 gap-3">
             <h1 class="text-lg font-black uppercase tracking-widest text-white">
               Welcome to Kite Agent Hub
             </h1>
             <button
               phx-click="skip"
-              class="text-[10px] font-bold text-gray-500 hover:text-gray-300 uppercase tracking-widest"
+              class="shrink-0 px-3 py-1.5 rounded-lg border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors"
             >
-              Skip
+              Skip to Dashboard →
             </button>
           </div>
 

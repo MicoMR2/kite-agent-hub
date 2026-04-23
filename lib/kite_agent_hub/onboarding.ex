@@ -56,8 +56,14 @@ defmodule KiteAgentHub.Onboarding do
   defp ensure_default_agent(%User{} = _user, %Organization{id: org_id}) do
     # The agent is org-scoped, not user-scoped. If the user's org
     # already has at least one agent we leave things alone — the user
-    # may have been invited to an existing workspace.
-    case Repo.get_by(KiteAgent, organization_id: org_id) do
+    # may have been invited to an existing workspace. Use a one-row
+    # LIMIT query instead of `get_by` so orgs that already have
+    # multiple agents don't raise Ecto.MultipleResultsError.
+    import Ecto.Query, only: [from: 2]
+
+    query = from(k in KiteAgent, where: k.organization_id == ^org_id, limit: 1)
+
+    case Repo.one(query) do
       %KiteAgent{} = agent ->
         {:ok, agent}
 
