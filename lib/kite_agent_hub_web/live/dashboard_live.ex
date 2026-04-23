@@ -62,6 +62,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
       if org, do: send(self(), :load_broker_stats)
     end
 
+    # Load the initial chat messages here so the parent LV owns the
+    # messages list. The ChatComponent renders it as a pure prop.
+    chat_messages =
+      if org do
+        org.id
+        |> Chat.list_messages(limit: 50)
+        |> Enum.map(&sanitize_broadcast/1)
+      else
+        []
+      end
+
     socket =
       socket
       |> assign(:organization, org)
@@ -101,6 +112,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_account, nil)
       |> assign(:forex_candles, [])
       |> assign(:forex_symbol, "EUR_USD")
+      |> assign(:chat_messages, chat_messages)
       |> stream(:trades, trades)
 
     {:ok, socket}
@@ -2867,6 +2879,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
           user={@current_scope.user}
           agent={@selected_agent}
           agents={@agents}
+          messages={@chat_messages}
         />
       <% end %>
     </Layouts.app>
@@ -2875,13 +2888,38 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # ── Chat PubSub handler ─────────────────────────────────────────────────────
 
-  def handle_info({:chat_message, _message}, socket) do
-    if socket.assigns.organization do
-      messages = Chat.list_messages(socket.assigns.organization.id, limit: 50)
-      send_update(KiteAgentHubWeb.ChatComponent, id: "chat-popup", messages: messages)
-    end
+  def handle_info({:chat_message, message}, socket) do
+    org = socket.assigns[:organization]
 
-    {:noreply, socket}
+    # Authorization check: only append the broadcast payload if it
+    # belongs to the viewer's org. This prevents a cross-org leak in
+    # the event a process is ever subscribed to more than one topic.
+    if org && message.organization_id == org.id do
+      messages =
+        (socket.assigns[:chat_messages] || [])
+        |> Kernel.++([sanitize_broadcast(message)])
+        |> Enum.take(-50)
+
+      {:noreply, assign(socket, :chat_messages, messages)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Strip the persisted row down to the fields the chat UI actually
+  # renders. The real ChatMessage struct has no credential fields, but
+  # trimming here enforces the CyberSec contract that PubSub payloads
+  # never carry tokens, keys, or owner metadata — even if the schema
+  # grows later.
+  defp sanitize_broadcast(message) do
+    %{
+      id: message.id,
+      text: message.text,
+      sender_type: message.sender_type,
+      sender_name: message.sender_name,
+      kite_agent_id: Map.get(message, :kite_agent_id),
+      inserted_at: message.inserted_at
+    }
   end
 
   # ── SVG sparkline helper ───────────────────────────────────────────────────────
