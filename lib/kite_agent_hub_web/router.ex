@@ -91,6 +91,7 @@ defmodule KiteAgentHubWeb.Router do
     live_session :authenticated,
       on_mount: [{KiteAgentHubWeb.UserAuth, :require_authenticated}] do
       live "/dashboard", DashboardLive
+      live "/welcome", OnboardingLive
       live "/agents/new", AgentOnboardLive
       live "/trades", TradesLive
       live "/api-keys", ApiKeysLive

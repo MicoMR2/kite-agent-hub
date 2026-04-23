@@ -86,7 +86,7 @@ defmodule KiteAgentHubWeb.UserAuth do
 
     conn
     |> create_or_extend_session(user, params)
-    |> redirect(to: user_return_to || signed_in_path(conn))
+    |> redirect(to: user_return_to || signed_in_path(user))
   end
 
   @doc """
@@ -243,7 +243,16 @@ defmodule KiteAgentHubWeb.UserAuth do
     end
   end
 
-  defp signed_in_path(_conn), do: ~p"/dashboard"
+  defp signed_in_path(%Plug.Conn{} = conn) do
+    case conn.assigns[:current_scope] do
+      %{user: user} -> signed_in_path(user)
+      _ -> ~p"/dashboard"
+    end
+  end
+
+  defp signed_in_path(%KiteAgentHub.Accounts.User{onboarding_completed_at: nil}), do: ~p"/welcome"
+  defp signed_in_path(%KiteAgentHub.Accounts.User{}), do: ~p"/dashboard"
+  defp signed_in_path(_), do: ~p"/dashboard"
 
   @doc """
   Plug for routes that require the user to be authenticated.

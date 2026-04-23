@@ -114,6 +114,15 @@ defmodule KiteAgentHub.Accounts do
         })
       )
     end)
+    |> Ecto.Multi.run(:onboarding, fn _repo, %{user: user, org: org} ->
+      # Provision the default agent + empty wallet + empty vault so
+      # the first dashboard render has something meaningful to show.
+      # All three are idempotent.
+      case KiteAgentHub.Onboarding.provision_for_user(user, org) do
+        :ok -> {:ok, :provisioned}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
     |> Repo.transaction()
     |> case do
       {:ok, %{user: user}} -> {:ok, user}
