@@ -2,16 +2,18 @@ defmodule KiteAgentHubWeb.ChatComponent do
   @moduledoc """
   Floating chat popup LiveComponent for the dashboard.
 
-  Displays messages from the current organization's chat stream and
-  allows the logged-in user to send messages or invite agents to the
-  conversation. All reads and writes are scoped to `:org_id` so
-  chat is isolated per workspace.
+  Pure presentation layer. Messages list and PubSub subscription
+  are owned by the parent LiveView so broadcasts from other nodes
+  (or other controllers on the same node) push updates through
+  the parent's `handle_info/2` without the component having to
+  manage its own subscription lifecycle.
 
   Required assigns:
-    * `:org_id`  — current organization id
-    * `:user`    — current user struct (for `send_user_message/3`)
-    * `:agents`  — list of all org agents (for the invite panel)
-    * `:agent`   — currently selected agent (optional, for backwards compat)
+    * `:org_id`    — current organization id
+    * `:user`      — current user struct (for `send_user_message/3`)
+    * `:agents`    — list of all org agents (for the invite panel)
+    * `:messages`  — list of messages to display (owned by parent)
+    * `:agent`     — currently selected agent (optional, for backwards compat)
   """
   use KiteAgentHubWeb, :live_component
 
@@ -26,20 +28,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
       |> assign_new(:show_invite, fn -> false end)
       |> assign_new(:messages, fn -> [] end)
       |> assign_new(:chat_input, fn -> "" end)
-      |> assign_new(:subscribed, fn -> false end)
       |> assign_new(:agents, fn -> [] end)
-
-    socket =
-      if assigns[:org_id] && !socket.assigns.subscribed do
-        messages = Chat.list_messages(assigns.org_id, limit: 50)
-        Chat.subscribe(assigns.org_id)
-
-        socket
-        |> assign(:messages, messages)
-        |> assign(:subscribed, true)
-      else
-        socket
-      end
 
     {:ok, socket}
   end
@@ -58,8 +47,10 @@ defmodule KiteAgentHubWeb.ChatComponent do
     if text != "" && socket.assigns[:org_id] && socket.assigns[:user] do
       case Chat.send_user_message(socket.assigns.org_id, socket.assigns.user, text) do
         {:ok, _msg} ->
-          messages = Chat.list_messages(socket.assigns.org_id, limit: 50)
-          {:noreply, socket |> assign(:chat_input, "") |> assign(:messages, messages)}
+          # Parent LV receives the broadcast and pushes the new message
+          # list back through `send_update`, so the component does not
+          # re-fetch here.
+          {:noreply, assign(socket, :chat_input, "")}
 
         {:error, reason} ->
           Logger.warning("Chat send failed: #{inspect(reason)}")
@@ -81,8 +72,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
         "#{agent.name} (#{String.capitalize(agent.agent_type || "agent")}) has joined the conversation."
       )
 
-      messages = Chat.list_messages(org_id, limit: 50)
-      {:noreply, socket |> assign(:messages, messages) |> assign(:show_invite, false)}
+      {:noreply, assign(socket, :show_invite, false)}
     else
       {:noreply, assign(socket, :show_invite, false)}
     end
@@ -98,12 +88,9 @@ defmodule KiteAgentHubWeb.ChatComponent do
         org_id,
         "#{agent.name} connected to chat. Agent is ready to receive instructions."
       )
-
-      messages = Chat.list_messages(org_id, limit: 50)
-      {:noreply, assign(socket, :messages, messages)}
-    else
-      {:noreply, socket}
     end
+
+    {:noreply, socket}
   end
 
   def render(assigns) do
