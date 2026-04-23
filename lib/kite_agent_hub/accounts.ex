@@ -114,15 +114,12 @@ defmodule KiteAgentHub.Accounts do
         })
       )
     end)
-    |> Ecto.Multi.run(:onboarding, fn _repo, %{user: user, org: org} ->
-      # Provision the default agent + empty wallet + empty vault so
-      # the first dashboard render has something meaningful to show.
-      # All three are idempotent.
-      case KiteAgentHub.Onboarding.provision_for_user(user, org) do
-        :ok -> {:ok, :provisioned}
-        {:error, reason} -> {:error, reason}
-      end
-    end)
+    # Agent, wallet, and vault are NOT provisioned here. They are
+    # created lazily on the user's first visit to /welcome (see
+    # KiteAgentHubWeb.OnboardingLive.mount/3) so registrants who
+    # never confirm their email or return to the app do not leave
+    # orphan records in the DB. Provisioning is idempotent, so the
+    # wizard can call it every mount without duplicating rows.
     |> Repo.transaction()
     |> case do
       {:ok, %{user: user}} -> {:ok, user}
