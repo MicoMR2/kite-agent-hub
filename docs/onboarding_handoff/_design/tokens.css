@@ -1,0 +1,207 @@
+/* =========================================================================
+   Kite Agent Hub — Colors & Type
+   Extracted from:
+     - assets/css/app.css (daisyUI theme overrides)
+     - lib/kite_agent_hub_web/live/dashboard_live.ex (live component usage)
+     - lib/kite_agent_hub_web/components/core_components.ex
+   The product is dark-first. Light theme exists but the shipped dashboard
+   renders on pitch-black #0a0a0f regardless.
+   ========================================================================= */
+
+:root {
+  /* ─── FONTS ────────────────────────────────────────────────────────── */
+  /* The shipped app has NO custom webfont; it relies on Tailwind's
+     default sans stack. Mono is used heavily for addresses, block
+     numbers, stats subcopy. The closest hosted equivalents that
+     preserve the weight range we lean on (400/600/700/800/900):
+       sans → Inter  (covers font-black 900)
+       mono → JetBrains Mono (covers 400/700, tabular nums)
+  */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+               "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular,
+               Menlo, Monaco, Consolas, "Courier New", monospace;
+
+  /* ─── BRAND / SURFACE COLORS ───────────────────────────────────────── */
+  /* The shipped dashboard hardcodes #0a0a0f regardless of daisyUI theme,
+     so we treat it as the canonical canvas. Surfaces are built by
+     layering translucent white on top. */
+  --canvas:            #0a0a0f;    /* page background, fixed */
+  --canvas-80:         rgba(10,10,15,0.80);  /* sticky nav blur base */
+  --canvas-95:         rgba(10,10,15,0.95);
+
+  /* Surface layers — ALL rendered as rgba over --canvas. Matches the
+     literal `bg-white/[0.01]` through `bg-white/[0.12]` usage in code. */
+  --surface-01:        rgba(255,255,255,0.01);  /* dormant list row */
+  --surface-02:        rgba(255,255,255,0.02);  /* default card body */
+  --surface-03:        rgba(255,255,255,0.03);  /* empty-state hero chip */
+  --surface-05:        rgba(255,255,255,0.05);  /* selected list item, hover card */
+  --surface-08:        rgba(255,255,255,0.08);  /* primary CTA idle */
+  --surface-12:        rgba(255,255,255,0.12);  /* primary CTA hover */
+
+  /* Hairlines — translucent white at three strengths. */
+  --border-hair:       rgba(255,255,255,0.05);  /* dormant */
+  --border-default:    rgba(255,255,255,0.10);  /* default card, nav */
+  --border-strong:     rgba(255,255,255,0.20);  /* selected state */
+
+  /* ─── TEXT / FG ────────────────────────────────────────────────────── */
+  --fg-1:  #ffffff;   /* display headings, primary values */
+  --fg-2:  #e5e7eb;   /* body text on cards (gray-200) */
+  --fg-3:  #d1d5db;   /* hover ascent (gray-300) */
+  --fg-4:  #9ca3af;   /* meta text (gray-400) */
+  --fg-5:  #6b7280;   /* label text, eyebrow (gray-500) */
+  --fg-6:  #4b5563;   /* dimmed meta (gray-600) */
+  --fg-7:  #374151;   /* placeholder glyphs, "No trades" state (gray-700) */
+
+  /* ─── SEMANTIC / STATUS ────────────────────────────────────────────── */
+  /* Each comes with a neon-drop-shadow pair used on live indicators. */
+  --success:           #22c55e;    /* emerald-500 — the hero accent */
+  --success-glow:      0 0 8px #22c55e;
+  --success-tint-5:    rgba(34,197,94,0.05);
+  --success-tint-10:   rgba(34,197,94,0.10);
+  --success-tint-20:   rgba(34,197,94,0.20);
+  --success-tint-30:   rgba(34,197,94,0.30);
+
+  --danger:            #ef4444;    /* red-500 — losses, errors, pause */
+  --danger-glow:       0 0 8px #ef4444;
+  --danger-tint-10:    rgba(239,68,68,0.10);
+  --danger-tint-20:    rgba(239,68,68,0.20);
+
+  --warn:              #facc15;    /* yellow-400 — paused state */
+  --warn-tint-10:      rgba(234,179,8,0.10);
+  --warn-tint-20:      rgba(234,179,8,0.20);
+
+  /* ─── AGENT-TYPE PALETTE ──────────────────────────────────────────── */
+  /* Three agent kinds are color-keyed across nav pills, chat bubbles,
+     status badges. Live code literally uses these exact tokens. */
+  --agent-trading:     #22c55e;    /* emerald-400/500 — "trading" */
+  --agent-research:    #60a5fa;    /* blue-400 — "research" */
+  --agent-convo:       #c084fc;    /* purple-400 — "conversational" */
+  --user-bubble-bg:    #78716c;    /* stone-500 — "user" chat bubble */
+  --user-bubble-br:    #a8a29e;    /* stone-400 — "user" bubble border */
+
+  /* ─── RADIUS SYSTEM ───────────────────────────────────────────────── */
+  /* daisyUI sets 0.25rem field / 0.5rem box, but the hand-rolled
+     dashboard code overrides to a much chunkier scale: */
+  --radius-xs:         0.5rem;     /* rounded-lg — icon buttons */
+  --radius-sm:         0.75rem;    /* rounded-xl — buttons, inputs, inner cards */
+  --radius-md:         1rem;       /* rounded-2xl — every primary card */
+  --radius-full:       9999px;     /* rounded-full — status dots, chips */
+
+  /* ─── SHADOW / GLOW SYSTEM ────────────────────────────────────────── */
+  --shadow-card-faint: 0 0 15px rgba(255,255,255,0.02);
+  --shadow-card-soft:  0 0 20px rgba(255,255,255,0.05);
+  --shadow-emerald:    0 0 15px rgba(34,197,94,0.10);
+  --shadow-emerald-mid: 0 0 20px rgba(34,197,94,0.20);
+  --shadow-pnl-up:     0 0 15px rgba(34,197,94,0.30);
+  --shadow-pnl-down:   0 0 15px rgba(239,68,68,0.30);
+  /* Backdrop blur used on sticky nav + cards */
+  --blur-card:         12px;
+
+  /* ─── SPACING ─────────────────────────────────────────────────────── */
+  --space-1:   0.25rem;
+  --space-2:   0.5rem;
+  --space-3:   0.75rem;
+  --space-4:   1rem;
+  --space-6:   1.5rem;    /* card padding */
+  --space-8:   2rem;
+
+  /* ─── TYPOGRAPHIC DEFAULTS ────────────────────────────────────────── */
+  --tracking-tight:    -0.02em;   /* display numerals, h1 */
+  --tracking-normal:    0em;
+  --tracking-wide:      0.05em;
+  --tracking-widest:    0.2em;    /* UPPERCASE LABELS everywhere */
+  --leading-tight:     1.1;
+  --leading-relaxed:   1.6;
+}
+
+/* =========================================================================
+   SEMANTIC ELEMENT STYLES
+   Use on .ds-body scope so they don't leak into random HTML.
+   ========================================================================= */
+
+.ds-body {
+  font-family: var(--font-sans);
+  color: var(--fg-2);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv01";
+}
+
+.ds-body .h1,
+.ds-body h1 {
+  font-family: var(--font-sans);
+  font-weight: 900;       /* font-black */
+  font-size: 3rem;        /* 48px, the dashboard hero */
+  line-height: 1.05;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+
+.ds-body .h2,
+.ds-body h2 {
+  font-weight: 900;
+  font-size: 1.5rem;      /* 24px — agent name */
+  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+
+.ds-body .h3,
+.ds-body h3 {
+  font-weight: 700;
+  font-size: 0.875rem;    /* 14px — card eyebrow H */
+  color: var(--fg-1);
+}
+
+.ds-body .display-stat {
+  /* The giant PnL + win-rate numerals — treated as a type style. */
+  font-weight: 900;
+  font-size: 1.875rem;    /* 30px */
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  word-break: break-all;
+}
+
+.ds-body .eyebrow {
+  /* The `text-[10px] uppercase tracking-widest font-bold` label */
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  color: var(--fg-5);
+}
+
+.ds-body .p {
+  font-size: 0.875rem;
+  line-height: var(--leading-relaxed);
+  color: var(--fg-4);
+  font-weight: 300;       /* font-light — marketing copy */
+}
+
+.ds-body .mono,
+.ds-body code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--fg-5);
+}
+
+.ds-body .mono-addr {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--fg-5);
+  user-select: all;
+}
+
+.ds-body .mono-block {
+  /* "BLOCK 4829135" pills in the top bar */
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-3);
+  text-transform: uppercase;
+}

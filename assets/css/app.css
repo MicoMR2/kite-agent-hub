@@ -238,3 +238,94 @@ body {
 .phx-server-error #server-error {
   opacity: 1;
 }
+
+/* =========================================================================
+   Onboarding flow — design tokens + motion + utility classes
+   Mirrors docs/onboarding_handoff/_design/tokens.css. Scoped via the
+   kah- prefix so we do not collide with daisyUI utilities already
+   applied across the dashboard.
+   ========================================================================= */
+@layer utilities {
+  .kah-eyebrow {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+
+  .kah-panel {
+    background: rgba(15, 15, 22, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 20px;
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  .kah-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+
+  .kah-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .kah-field-input {
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 400;
+  }
+
+  .kah-field-input::placeholder { color: #6b7280; }
+
+  .kah-field-input:focus {
+    outline: none;
+    border-color: rgba(34, 197, 94, 0.40);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.10);
+  }
+
+  .kah-btn-primary {
+    background: #22c55e;
+    color: #0a0a0f;
+    font-weight: 700;
+    padding: 11px 16px;
+    border-radius: 10px;
+    box-shadow: 0 0 24px rgba(34, 197, 94, 0.35);
+    transition: filter 120ms ease;
+  }
+
+  .kah-btn-primary:hover { filter: brightness(1.06); }
+  .kah-btn-primary:disabled { filter: grayscale(0.6) brightness(0.7); cursor: not-allowed; }
+
+  .kah-btn-ghost {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #d1d5db;
+    font-weight: 600;
+    padding: 11px 16px;
+    border-radius: 10px;
+    transition: background-color 120ms ease;
+  }
+
+  .kah-btn-ghost:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+}
+
+/* Quorum background motion. Keep animations paused in reduced-motion
+   environments so the background doesn't churn GPU for users who opted
+   out of motion. */
+@keyframes mq-orbit { to { transform: rotate(360deg); } }
+@keyframes mq-dash  { to { stroke-dashoffset: -14; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mq-orbit, .mq-dash { animation: none !important; }
+}
