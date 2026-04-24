@@ -19,6 +19,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
   alias KiteAgentHub.Accounts
   alias KiteAgentHub.Accounts.User
+  alias KiteAgentHubWeb.Components.QuorumBackground
 
   @impl true
   def mount(_params, _session, socket) do
@@ -40,7 +41,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
   def render(assigns) do
     ~H"""
     <div class="relative min-h-screen flex items-center justify-center px-4 py-10 overflow-hidden bg-[#0a0a0f]">
-      <.quorum_background />
+      <QuorumBackground.background />
 
       <div class="relative z-10 w-full max-w-[440px] kah-panel px-7 pt-7 pb-6">
         <.panel_header />
@@ -111,48 +112,6 @@ defmodule KiteAgentHubWeb.OnboardLive do
       <span class="text-[12px] font-black text-white tracking-[-0.01em]">Kite Agent Hub</span>
     </div>
     <p class="kah-eyebrow mt-[10px]">Chain ID 2368</p>
-    """
-  end
-
-  # Three pulsing agent nodes feeding a coordinator. Low-motion by default;
-  # CSS @media (prefers-reduced-motion) in app.css pauses animations for
-  # users who opted out. The background is purely decorative — aria-hidden
-  # so screen readers skip it.
-  defp quorum_background(assigns) do
-    ~H"""
-    <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
-      <svg
-        class="absolute inset-0 w-full h-full"
-        viewBox="0 0 800 600"
-        preserveAspectRatio="xMidYMid slice"
-      >
-        <defs>
-          <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#22c55e" stop-opacity="0.35" />
-            <stop offset="70%" stop-color="#22c55e" stop-opacity="0.08" />
-            <stop offset="100%" stop-color="#22c55e" stop-opacity="0" />
-          </radialGradient>
-        </defs>
-
-        <g opacity="0.55">
-          <line x1="200" y1="160" x2="400" y2="300" stroke="rgba(34,197,94,0.18)" stroke-width="1" stroke-dasharray="4 10" class="mq-dash" style="animation: mq-dash 3.2s linear infinite;" />
-          <line x1="620" y1="180" x2="400" y2="300" stroke="rgba(34,197,94,0.18)" stroke-width="1" stroke-dasharray="4 10" class="mq-dash" style="animation: mq-dash 4.1s linear infinite;" />
-          <line x1="320" y1="470" x2="400" y2="300" stroke="rgba(34,197,94,0.18)" stroke-width="1" stroke-dasharray="4 10" class="mq-dash" style="animation: mq-dash 3.6s linear infinite;" />
-        </g>
-
-        <circle cx="200" cy="160" r="90" fill="url(#nodeGlow)" />
-        <circle cx="620" cy="180" r="90" fill="url(#nodeGlow)" />
-        <circle cx="320" cy="470" r="90" fill="url(#nodeGlow)" />
-        <circle cx="400" cy="300" r="120" fill="url(#nodeGlow)" />
-
-        <g stroke="rgba(34,197,94,0.5)" stroke-width="1" fill="none">
-          <circle cx="200" cy="160" r="5" fill="#22c55e" />
-          <circle cx="620" cy="180" r="5" fill="#22c55e" />
-          <circle cx="320" cy="470" r="5" fill="#22c55e" />
-          <circle cx="400" cy="300" r="7" fill="#22c55e" />
-        </g>
-      </svg>
-    </div>
     """
   end
 
