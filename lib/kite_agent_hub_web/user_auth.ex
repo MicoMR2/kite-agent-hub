@@ -250,6 +250,27 @@ defmodule KiteAgentHubWeb.UserAuth do
     end
   end
 
+  # Route a just-logged-in user to the right entry point: users who
+  # still need to pick venues and create their first agent land on
+  # /onboard (steps 2-5 of the first-run flow); fully-onboarded users
+  # go straight to /dashboard. Rescued so a DB hiccup never strands
+  # login in an error page — default to /dashboard on any failure.
+  defp signed_in_path(%KiteAgentHub.Accounts.User{id: user_id}) do
+    try do
+      case KiteAgentHub.Orgs.list_orgs_for_user(user_id) do
+        [%{id: org_id} | _] ->
+          if KiteAgentHub.Trading.list_agents(org_id) == [],
+            do: ~p"/onboard",
+            else: ~p"/dashboard"
+
+        _ ->
+          ~p"/onboard"
+      end
+    rescue
+      _ -> ~p"/dashboard"
+    end
+  end
+
   defp signed_in_path(_), do: ~p"/dashboard"
 
   @doc """
