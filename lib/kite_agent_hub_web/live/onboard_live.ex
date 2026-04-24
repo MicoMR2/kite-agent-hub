@@ -44,6 +44,16 @@ defmodule KiteAgentHubWeb.OnboardLive do
       <QuorumBackground.background />
 
       <div class="relative z-10 w-full max-w-[440px] kah-panel px-7 pt-7 pb-6">
+        <div class="flex items-center justify-between mb-1">
+          <.link
+            navigate={~p"/"}
+            class="text-[11px] font-semibold text-gray-400 hover:text-white transition-colors"
+          >
+            ← Back to home
+          </.link>
+          <span class="kah-eyebrow">Chain ID 2368</span>
+        </div>
+
         <.panel_header />
 
         <h1 class="text-[28px] font-black text-white leading-[1.05] tracking-[-0.02em] mt-6">
@@ -107,11 +117,10 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
   defp panel_header(assigns) do
     ~H"""
-    <div class="flex items-center gap-[10px]">
+    <div class="flex items-center gap-[10px] mt-4">
       <.kah_logo class="h-7 w-7 drop-shadow-[0_0_16px_rgba(34,197,94,0.45)]" />
       <span class="text-[12px] font-black text-white tracking-[-0.01em]">Kite Agent Hub</span>
     </div>
-    <p class="kah-eyebrow mt-[10px]">Chain ID 2368</p>
     """
   end
 
