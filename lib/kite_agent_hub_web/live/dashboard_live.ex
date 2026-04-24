@@ -1786,16 +1786,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Option A — Claude Code / Terminal</span>
                       <div class="flex items-center gap-3">
-                        <%= if @show_option_a do %>
-                          <button
-                            id={"copy-claude-code-#{@selected_agent.id}"}
-                            phx-hook="CopyToClipboard"
-                            data-text={claude_code_prompt(@selected_agent)}
-                            class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
-                          >
-                            Copy
-                          </button>
-                        <% end %>
+                        <button
+                          id={"copy-claude-code-#{@selected_agent.id}"}
+                          phx-hook="CopyToClipboard"
+                          data-text={claude_code_prompt(@selected_agent)}
+                          class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
+                        >
+                          Copy
+                        </button>
                         <button
                           phx-click="toggle_reveal"
                           phx-value-target="option_a"
