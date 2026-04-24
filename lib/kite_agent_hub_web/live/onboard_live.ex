@@ -90,6 +90,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
     |> assign(:platforms, @platforms)
     |> assign(:selected, MapSet.new())
     |> assign(:saved, MapSet.new())
+    |> assign(:new_agent, nil)
+    |> assign(:reveal_token, false)
   end
 
   @impl true
@@ -149,6 +151,55 @@ defmodule KiteAgentHubWeb.OnboardLive do
     {:noreply, advance(socket)}
   end
 
+  def handle_event("create_agent", %{"agent" => attrs}, socket) do
+    with org_id when not is_nil(org_id) <- current_org_id(socket),
+         name <- to_string(attrs["name"] || "") |> String.trim(),
+         type <- safe_agent_type(attrs["type"]),
+         true <- byte_size(name) > 0 and not is_nil(type) do
+      safe_attrs = %{
+        "name" => name,
+        "agent_type" => type,
+        "organization_id" => org_id,
+        "status" => "pending"
+      }
+
+      case safe_create_agent(safe_attrs) do
+        {:ok, agent} ->
+          {:noreply,
+           socket
+           |> assign(:new_agent, agent)
+           |> assign(:reveal_token, false)
+           |> assign(:step, :handoff)}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          Logger.warning("OnboardLive create_agent validation: #{inspect(changeset.errors)}")
+          {:noreply, put_flash(socket, :error, "Give your agent a name and try again.")}
+
+        other ->
+          Logger.warning("OnboardLive create_agent failed: #{inspect(other)}")
+          {:noreply, put_flash(socket, :error, "Could not create agent. Try again.")}
+      end
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Give your agent a name and pick a type.")}
+    end
+  end
+
+  def handle_event("toggle_token", _params, socket) do
+    {:noreply, assign(socket, :reveal_token, not Map.get(socket.assigns, :reveal_token, false))}
+  end
+
+  def handle_event("finish", _params, socket) do
+    # CyberSec guardrail #3: clear the plaintext api_token from socket
+    # assigns before leaving the LV. The token is hashed-safe in DB and
+    # copy-to-clipboard has already fired if the user wanted it.
+    {:noreply,
+     socket
+     |> assign(:new_agent, nil)
+     |> assign(:reveal_token, false)
+     |> push_navigate(to: ~p"/dashboard")}
+  end
+
   # Catch-all so an errant phx-click from the template cannot crash the LV
   # and trigger the mount-loop (feedback_kah_lv_rescue).
   def handle_event(event, params, socket) do
@@ -203,11 +254,24 @@ defmodule KiteAgentHubWeb.OnboardLive do
   end
 
   defp advance(%{assigns: %{step: :keys}} = socket) do
-    # P4 will swap this push_navigate for a transition to :agent.
-    push_navigate(socket, to: ~p"/dashboard")
+    assign(socket, :step, :agent)
   end
 
   defp advance(socket), do: socket
+
+  defp safe_agent_type("research"), do: "research"
+  defp safe_agent_type("conversational"), do: "conversational"
+  defp safe_agent_type(_), do: nil
+
+  defp safe_create_agent(attrs) do
+    try do
+      Trading.create_agent(attrs)
+    rescue
+      e ->
+        Logger.error("OnboardLive Trading.create_agent crashed: #{inspect(e)}")
+        {:error, :create_failed}
+    end
+  end
 
   # ── Guards ──────────────────────────────────────────────────────────────────
 
@@ -254,6 +318,10 @@ defmodule KiteAgentHubWeb.OnboardLive do
             <.platforms_step platforms={@platforms} selected={@selected} />
           <% :keys -> %>
             <.keys_step platforms={@platforms} selected={@selected} saved={@saved} />
+          <% :agent -> %>
+            <.agent_step />
+          <% :handoff -> %>
+            <.handoff_step agent={@new_agent} reveal={@reveal_token} />
         <% end %>
 
         <div class="mt-[18px] pt-[14px] border-t border-white/[0.06] flex items-center justify-between text-[11px]">
@@ -262,7 +330,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
               Already have an account? Sign in
             </.link>
           <% else %>
-            <span class="text-gray-600">Step <%= step_number(@step) %> of 5</span>
+            <span class="text-gray-600">Step <%= step_number(@step) %> of 4</span>
           <% end %>
           <span class="font-mono text-gray-600">v2.8 · testnet</span>
         </div>
@@ -304,7 +372,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
     ~H"""
     <%= if @step != :auth do %>
       <div class="flex items-center gap-[6px] mt-4">
-        <%= for n <- 1..5 do %>
+        <%= for n <- 1..4 do %>
           <div class={[
             "h-[3px] flex-1 rounded-full transition-all duration-300",
             if(n <= @current,
@@ -537,5 +605,138 @@ defmodule KiteAgentHubWeb.OnboardLive do
       </form>
     </div>
     """
+  end
+
+  defp agent_step(assigns) do
+    ~H"""
+    <p class="kah-eyebrow mt-4">Step 03 · Agent</p>
+    <h1 class="text-[26px] font-black text-white leading-[1.05] tracking-[-0.02em] mt-2">
+      Create your first agent.
+    </h1>
+    <p class="mt-[8px] mb-[18px] text-[13px] text-gray-400 font-light leading-[1.6]">
+      Pick a type and give it a name. You can change the name later and
+      spin up more agents from the dashboard.
+    </p>
+
+    <form phx-submit="create_agent" class="flex flex-col gap-[12px]">
+      <div>
+        <label class="kah-eyebrow block mb-[4px]" for="agent_name">Name</label>
+        <input
+          type="text"
+          id="agent_name"
+          name="agent[name]"
+          class="kah-field-input"
+          placeholder="e.g. Aurora"
+          required
+          maxlength="120"
+          phx-mounted={JS.focus()}
+        />
+      </div>
+
+      <div class="flex flex-col gap-[8px]">
+        <span class="kah-eyebrow">Type</span>
+
+        <label class="kah-card p-3 flex items-start gap-3 cursor-pointer">
+          <input type="radio" name="agent[type]" value="research" checked class="mt-[3px]" />
+          <div>
+            <div class="text-[13px] font-black text-white">Research</div>
+            <div class="mt-[2px] text-[11px] text-gray-400">
+              Reads markets, posts signals, never executes on its own.
+            </div>
+          </div>
+        </label>
+
+        <label class="kah-card p-3 flex items-start gap-3 cursor-pointer">
+          <input type="radio" name="agent[type]" value="conversational" class="mt-[3px]" />
+          <div>
+            <div class="text-[13px] font-black text-white">Conversational</div>
+            <div class="mt-[2px] text-[11px] text-gray-400">
+              Chats with you through Claude Code about the portfolio.
+            </div>
+          </div>
+        </label>
+
+        <label class="kah-card p-3 flex items-start gap-3 opacity-60 cursor-not-allowed">
+          <input type="radio" name="agent[type]" value="trading" disabled class="mt-[3px]" />
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-[13px] font-black text-white">Trading</span>
+              <span class="text-[9px] font-bold text-[#c084fc] uppercase tracking-widest border border-[#c084fc]/40 rounded-full px-2 py-[1px]">
+                Soon
+              </span>
+            </div>
+            <div class="mt-[2px] text-[11px] text-gray-400">
+              Executes live orders. Needs a wallet — coming in a future release.
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <button type="submit" class="kah-btn-primary mt-[4px] w-full">
+        Create agent
+      </button>
+    </form>
+    """
+  end
+
+  attr :agent, :map, required: true
+  attr :reveal, :boolean, required: true
+
+  defp handoff_step(assigns) do
+    ~H"""
+    <p class="kah-eyebrow mt-4">Step 04 · Handoff</p>
+    <h1 class="text-[26px] font-black text-white leading-[1.05] tracking-[-0.02em] mt-2">
+      Meet <%= @agent && @agent.name %>.
+    </h1>
+    <p class="mt-[8px] mb-[18px] text-[13px] text-gray-400 font-light leading-[1.6]">
+      Here is your agent's API token. Paste the prompt below into Claude Code
+      (or any LLM chat) and your agent is live. You can copy without revealing.
+    </p>
+
+    <div class="kah-card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="kah-eyebrow">Agent Token</span>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            id={"copy-token-#{@agent && @agent.id}"}
+            phx-hook="CopyToClipboard"
+            data-text={@agent && @agent.api_token}
+            class="text-[10px] font-bold text-[#22c55e] hover:text-[#22c55e]/80 uppercase tracking-widest"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            phx-click="toggle_token"
+            class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+          >
+            <%= if @reveal, do: "Hide", else: "Reveal" %>
+          </button>
+        </div>
+      </div>
+
+      <code class="block bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-[#22c55e] font-mono truncate">
+        <%= if @reveal do %>
+          <%= @agent && @agent.api_token %>
+        <% else %>
+          <%= mask_token(@agent && @agent.api_token) %>
+        <% end %>
+      </code>
+    </div>
+
+    <button type="button" phx-click="finish" class="kah-btn-primary mt-[14px] w-full">
+      Go to dashboard
+    </button>
+    """
+  end
+
+  defp mask_token(nil), do: "—"
+
+  defp mask_token(token) when is_binary(token) do
+    case byte_size(token) do
+      n when n > 8 -> binary_part(token, 0, 8) <> "••••••••"
+      _ -> String.duplicate("•", 12)
+    end
   end
 end
