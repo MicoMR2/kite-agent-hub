@@ -22,6 +22,14 @@ kill_timeout = "5s"
   min_machines_running = 2
   processes = ["app"]
 
+  [http_service.http_options]
+    # Phoenix LiveView WebSocket upgrades need the Connection: Upgrade
+    # hop-by-hop header to reach the app. Fly's proxy uses HTTP/2 on the
+    # backend hop by default, which strips Connection. Forcing HTTP/1.1
+    # between Fly's proxy and the app preserves the header so LV's
+    # websocket transport connects instead of falling back to longpoll.
+    h2_backend = false
+
   [http_service.concurrency]
     type = "connections"
     hard_limit = 1000
