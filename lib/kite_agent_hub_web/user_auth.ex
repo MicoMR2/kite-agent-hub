@@ -90,25 +90,6 @@ defmodule KiteAgentHubWeb.UserAuth do
   end
 
   @doc """
-  Logs a freshly-registered user in without requiring email
-  confirmation, so they can continue through the onboarding flow
-  immediately. The verification email still sends in the background
-  (see UserRegistrationController); this helper just bypasses the
-  confirmed_at gate that log_in_user/3 enforces on returning users.
-
-  CyberSec-approved in msg 7671: testnet-only, no real-money operations
-  flow through onboarding, and sensitive paths (live trading) remain
-  free to check `user.confirmed_at` independently.
-  """
-  def log_in_new_user(conn, user, params \\ %{}) do
-    user_return_to = get_session(conn, :user_return_to)
-
-    conn
-    |> create_or_extend_session(user, params)
-    |> redirect(to: user_return_to || ~p"/onboard")
-  end
-
-  @doc """
   Logs the user out.
 
   It clears all session data for safety. See renew_session.
@@ -265,6 +246,27 @@ defmodule KiteAgentHubWeb.UserAuth do
   defp signed_in_path(%Plug.Conn{} = conn) do
     case conn.assigns[:current_scope] do
       %{user: user} -> signed_in_path(user)
+      _ -> ~p"/dashboard"
+    end
+  end
+
+  # Route a just-logged-in user to the right entry point: users who
+  # still need to pick venues and create their first agent land on
+  # /onboard (steps 2-5 of the first-run flow); fully-onboarded users
+  # go straight to /dashboard. Rescued so a DB hiccup never strands
+  # login in an error page — default to /dashboard on any failure.
+  defp signed_in_path(%KiteAgentHub.Accounts.User{id: user_id}) do
+    try do
+      case KiteAgentHub.Orgs.list_orgs_for_user(user_id) do
+        [%{id: org_id} | _] ->
+          if KiteAgentHub.Trading.list_agents(org_id) == [],
+            do: ~p"/onboard",
+            else: ~p"/dashboard"
+
+        _ ->
+          ~p"/onboard"
+      end
+    rescue
       _ -> ~p"/dashboard"
     end
   end
