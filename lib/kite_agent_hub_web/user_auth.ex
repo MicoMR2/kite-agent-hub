@@ -253,11 +253,15 @@ defmodule KiteAgentHubWeb.UserAuth do
   defp signed_in_path(%KiteAgentHub.Accounts.User{onboarding_completed_at: %_{}}), do: ~p"/dashboard"
 
   defp signed_in_path(%KiteAgentHub.Accounts.User{id: user_id}) do
+    # Legacy accounts predate onboarding_completed_at. Treat "has any org
+    # membership" as proof they've already set up. Fail safe: if the lookup
+    # raises, default to /welcome (CyberSec rule — nil/unknown onboarding
+    # state should never auto-land on dashboard).
     has_org? =
       try do
         match?([_ | _], KiteAgentHub.Orgs.list_orgs_for_user(user_id))
       rescue
-        _ -> true
+        _ -> false
       end
 
     if has_org?, do: ~p"/dashboard", else: ~p"/welcome"
