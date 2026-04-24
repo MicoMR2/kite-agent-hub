@@ -20,16 +20,46 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
   use KiteAgentHubWeb, :live_view
 
+  require Logger
+
   alias KiteAgentHub.Accounts
   alias KiteAgentHub.Accounts.User
-  alias KiteAgentHub.{Orgs, Trading}
+  alias KiteAgentHub.{Credentials, Orgs, Trading}
   alias KiteAgentHubWeb.Components.QuorumBackground
 
   @platforms [
-    %{id: :alpaca, label: "Alpaca", blurb: "US stocks + crypto, paper keys work."},
-    %{id: :kalshi, label: "Kalshi", blurb: "Prediction markets. Demo keys supported."},
-    %{id: :polymarket, label: "Polymarket", blurb: "On-chain prediction markets."},
-    %{id: :oanda, label: "OANDA", blurb: "Forex. Practice and live envs."}
+    %{
+      id: :alpaca,
+      label: "Alpaca",
+      blurb: "US stocks + crypto, paper keys work.",
+      env_choices: [{"Paper", "paper"}, {"Live", "live"}],
+      key_id_label: "API Key ID",
+      secret_label: "API Secret"
+    },
+    %{
+      id: :kalshi,
+      label: "Kalshi",
+      blurb: "Prediction markets. Demo keys supported.",
+      env_choices: [{"Paper (demo)", "paper"}],
+      key_id_label: "Email",
+      secret_label: "Password"
+    },
+    %{
+      id: :polymarket,
+      label: "Polymarket",
+      blurb: "On-chain prediction markets.",
+      env_choices: [{"Paper", "paper"}],
+      key_id_label: "Relayer Address (0x...)",
+      secret_label: "API Key"
+    },
+    %{
+      id: :oanda,
+      label: "OANDA",
+      blurb: "Forex. Practice and live envs.",
+      env_choices: [{"Practice", "paper"}, {"Live", "live"}],
+      key_id_label: "Account ID",
+      secret_label: "API Token"
+    }
   ]
 
   @impl true
@@ -40,8 +70,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
          socket
          |> assign(:step, :auth)
          |> assign(:changeset, Accounts.change_user_registration(%User{}))
-         |> assign(:platforms, @platforms)
-         |> assign(:selected, MapSet.new())
+         |> assign_common()
          |> assign(:page_title, "Welcome to Kite Agent Hub")}
 
       onboarded?(socket) ->
@@ -51,10 +80,16 @@ defmodule KiteAgentHubWeb.OnboardLive do
         {:ok,
          socket
          |> assign(:step, :platforms)
-         |> assign(:platforms, @platforms)
-         |> assign(:selected, MapSet.new())
+         |> assign_common()
          |> assign(:page_title, "Choose your venues")}
     end
+  end
+
+  defp assign_common(socket) do
+    socket
+    |> assign(:platforms, @platforms)
+    |> assign(:selected, MapSet.new())
+    |> assign(:saved, MapSet.new())
   end
 
   @impl true
@@ -74,9 +109,6 @@ defmodule KiteAgentHubWeb.OnboardLive do
   end
 
   def handle_event("skip_platforms", _params, socket) do
-    # Skipping = no venues now, user can add later from settings. Still
-    # advance the step machine so the later handoff screen shows up once
-    # we wire agent creation in P4.
     {:noreply, assign(socket, :selected, MapSet.new()) |> advance()}
   end
 
@@ -84,20 +116,94 @@ defmodule KiteAgentHubWeb.OnboardLive do
     {:noreply, advance(socket)}
   end
 
+  def handle_event(
+        "save_key",
+        %{"platform" => platform_str, "credential" => attrs},
+        socket
+      ) do
+    with atom when not is_nil(atom) <- safe_platform_atom(platform_str),
+         org_id when not is_nil(org_id) <- current_org_id(socket),
+         {:ok, _cred} <- save_credential(org_id, atom, attrs) do
+      saved = MapSet.put(socket.assigns.saved, atom)
+
+      {:noreply,
+       socket
+       |> assign(:saved, saved)
+       |> put_flash(:info, "#{platform_label(atom)} connected.")}
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        Logger.warning("OnboardLive save_key validation: #{inspect(changeset.errors)}")
+        {:noreply, put_flash(socket, :error, "Check the fields and try again.")}
+
+      other ->
+        Logger.warning("OnboardLive save_key failed: #{inspect(other)}")
+        {:noreply, put_flash(socket, :error, "Could not save credential.")}
+    end
+  end
+
+  def handle_event("skip_keys", _params, socket) do
+    {:noreply, advance(socket)}
+  end
+
+  def handle_event("continue_keys", _params, socket) do
+    {:noreply, advance(socket)}
+  end
+
   # Catch-all so an errant phx-click from the template cannot crash the LV
   # and trigger the mount-loop (feedback_kah_lv_rescue).
   def handle_event(event, params, socket) do
-    require Logger
     Logger.warning("OnboardLive: unhandled event #{inspect(event)} #{inspect(params)}")
     {:noreply, socket}
   end
 
-  # Step machine. P3b will extend this to :keys, then P4 to :agent / :handoff.
-  defp advance(%{assigns: %{step: :platforms}} = socket) do
-    # For now the only path beyond :platforms is straight to /dashboard —
-    # the keys / agent / handoff screens ship in the next PRs. This
-    # keeps the flow functional end-to-end today so a new signup can
-    # complete onboarding without hitting a dead-end step.
+  defp save_credential(org_id, provider, attrs) when is_map(attrs) do
+    # Whitelist the attribute keys we forward — never pass arbitrary
+    # client params through to upsert_credential.
+    safe =
+      attrs
+      |> Map.take(["key_id", "secret", "env"])
+      |> Map.put_new("env", "paper")
+
+    try do
+      Credentials.upsert_credential(org_id, provider, safe)
+    rescue
+      e ->
+        Logger.error("OnboardLive credential upsert crashed: #{inspect(e)}")
+        {:error, :upsert_failed}
+    end
+  end
+
+  defp current_org_id(%{assigns: %{current_scope: %{user: %User{id: user_id}}}}) do
+    try do
+      case Orgs.list_orgs_for_user(user_id) do
+        [%{id: org_id} | _] -> org_id
+        _ -> nil
+      end
+    rescue
+      _ -> nil
+    end
+  end
+
+  defp current_org_id(_), do: nil
+
+  defp platform_label(atom) do
+    Enum.find_value(@platforms, fn p -> if p.id == atom, do: p.label, else: nil end) ||
+      Atom.to_string(atom)
+  end
+
+  # Step machine. P4 will replace the :keys → /dashboard jump with a
+  # transition into :agent (agent creation), then :handoff.
+  defp advance(%{assigns: %{step: :platforms, selected: selected}} = socket) do
+    if MapSet.size(selected) == 0 do
+      # Skipped venue selection entirely — no keys to enter, jump out.
+      push_navigate(socket, to: ~p"/dashboard")
+    else
+      assign(socket, :step, :keys)
+    end
+  end
+
+  defp advance(%{assigns: %{step: :keys}} = socket) do
+    # P4 will swap this push_navigate for a transition to :agent.
     push_navigate(socket, to: ~p"/dashboard")
   end
 
@@ -146,6 +252,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
             <.auth_step changeset={@changeset} />
           <% :platforms -> %>
             <.platforms_step platforms={@platforms} selected={@selected} />
+          <% :keys -> %>
+            <.keys_step platforms={@platforms} selected={@selected} saved={@saved} />
         <% end %>
 
         <div class="mt-[18px] pt-[14px] border-t border-white/[0.06] flex items-center justify-between text-[11px]">
@@ -325,6 +433,108 @@ defmodule KiteAgentHubWeb.OnboardLive do
       >
         Continue
       </button>
+    </div>
+    """
+  end
+
+  attr :platforms, :list, required: true
+  attr :selected, :any, required: true
+  attr :saved, :any, required: true
+
+  defp keys_step(assigns) do
+    ~H"""
+    <p class="kah-eyebrow mt-4">Step 02 · Keys</p>
+    <h1 class="text-[26px] font-black text-white leading-[1.05] tracking-[-0.02em] mt-2">
+      Connect your keys.
+    </h1>
+    <p class="mt-[8px] mb-[18px] text-[13px] text-gray-400 font-light leading-[1.6]">
+      Credentials are encrypted at rest (AES-256-GCM). We only use them to route
+      your agent's trades — never logged, never shared. You can skip and add later.
+    </p>
+
+    <div class="flex flex-col gap-[12px]">
+      <%= for p <- @platforms, MapSet.member?(@selected, p.id) do %>
+        <.key_form platform={p} saved={MapSet.member?(@saved, p.id)} />
+      <% end %>
+    </div>
+
+    <div class="flex items-center justify-between gap-3 mt-[18px]">
+      <button type="button" phx-click="skip_keys" class="kah-btn-ghost">
+        Skip for now
+      </button>
+      <button type="button" phx-click="continue_keys" class="kah-btn-primary">
+        Continue
+      </button>
+    </div>
+    """
+  end
+
+  attr :platform, :map, required: true
+  attr :saved, :boolean, required: true
+
+  defp key_form(assigns) do
+    ~H"""
+    <div class="kah-card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-[13px] font-black text-white"><%= @platform.label %></div>
+        <%= if @saved do %>
+          <span class="text-[10px] font-bold text-[#22c55e] uppercase tracking-widest">
+            ✓ Connected
+          </span>
+        <% end %>
+      </div>
+
+      <form phx-submit="save_key" class="flex flex-col gap-[10px]">
+        <input type="hidden" name="platform" value={@platform.id} />
+
+        <div>
+          <label class="kah-eyebrow block mb-[4px]">
+            <%= @platform.key_id_label %>
+          </label>
+          <input
+            type="text"
+            name="credential[key_id]"
+            class="kah-field-input"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </div>
+
+        <div>
+          <label class="kah-eyebrow block mb-[4px]">
+            <%= @platform.secret_label %>
+          </label>
+          <input
+            type="password"
+            name="credential[secret]"
+            class="kah-field-input"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <%= if length(@platform.env_choices) > 1 do %>
+          <div>
+            <label class="kah-eyebrow block mb-[4px]">Environment</label>
+            <select name="credential[env]" class="kah-field-input">
+              <%= for {label, value} <- @platform.env_choices do %>
+                <option value={value}><%= label %></option>
+              <% end %>
+            </select>
+          </div>
+        <% else %>
+          <input
+            type="hidden"
+            name="credential[env]"
+            value={@platform.env_choices |> List.first() |> elem(1)}
+          />
+        <% end %>
+
+        <button type="submit" class="kah-btn-ghost mt-[4px]">
+          <%= if @saved, do: "Update", else: "Save" %>
+        </button>
+      </form>
     </div>
     """
   end
