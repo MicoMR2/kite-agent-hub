@@ -1,7 +1,9 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket, TradeLocker, Oanda}
+  alias KiteAgentHub.{Onboarding, Orgs, Trading, Chat, Polymarket, TradeLocker, Oanda}
+
+  require Logger
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
@@ -20,6 +22,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
       end
 
     org = List.first(orgs)
+
+    # Idempotently provision the default agent, wallet, and vault on the
+    # user's first dashboard visit. Registration (Accounts.register_user)
+    # creates the user + org + membership only — agent/wallet/vault are
+    # deferred here so users who never return don't leave orphan rows.
+    # Onboarding.provision_for_user/2 short-circuits when the agent
+    # already exists, so every subsequent mount is a single LIMIT 1 read.
+    # Rescued so a transient failure cannot crash the LV mount.
+    if org do
+      try do
+        Onboarding.provision_for_user(user, org)
+      rescue
+        e -> Logger.warning("Dashboard provisioning skipped: #{inspect(e)}")
+      end
+    end
 
     {agents, trades} =
       if org do

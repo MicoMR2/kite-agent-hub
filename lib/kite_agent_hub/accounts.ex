@@ -115,11 +115,10 @@ defmodule KiteAgentHub.Accounts do
       )
     end)
     # Agent, wallet, and vault are NOT provisioned here. They are
-    # created lazily on the user's first visit to /welcome (see
-    # KiteAgentHubWeb.OnboardingLive.mount/3) so registrants who
-    # never confirm their email or return to the app do not leave
-    # orphan records in the DB. Provisioning is idempotent, so the
-    # wizard can call it every mount without duplicating rows.
+    # created lazily on the user's first dashboard mount (see
+    # KiteAgentHubWeb.DashboardLive.mount/3) so registrants who never
+    # confirm their email or return to the app do not leave orphan
+    # records in the DB. Onboarding.provision_for_user/2 is idempotent.
     |> Repo.transaction()
     |> case do
       {:ok, %{user: user}} -> {:ok, user}
