@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Kite Agent Hub · Onboarding</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+
+<link rel="stylesheet" href="tokens.css"/>
+
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #0a0a0f;
+    color: #e5e7eb;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; }
+
+  /* ─── Page chrome ─── */
+  .pageTop {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10,10,15,0.82);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding: 14px 28px;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 900; font-size: 13px; letter-spacing: -0.01em;
+    color: #fff;
+  }
+  .brand .sub {
+    font-family: var(--font-mono);
+    font-size: 10px; font-weight: 500;
+    color: #6b7280; letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .tabs {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 3px; border-radius: 9999px;
+  }
+  .tab {
+    appearance: none; border: 0; background: transparent;
+    padding: 7px 14px; border-radius: 9999px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: #9ca3af;
+    cursor: pointer; transition: all .2s;
+  }
+  .tab.active { background: rgba(255,255,255,0.08); color: #fff; }
+  .tab:hover:not(.active) { color: #d1d5db; }
+
+  .crumb {
+    margin-left: auto;
+    font-family: var(--font-mono); font-size: 10px;
+    color: #4b5563; letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .crumb b { color: #9ca3af; font-weight: 700; }
+
+  .stage {
+    max-width: 1280px; margin: 0 auto;
+    padding: 32px 28px 80px;
+  }
+  .title {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: #22c55e; margin-bottom: 10px;
+    font-family: var(--font-mono);
+  }
+  .titleSub {
+    font-size: 28px; font-weight: 900;
+    letter-spacing: -0.02em; color: #fff;
+    margin: 0 0 6px; line-height: 1.05;
+  }
+  .titleDesc {
+    color: #9ca3af; font-size: 14px; font-weight: 300;
+    line-height: 1.55; margin: 0 0 28px; max-width: 700px;
+  }
+
+  /* ─── Motion keyframes ─── */
+  @keyframes mq-orbit { to { transform: rotate(360deg); } }
+  @keyframes mq-dash  { to { stroke-dashoffset: -14; } }
+  @keyframes mb-scroll { from { transform: translateY(0); }
+                         to   { transform: translateY(-50%); } }
+  @keyframes mk-sway   { 0%,100% { transform: rotate(-1deg); }
+                         50%     { transform: rotate( 1.5deg); } }
+  @keyframes mk-drift  { 0%,100% { transform: rotate(-3deg) translateY(0); }
+                         50%     { transform: rotate( 2deg) translateY(-2px); } }
+  @keyframes mk-tether { to { stroke-dashoffset: -6; } }
+
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  @keyframes term-in { to { opacity: 1; transform: translateY(0); } }
+  .motion-root > * { pointer-events: none; }
+  .motion-root { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  @keyframes screen-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes caret { 50% { opacity: 0; } }
+  @keyframes dots-bounce {
+    0%,80%,100% { transform: translateY(0); opacity: 0.4; }
+    40%         { transform: translateY(-3px); opacity: 1; }
+  }
+
+  /* Buttons inside screens hover */
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+
+  /* ─── Intro card above stage ─── */
+  .readme {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 28px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 22px;
+    align-items: center;
+  }
+  .readme p {
+    margin: 0; color: #9ca3af; font-size: 13px;
+    line-height: 1.55; font-weight: 300;
+  }
+  .readme p b { color: #fff; font-weight: 600; }
+  .readme .mono {
+    font-family: var(--font-mono); color: #22c55e;
+  }
+  .readme .callouts {
+    display: flex; flex-direction: column; gap: 8px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: #6b7280; font-family: var(--font-mono);
+    border-left: 1px dashed rgba(255,255,255,0.08);
+    padding-left: 18px;
+  }
+  .readme .callouts span b { color: #22c55e; font-weight: 700; }
+</style>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="motion.jsx"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+  <script type="text/babel" src="prototype.jsx"></script>
+  <script type="text/babel" src="storyboard.jsx"></script>
+
+  <script type="text/babel">
+  const { useState } = React;
+
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "variant": "minimal",
+    "motion": "quorum",
+    "view": "prototype"
+  }/*EDITMODE-END*/;
+
+  function App() {
+    const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+    return (
+      <>
+        {/* Top bar */}
+        <header className="pageTop">
+          <div className="brand">
+            <QuorumLogo size={22}/>
+            <span>Kite Agent Hub</span>
+            <span className="sub">· Onboarding</span>
+          </div>
+
+          <div style={{ marginLeft: 24 }}>
+            <div className="tabs">
+              <button className={`tab ${t.view==='prototype'?'active':''}`}
+                onClick={() => setTweak('view','prototype')}>Prototype</button>
+              <button className={`tab ${t.view==='storyboard'?'active':''}`}
+                onClick={() => setTweak('view','storyboard')}>Storyboard</button>
+            </div>
+          </div>
+
+          <div className="crumb">
+            variant <b>{t.variant}</b> · motion <b>{t.motion}</b>
+          </div>
+        </header>
+
+        <main className="stage">
+          {t.view === 'prototype' ? (
+            <>
+              <div className="readme">
+                <p>
+                  First-run flow for new users. <b>Sign-in → venues → keys → create agent → Claude Code handoff.</b>
+                  Trading agents are intentionally gated behind "needs a wallet" — research and conversational
+                  agents get users to a working chat in under 60 seconds. Keys are skippable; venue + agent are not.
+                  <br/><br/>
+                  <span className="mono">Click through the 5 steps</span> or jump using the chip at the bottom.
+                  Try the <b>Tweaks</b> panel (bottom-right) to swap variants and motion.
+                </p>
+                <div className="callouts">
+                  <span><b>Variant</b> minimal · cinematic</span>
+                  <span><b>Motion</b> quorum · blockstream · kite</span>
+                  <span><b>View</b> prototype · storyboard</span>
+                </div>
+              </div>
+              <Prototype variant={t.variant} motion={t.motion}/>
+            </>
+          ) : (
+            <>
+              <div className="title">Storyboard · all 5 frames</div>
+              <h1 className="titleSub">End-to-end at a glance.</h1>
+              <p className="titleDesc">
+                Every step of the onboarding flow, stacked. Use this view to review copy, hierarchy,
+                and motion rhythm without clicking through. Switch variant + motion in Tweaks to compare.
+              </p>
+              <Storyboard variant={t.variant} motion={t.motion}/>
+            </>
+          )}
+
+          <TweaksPanel>
+            <TweakSection label="Variant"/>
+            <TweakRadio label="Direction" value={t.variant}
+              options={["minimal", "cinematic"]}
+              onChange={v => setTweak('variant', v)}/>
+
+            <TweakSection label="Motion graphic"/>
+            <TweakRadio label="Background" value={t.motion}
+              options={["quorum", "blockstream", "kite"]}
+              onChange={v => setTweak('motion', v)}/>
+
+            <TweakSection label="View"/>
+            <TweakRadio label="Mode" value={t.view}
+              options={["prototype", "storyboard"]}
+              onChange={v => setTweak('view', v)}/>
+          </TweaksPanel>
+        </main>
+      </>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
