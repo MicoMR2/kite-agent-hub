@@ -1,7 +1,9 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Orgs, Trading, Chat, Polymarket, TradeLocker, Oanda}
+  alias KiteAgentHub.{Onboarding, Orgs, Trading, Chat, Polymarket, TradeLocker, Oanda}
+
+  require Logger
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
@@ -20,6 +22,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
       end
 
     org = List.first(orgs)
+
+    # Idempotently provision the default agent, wallet, and vault on the
+    # user's first dashboard visit. Registration (Accounts.register_user)
+    # creates the user + org + membership only — agent/wallet/vault are
+    # deferred here so users who never return don't leave orphan rows.
+    # Onboarding.provision_for_user/2 short-circuits when the agent
+    # already exists, so every subsequent mount is a single LIMIT 1 read.
+    # Rescued so a transient failure cannot crash the LV mount.
+    if org do
+      try do
+        Onboarding.provision_for_user(user, org)
+      rescue
+        e -> Logger.warning("Dashboard provisioning skipped: #{inspect(e)}")
+      end
+    end
 
     {agents, trades} =
       if org do
@@ -310,44 +327,62 @@ defmodule KiteAgentHubWeb.DashboardLive do
         {:noreply, put_flash(socket, :error, "Invalid vault address — must be a 0x EVM address.")}
 
       true ->
-        case Trading.activate_agent(agent, vault_address) do
-          {:ok, updated_agent} ->
-            {:noreply,
-             socket
-             |> assign(:selected_agent, updated_agent)
-             |> update(:agents, &replace_agent(&1, updated_agent))
-             |> put_flash(:info, "Agent activated! Vault is live on Kite chain.")}
+        try do
+          case Trading.activate_agent(agent, vault_address) do
+            {:ok, updated_agent} ->
+              {:noreply,
+               socket
+               |> assign(:selected_agent, updated_agent)
+               |> update(:agents, &replace_agent(&1, updated_agent))
+               |> put_flash(:info, "Agent activated! Vault is live on Kite chain.")}
 
-          {:error, _changeset} ->
+            {:error, _changeset} ->
+              {:noreply, put_flash(socket, :error, "Failed to activate agent.")}
+          end
+        rescue
+          e ->
+            Logger.warning("DashboardLive activate_vault crashed: #{inspect(e)}")
             {:noreply, put_flash(socket, :error, "Failed to activate agent.")}
         end
     end
   end
 
   def handle_event("pause_agent", _params, socket) do
-    case Trading.pause_agent(socket.assigns.selected_agent) do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> assign(:selected_agent, updated)
-         |> update(:agents, &replace_agent(&1, updated))
-         |> put_flash(:info, "Agent paused.")}
+    try do
+      case Trading.pause_agent(socket.assigns.selected_agent) do
+        {:ok, updated} ->
+          {:noreply,
+           socket
+           |> assign(:selected_agent, updated)
+           |> update(:agents, &replace_agent(&1, updated))
+           |> put_flash(:info, "Agent paused.")}
 
-      {:error, _} ->
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not pause agent.")}
+      end
+    rescue
+      e ->
+        Logger.warning("DashboardLive pause_agent crashed: #{inspect(e)}")
         {:noreply, put_flash(socket, :error, "Could not pause agent.")}
     end
   end
 
   def handle_event("resume_agent", _params, socket) do
-    case Trading.resume_agent(socket.assigns.selected_agent) do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> assign(:selected_agent, updated)
-         |> update(:agents, &replace_agent(&1, updated))
-         |> put_flash(:info, "Agent resumed.")}
+    try do
+      case Trading.resume_agent(socket.assigns.selected_agent) do
+        {:ok, updated} ->
+          {:noreply,
+           socket
+           |> assign(:selected_agent, updated)
+           |> update(:agents, &replace_agent(&1, updated))
+           |> put_flash(:info, "Agent resumed.")}
 
-      {:error, _} ->
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not resume agent.")}
+      end
+    rescue
+      e ->
+        Logger.warning("DashboardLive resume_agent crashed: #{inspect(e)}")
         {:noreply, put_flash(socket, :error, "Could not resume agent.")}
     end
   end
@@ -356,8 +391,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
     agent = socket.assigns.selected_agent
 
     if agent do
-      context = KiteAgentHub.Trading.AgentContext.generate(agent)
-      {:noreply, socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+      try do
+        context = KiteAgentHub.Trading.AgentContext.generate(agent)
+        {:noreply, socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+      rescue
+        e ->
+          Logger.warning("DashboardLive show_agent_context crashed: #{inspect(e)}")
+          {:noreply, put_flash(socket, :error, "Could not load agent context.")}
+      end
     else
       {:noreply, put_flash(socket, :error, "No agent selected.")}
     end
@@ -2920,6 +2961,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
     else
       {:noreply, socket}
     end
+  end
+
+  # Safety net: an unmatched handle_info or handle_event crashes the LV
+  # process silently (no log) and Phoenix surfaces "something went wrong"
+  # to the user. These catch-all clauses MUST stay last — Elixir matches
+  # top-to-bottom, so any specific clause declared above remains the
+  # preferred dispatch target. If you add a new specific clause below
+  # this line it will be unreachable.
+  def handle_info(msg, socket) do
+    Logger.warning("DashboardLive: unhandled handle_info #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  def handle_event(event, params, socket) do
+    Logger.warning(
+      "DashboardLive: unhandled handle_event #{inspect(event)} #{inspect(params)}"
+    )
+
+    {:noreply, socket}
   end
 
   # Strip the persisted row down to the fields the chat UI actually
