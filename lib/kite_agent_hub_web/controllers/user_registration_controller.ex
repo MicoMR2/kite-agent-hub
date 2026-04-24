@@ -12,6 +12,8 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
   def create(conn, %{"user" => user_params}) do
     case Accounts.register_user_with_org(user_params) do
       {:ok, user} ->
+        # Verification email still goes out in the background —
+        # onboarding is not gated on it per msg 7671 (CyberSec CLEAR).
         {:ok, _} =
           Accounts.deliver_login_instructions(
             user,
@@ -19,9 +21,11 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
           )
 
         conn
-        |> put_session(:user_return_to, ~p"/agents/new")
-        |> put_flash(:info, "Account created! Check your email to confirm and log in.")
-        |> redirect(to: ~p"/users/log-in")
+        |> put_flash(
+          :info,
+          "Account created. Verification email on the way — you can finish onboarding now."
+        )
+        |> KiteAgentHubWeb.UserAuth.log_in_new_user(user)
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, :new, changeset: changeset)
