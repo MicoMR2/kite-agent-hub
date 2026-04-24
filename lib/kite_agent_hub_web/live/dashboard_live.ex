@@ -2939,6 +2939,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
     end
   end
 
+  # Safety net: an unmatched handle_info or handle_event crashes the LV
+  # process silently (no log) and Phoenix surfaces "something went wrong"
+  # to the user. These catch-all clauses MUST stay last — Elixir matches
+  # top-to-bottom, so any specific clause declared above remains the
+  # preferred dispatch target. If you add a new specific clause below
+  # this line it will be unreachable.
+  def handle_info(msg, socket) do
+    Logger.warning("DashboardLive: unhandled handle_info #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  def handle_event(event, params, socket) do
+    Logger.warning(
+      "DashboardLive: unhandled handle_event #{inspect(event)} #{inspect(params)}"
+    )
+
+    {:noreply, socket}
+  end
+
   # Strip the persisted row down to the fields the chat UI actually
   # renders. The real ChatMessage struct has no credential fields, but
   # trimming here enforces the CyberSec contract that PubSub payloads
