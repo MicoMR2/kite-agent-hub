@@ -90,19 +90,19 @@ defmodule KiteAgentHubWeb.OnboardingLive do
     {:noreply, assign(socket, :step, prev_step)}
   end
 
-  # Catch-all so a stray phx-click event can never crash the LV and
-  # trigger the mount-reconnect loop.
-  def handle_event(event, params, socket) do
-    Logger.warning("OnboardingLive: unhandled event #{inspect(event)} #{inspect(params)}")
-    {:noreply, socket}
-  end
-
   def handle_event("finish", _params, socket) do
     finish_and_go(socket)
   end
 
   def handle_event("skip", _params, socket) do
     finish_and_go(socket)
+  end
+
+  # Catch-all MUST stay last — Elixir matches clauses top-to-bottom, so any
+  # specific event handlers above this one remain reachable.
+  def handle_event(event, params, socket) do
+    Logger.warning("OnboardingLive: unhandled event #{inspect(event)} #{inspect(params)}")
+    {:noreply, socket}
   end
 
   defp finish_and_go(socket) do

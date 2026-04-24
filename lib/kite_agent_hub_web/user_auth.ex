@@ -250,8 +250,19 @@ defmodule KiteAgentHubWeb.UserAuth do
     end
   end
 
-  defp signed_in_path(%KiteAgentHub.Accounts.User{onboarding_completed_at: nil}), do: ~p"/welcome"
-  defp signed_in_path(%KiteAgentHub.Accounts.User{}), do: ~p"/dashboard"
+  defp signed_in_path(%KiteAgentHub.Accounts.User{onboarding_completed_at: %_{}}), do: ~p"/dashboard"
+
+  defp signed_in_path(%KiteAgentHub.Accounts.User{id: user_id}) do
+    has_org? =
+      try do
+        match?([_ | _], KiteAgentHub.Orgs.list_orgs_for_user(user_id))
+      rescue
+        _ -> true
+      end
+
+    if has_org?, do: ~p"/dashboard", else: ~p"/welcome"
+  end
+
   defp signed_in_path(_), do: ~p"/dashboard"
 
   @doc """
