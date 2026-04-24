@@ -22,6 +22,7 @@ defmodule KiteAgentHubWeb.Router do
 
     live_session :public, on_mount: [{KiteAgentHubWeb.UserAuth, :mount_current_scope}] do
       live "/", HomeLive
+      live "/onboard", OnboardLive
     end
   end
 
