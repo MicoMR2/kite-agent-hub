@@ -327,44 +327,62 @@ defmodule KiteAgentHubWeb.DashboardLive do
         {:noreply, put_flash(socket, :error, "Invalid vault address — must be a 0x EVM address.")}
 
       true ->
-        case Trading.activate_agent(agent, vault_address) do
-          {:ok, updated_agent} ->
-            {:noreply,
-             socket
-             |> assign(:selected_agent, updated_agent)
-             |> update(:agents, &replace_agent(&1, updated_agent))
-             |> put_flash(:info, "Agent activated! Vault is live on Kite chain.")}
+        try do
+          case Trading.activate_agent(agent, vault_address) do
+            {:ok, updated_agent} ->
+              {:noreply,
+               socket
+               |> assign(:selected_agent, updated_agent)
+               |> update(:agents, &replace_agent(&1, updated_agent))
+               |> put_flash(:info, "Agent activated! Vault is live on Kite chain.")}
 
-          {:error, _changeset} ->
+            {:error, _changeset} ->
+              {:noreply, put_flash(socket, :error, "Failed to activate agent.")}
+          end
+        rescue
+          e ->
+            Logger.warning("DashboardLive activate_vault crashed: #{inspect(e)}")
             {:noreply, put_flash(socket, :error, "Failed to activate agent.")}
         end
     end
   end
 
   def handle_event("pause_agent", _params, socket) do
-    case Trading.pause_agent(socket.assigns.selected_agent) do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> assign(:selected_agent, updated)
-         |> update(:agents, &replace_agent(&1, updated))
-         |> put_flash(:info, "Agent paused.")}
+    try do
+      case Trading.pause_agent(socket.assigns.selected_agent) do
+        {:ok, updated} ->
+          {:noreply,
+           socket
+           |> assign(:selected_agent, updated)
+           |> update(:agents, &replace_agent(&1, updated))
+           |> put_flash(:info, "Agent paused.")}
 
-      {:error, _} ->
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not pause agent.")}
+      end
+    rescue
+      e ->
+        Logger.warning("DashboardLive pause_agent crashed: #{inspect(e)}")
         {:noreply, put_flash(socket, :error, "Could not pause agent.")}
     end
   end
 
   def handle_event("resume_agent", _params, socket) do
-    case Trading.resume_agent(socket.assigns.selected_agent) do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> assign(:selected_agent, updated)
-         |> update(:agents, &replace_agent(&1, updated))
-         |> put_flash(:info, "Agent resumed.")}
+    try do
+      case Trading.resume_agent(socket.assigns.selected_agent) do
+        {:ok, updated} ->
+          {:noreply,
+           socket
+           |> assign(:selected_agent, updated)
+           |> update(:agents, &replace_agent(&1, updated))
+           |> put_flash(:info, "Agent resumed.")}
 
-      {:error, _} ->
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not resume agent.")}
+      end
+    rescue
+      e ->
+        Logger.warning("DashboardLive resume_agent crashed: #{inspect(e)}")
         {:noreply, put_flash(socket, :error, "Could not resume agent.")}
     end
   end
@@ -373,8 +391,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
     agent = socket.assigns.selected_agent
 
     if agent do
-      context = KiteAgentHub.Trading.AgentContext.generate(agent)
-      {:noreply, socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+      try do
+        context = KiteAgentHub.Trading.AgentContext.generate(agent)
+        {:noreply, socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+      rescue
+        e ->
+          Logger.warning("DashboardLive show_agent_context crashed: #{inspect(e)}")
+          {:noreply, put_flash(socket, :error, "Could not load agent context.")}
+      end
     else
       {:noreply, put_flash(socket, :error, "No agent selected.")}
     end
