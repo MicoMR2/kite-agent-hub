@@ -67,10 +67,21 @@ defmodule KiteAgentHubWeb.CodexPrompts do
   end
 
   @doc """
-  Combined two-line copy block (token export then codex invocation).
+  Single-line combined command. Uses inline env-var syntax so the token
+  is set only for the duration of the codex invocation (not exported to
+  the parent shell). Token is server-side only and rendered via the
+  existing CopyToClipboard pattern; no different logging surface than
+  `export_command/1`.
   """
   def combined_block(agent) do
-    export_command(agent) <> "\n" <> codex_command(agent)
+    token =
+      case agent do
+        %{api_token: t} when is_binary(t) and byte_size(t) > 0 -> t
+        _ -> @token_placeholder
+      end
+
+    prompt = prompt_for(agent)
+    ~s|KAH_API_TOKEN="#{token}" codex '| <> prompt <> "'"
   end
 
   @doc """
