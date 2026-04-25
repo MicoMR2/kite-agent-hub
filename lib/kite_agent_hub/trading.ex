@@ -124,7 +124,10 @@ defmodule KiteAgentHub.Trading do
         # cancelled path. cutoff = utc_now guarantees we catch every
         # open row regardless of age.
         {count, _trades} =
-          auto_cancel_stuck_trades(DateTime.utc_now() |> DateTime.truncate(:second))
+          auto_cancel_stuck_trades(
+            DateTime.utc_now() |> DateTime.truncate(:second),
+            agent_id: archived.id
+          )
 
         Phoenix.PubSub.broadcast(@pubsub, "agent:#{archived.id}", {:agent_updated, archived})
 
@@ -270,19 +273,23 @@ defmodule KiteAgentHub.Trading do
   end
 
   @doc """
-  Sweep: flip any trade with status=`"open"` older than `cutoff` to
+  Sweep: flip trades with status=`"open"` older than `cutoff` to
   `"cancelled"`. Returns `{count, trades}` where `trades` is the list of
-  rows that were updated (so the caller can enqueue downstream work —
-  e.g. calling Alpaca's cancel endpoint — for each one). Scoped to the
-  caller's RLS context; the sweep worker re-establishes per-agent scope
-  before calling this.
+  rows that were updated (so the caller can enqueue downstream work,
+  such as calling Alpaca's cancel endpoint, for each one).
+
+  Pass `agent_id: id` when sweeping on behalf of one agent. RLS still
+  applies, but the explicit filter prevents an org-owner sweep from
+  cancelling another agent's unrelated open trades.
   """
-  def auto_cancel_stuck_trades(cutoff) do
+  def auto_cancel_stuck_trades(cutoff, opts \\ []) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+    agent_id = Keyword.get(opts, :agent_id)
 
     stuck_query =
       TradeRecord
       |> where([t], t.status == "open" and t.inserted_at < ^cutoff)
+      |> then(fn q -> if agent_id, do: where(q, [t], t.kite_agent_id == ^agent_id), else: q end)
 
     # Load first so we can broadcast + hand the structs back to the
     # caller (the sweep worker uses them to forward cancels to the
@@ -389,16 +396,6 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
-  @doc """
-  Returns up to `limit` settled trades across ALL agents that do NOT yet
-  have an `attestation_tx_hash`. Used by `AttestationBackfillWorker` to
-  retroactively attest trades that settled before the attestation
-  pipeline existed (or while AGENT_PRIVATE_KEY was misconfigured).
-
-  Bounded scan keeps each backfill tick small. The worker calls this
-  on a schedule and enqueues KiteAttestationWorker for each result; the
-  attestation worker is idempotent so re-runs are safe. PR #105.
-  """
   # ── Edge-score snapshots ─────────────────────────────────────────────────────
 
   alias KiteAgentHub.Kite.EdgeScoreSnapshot
@@ -443,6 +440,16 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
+  @doc """
+  Returns up to `limit` settled trades across ALL agents that do NOT yet
+  have an `attestation_tx_hash`. Used by `AttestationBackfillWorker` to
+  retroactively attest trades that settled before the attestation
+  pipeline existed, or while AGENT_PRIVATE_KEY was misconfigured.
+
+  Bounded scan keeps each backfill tick small. The worker calls this
+  on a schedule and enqueues KiteAttestationWorker for each result; the
+  attestation worker is idempotent so re-runs are safe. PR #105.
+  """
   def list_unattested_settled_trades(limit \\ 50) do
     TradeRecord
     |> where([t], t.status == "settled" and is_nil(t.attestation_tx_hash))

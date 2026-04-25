@@ -53,12 +53,15 @@ defmodule KiteAgentHub.Workers.StuckTradeSweeper do
   end
 
   defp sweep_for_agent(agent_id, cutoff) do
-    case Trading.auto_cancel_stuck_trades(cutoff) do
+    case Trading.auto_cancel_stuck_trades(cutoff, agent_id: agent_id) do
       {0, _} ->
         :ok
 
       {count, trades} ->
-        Logger.info("StuckTradeSweeper: agent #{agent_id} — auto-cancelled #{count} stuck trade(s)")
+        Logger.info(
+          "StuckTradeSweeper: agent #{agent_id} — auto-cancelled #{count} stuck trade(s)"
+        )
+
         maybe_cancel_on_broker(trades, agent_id)
     end
   end

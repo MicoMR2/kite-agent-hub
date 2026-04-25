@@ -94,5 +94,35 @@ defmodule KiteAgentHub.TradingCancelTest do
       assert Repo.reload!(already_cancelled).status == "cancelled"
       assert Repo.reload!(failed).status == "failed"
     end
+
+    test "can scope cancellation to one agent inside the same organization" do
+      %{user: user, org: org, agent: first_agent} = first_scope = agent_scope_fixture()
+
+      {:ok, second_agent} =
+        as_user(user, fn ->
+          Trading.create_agent(%{
+            name: "Second Agent",
+            agent_type: "research",
+            organization_id: org.id,
+            status: "active"
+          })
+        end)
+
+      second_scope = %{user: user, org: org, agent: second_agent}
+      old = DateTime.utc_now() |> DateTime.add(-7200, :second) |> DateTime.truncate(:second)
+
+      first_trade = trade_fixture(first_scope, %{inserted_at: old})
+      second_trade = trade_fixture(second_scope, %{inserted_at: old})
+      cutoff = DateTime.utc_now() |> DateTime.add(-3600, :second) |> DateTime.truncate(:second)
+
+      {count, _} =
+        as_user(user, fn ->
+          Trading.auto_cancel_stuck_trades(cutoff, agent_id: first_agent.id)
+        end)
+
+      assert count == 1
+      assert Repo.reload!(first_trade).status == "cancelled"
+      assert Repo.reload!(second_trade).status == "open"
+    end
   end
 end
