@@ -23,6 +23,7 @@ RUN mix deps.compile
 COPY priv priv
 COPY lib lib
 COPY assets assets
+COPY plugins plugins
 
 RUN mix compile
 RUN mix assets.deploy
