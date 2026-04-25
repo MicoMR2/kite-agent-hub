@@ -1810,6 +1810,46 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <p class="text-[10px] text-gray-600">Paste-ready system prompt with your agent token embedded. Copy or reveal when ready.</p>
                     <% end %>
                   </div>
+
+                  <%!-- Option B — Codex / Terminal --%>
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                        Option B — Codex / Terminal
+                        <span class="ml-2 text-[9px] font-bold text-gray-500">{codex_agent_type_label(@selected_agent)}</span>
+                      </span>
+                      <div class="flex items-center gap-3">
+                        <button
+                          id={"copy-codex-#{@selected_agent.id}"}
+                          phx-hook="CopyToClipboard"
+                          data-text={codex_commands(@selected_agent)}
+                          class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          phx-click="toggle_reveal"
+                          phx-value-target="option_b"
+                          class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+                        >
+                          {if @show_option_b, do: "Hide", else: "Reveal"}
+                        </button>
+                      </div>
+                    </div>
+                    <%= if @show_option_b do %>
+                      <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= codex_commands(@selected_agent) %></pre>
+                      <p class="text-[10px] text-gray-600 mt-1">
+                        Run in your local Codex terminal (not ChatGPT browser). Terminal open = agent online · Ctrl+C = agent stopped.
+                        <%= if codex_can_trade?(@selected_agent) do %>
+                          <span class="text-yellow-400">This is a Trade Agent — only Trade Agents can submit trades.</span>
+                        <% else %>
+                          <span class="text-gray-500">Research / Conversational agent — read-only, cannot submit trades.</span>
+                        <% end %>
+                      </p>
+                    <% else %>
+                      <p class="text-[10px] text-gray-600">Three terminal commands to run this agent in Codex on your machine. Token is injected via env var, never written to disk.</p>
+                    <% end %>
+                  </div>
                 </div>
             </div>
           </div>
@@ -3100,6 +3140,43 @@ defmodule KiteAgentHubWeb.DashboardLive do
     # Full guide: docs/byo-local-agent.md
     """
   end
+
+  # Codex terminal launcher block. Token is interpolated into the
+  # `export KAH_API_TOKEN=...` line so the paste is directly runnable;
+  # only the page owner sees the agent (live_session :authenticated +
+  # @selected_agent server-side), and the rendered block is masked +
+  # collapsible exactly like Option A.
+  defp codex_commands(agent) do
+    type = codex_agent_type(agent)
+
+    token =
+      case agent do
+        %{api_token: t} when is_binary(t) and byte_size(t) > 0 -> t
+        _ -> @token_placeholder
+      end
+
+    """
+    cd ~/kite-agent-hub
+    export KAH_API_TOKEN="#{token}"
+    /Applications/Codex.app/Contents/Resources/codex "$(plugins/kite-agent-hub-agent/scripts/print-agent-prompt.sh #{type})"
+    """
+  end
+
+  # Map an agent record to the prompt-pack agent type. The Codex
+  # plugin's print-agent-prompt.sh accepts research / conversational /
+  # trading. Trading is the only mode that can submit /trades — the
+  # backend gate (trades_controller require_trading_agent) enforces
+  # this server-side regardless of which prompt the user pastes.
+  defp codex_agent_type(%{agent_type: "trading"}), do: "trading"
+  defp codex_agent_type(%{agent_type: "conversational"}), do: "conversational"
+  defp codex_agent_type(_), do: "research"
+
+  defp codex_agent_type_label(%{agent_type: "trading"}), do: "Trade Agent"
+  defp codex_agent_type_label(%{agent_type: "conversational"}), do: "Conversational Agent"
+  defp codex_agent_type_label(_), do: "Research Agent"
+
+  defp codex_can_trade?(%{agent_type: "trading"}), do: true
+  defp codex_can_trade?(_), do: false
 
   # Token mask: show first 8 chars + dots when collapsed.
   # e.g. "kite_abc12345••••••••"

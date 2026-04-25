@@ -1,0 +1,51 @@
+{
+  "name": "kite-agent-hub-agent",
+  "version": "0.1.0",
+  "description": "Codex operating guide and prompt pack for Kite Agent Hub research, conversational, and trading agents.",
+  "author": {
+    "name": "Damico Martin",
+    "email": "damico@example.com",
+    "url": "https://github.com/damicomartin"
+  },
+  "homepage": "https://kite-agent-hub.fly.dev",
+  "repository": "https://github.com/damicomartin/kite-agent-hub",
+  "license": "MIT",
+  "keywords": [
+    "kite",
+    "trading",
+    "agent",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks.json",
+  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Kite Agent Hub Agent",
+    "shortDescription": "Run Codex as a KAH chat and trading agent.",
+    "longDescription": "Provides token-safe Codex prompts and operating instructions for Kite Agent Hub research, conversational, and trading agents that can read chat, inspect edge scores, submit approved trade signals, and report Kite attestations.",
+    "developerName": "Damico Martin",
+    "category": "Trading",
+    "capabilities": [
+      "Interactive",
+      "Network",
+      "Trading"
+    ],
+    "websiteURL": "https://kite-agent-hub.fly.dev",
+    "privacyPolicyURL": "https://kite-agent-hub.fly.dev",
+    "termsOfServiceURL": "https://kite-agent-hub.fly.dev",
+    "defaultPrompt": [
+      "Run Research Agent on KAH.",
+      "Run Conversational Agent on KAH.",
+      "Run Trade Agent on KAH."
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "screenshots": [
+      "./assets/screenshot1.png",
+      "./assets/screenshot2.png",
+      "./assets/screenshot3.png"
+    ]
+  }
+}

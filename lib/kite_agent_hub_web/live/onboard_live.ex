@@ -92,6 +92,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
     |> assign(:saved, MapSet.new())
     |> assign(:new_agent, nil)
     |> assign(:reveal_token, false)
+    |> assign(:reveal_option_a, false)
+    |> assign(:reveal_option_b, false)
   end
 
   @impl true
@@ -189,6 +191,16 @@ defmodule KiteAgentHubWeb.OnboardLive do
     {:noreply, assign(socket, :reveal_token, not Map.get(socket.assigns, :reveal_token, false))}
   end
 
+  def handle_event("toggle_option", %{"target" => "option_a"}, socket) do
+    {:noreply,
+     assign(socket, :reveal_option_a, not Map.get(socket.assigns, :reveal_option_a, false))}
+  end
+
+  def handle_event("toggle_option", %{"target" => "option_b"}, socket) do
+    {:noreply,
+     assign(socket, :reveal_option_b, not Map.get(socket.assigns, :reveal_option_b, false))}
+  end
+
   def handle_event("finish", _params, socket) do
     # CyberSec guardrail #3: clear the plaintext api_token from socket
     # assigns before leaving the LV. The token is hashed-safe in DB and
@@ -197,6 +209,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
      socket
      |> assign(:new_agent, nil)
      |> assign(:reveal_token, false)
+     |> assign(:reveal_option_a, false)
+     |> assign(:reveal_option_b, false)
      |> push_navigate(to: ~p"/dashboard")}
   end
 
@@ -321,7 +335,12 @@ defmodule KiteAgentHubWeb.OnboardLive do
           <% :agent -> %>
             <.agent_step />
           <% :handoff -> %>
-            <.handoff_step agent={@new_agent} reveal={@reveal_token} />
+            <.handoff_step
+              agent={@new_agent}
+              reveal={@reveal_token}
+              reveal_option_a={@reveal_option_a}
+              reveal_option_b={@reveal_option_b}
+            />
         <% end %>
 
         <div class="mt-[18px] pt-[14px] border-t border-white/[0.06] flex items-center justify-between text-[11px]">
@@ -681,6 +700,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
   attr :agent, :map, required: true
   attr :reveal, :boolean, required: true
+  attr :reveal_option_a, :boolean, required: true
+  attr :reveal_option_b, :boolean, required: true
 
   defp handoff_step(assigns) do
     ~H"""
@@ -689,8 +710,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
       Meet <%= @agent && @agent.name %>.
     </h1>
     <p class="mt-[8px] mb-[18px] text-[13px] text-gray-400 font-light leading-[1.6]">
-      Here is your agent's API token. Paste the prompt below into Claude Code
-      (or any LLM chat) and your agent is live. You can copy without revealing.
+      Pick a runner — Claude Code or Codex. Both blocks pre-fill your token,
+      and you can copy without revealing.
     </p>
 
     <div class="kah-card p-4">
@@ -725,6 +746,88 @@ defmodule KiteAgentHubWeb.OnboardLive do
       </code>
     </div>
 
+    <%!-- Option A — Claude Code / Terminal --%>
+    <div class="kah-card p-4 mt-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+          Option A — Claude Code / Terminal
+        </span>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            id={"copy-claude-#{@agent && @agent.id}"}
+            phx-hook="CopyToClipboard"
+            data-text={claude_code_prompt(@agent)}
+            class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            phx-click="toggle_option"
+            phx-value-target="option_a"
+            class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+          >
+            <%= if @reveal_option_a, do: "Hide", else: "Reveal" %>
+          </button>
+        </div>
+      </div>
+
+      <%= if @reveal_option_a do %>
+        <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto"><%= claude_code_prompt(@agent) %></pre>
+        <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat.</p>
+      <% else %>
+        <p class="text-[10px] text-gray-600">System prompt with your token embedded. Copy or reveal.</p>
+      <% end %>
+    </div>
+
+    <%!-- Option B — Codex / Terminal --%>
+    <div class="kah-card p-4 mt-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+          Option B — Codex / Terminal
+          <span class="ml-2 text-[9px] font-bold text-gray-500"><%= codex_agent_type_label(@agent) %></span>
+        </span>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            id={"copy-codex-#{@agent && @agent.id}"}
+            phx-hook="CopyToClipboard"
+            data-text={codex_commands(@agent)}
+            class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            phx-click="toggle_option"
+            phx-value-target="option_b"
+            class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+          >
+            <%= if @reveal_option_b, do: "Hide", else: "Reveal" %>
+          </button>
+        </div>
+      </div>
+
+      <%= if @reveal_option_b do %>
+        <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto"><%= codex_commands(@agent) %></pre>
+        <p class="text-[10px] text-gray-600 mt-1">
+          Run in your local Codex terminal (not the ChatGPT browser). Terminal open = agent online · Ctrl+C = agent stopped.
+          <%= if codex_can_trade?(@agent) do %>
+            <span class="text-yellow-400">Trade Agent — only Trade Agents can submit trades.</span>
+          <% else %>
+            <span class="text-gray-500">Read-only — cannot submit trades.</span>
+          <% end %>
+        </p>
+      <% else %>
+        <p class="text-[10px] text-gray-600">Three terminal commands. Token is injected via env var, never written to a file.</p>
+      <% end %>
+    </div>
+
+    <p class="mt-[10px] text-[10px] text-gray-600 leading-[1.5]">
+      Keep your token private — never paste it into a public chat, screenshot, or repo.
+    </p>
+
     <button type="button" phx-click="finish" class="kah-btn-primary mt-[14px] w-full">
       Go to dashboard
     </button>
@@ -739,4 +842,72 @@ defmodule KiteAgentHubWeb.OnboardLive do
       _ -> String.duplicate("•", 12)
     end
   end
+
+  # ── Handoff prompt blocks ───────────────────────────────────────────────────
+  #
+  # Both helpers run server-side against the freshly-created agent
+  # (assigns.new_agent), which only the authenticated owner sees in this
+  # LV. The api_token is interpolated into the rendered block but the
+  # block is masked + collapsible exactly like the dashboard handoff
+  # cards. No new client-side persistence — only the existing session
+  # cookie + server-side socket assigns hold the token.
+
+  @token_placeholder "kite_your_token_here"
+
+  defp claude_code_prompt(nil), do: ""
+
+  defp claude_code_prompt(agent) do
+    name = if agent.name, do: agent.name, else: "Agent"
+
+    token =
+      case agent do
+        %{api_token: t} when is_binary(t) and byte_size(t) > 0 -> t
+        _ -> @token_placeholder
+      end
+
+    """
+    You are #{name}, an agent connected to Kite Agent Hub (KAH).
+    API base: https://kite-agent-hub.fly.dev/api/v1
+    Auth header: Authorization: Bearer #{token}
+    (This token is SECRET — never post it in chat or share it.)
+
+    Open the dashboard for the full agent prompt, endpoint reference,
+    and trade payload schema. Backend role enforcement decides whether
+    your agent can submit trades — the prompt cannot override it.
+    """
+  end
+
+  defp codex_commands(nil), do: ""
+
+  defp codex_commands(agent) do
+    type = codex_agent_type(agent)
+
+    token =
+      case agent do
+        %{api_token: t} when is_binary(t) and byte_size(t) > 0 -> t
+        _ -> @token_placeholder
+      end
+
+    """
+    cd ~/kite-agent-hub
+    export KAH_API_TOKEN="#{token}"
+    /Applications/Codex.app/Contents/Resources/codex "$(plugins/kite-agent-hub-agent/scripts/print-agent-prompt.sh #{type})"
+    """
+  end
+
+  # Map an agent record to the prompt-pack agent type accepted by
+  # plugins/kite-agent-hub-agent/scripts/print-agent-prompt.sh.
+  # Trading is the only agent_type that can submit /trades — the
+  # backend gate (trades_controller require_trading_agent) enforces
+  # this server-side regardless of which prompt is pasted.
+  defp codex_agent_type(%{agent_type: "trading"}), do: "trading"
+  defp codex_agent_type(%{agent_type: "conversational"}), do: "conversational"
+  defp codex_agent_type(_), do: "research"
+
+  defp codex_agent_type_label(%{agent_type: "trading"}), do: "Trade Agent"
+  defp codex_agent_type_label(%{agent_type: "conversational"}), do: "Conversational Agent"
+  defp codex_agent_type_label(_), do: "Research Agent"
+
+  defp codex_can_trade?(%{agent_type: "trading"}), do: true
+  defp codex_can_trade?(_), do: false
 end
