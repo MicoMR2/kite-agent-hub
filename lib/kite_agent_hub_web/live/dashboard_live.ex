@@ -1818,63 +1818,39 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Option B — Run with Codex Terminal
                         <span class="ml-2 text-[9px] font-bold text-gray-500">{KiteAgentHubWeb.CodexPrompts.agent_type_label(@selected_agent)}</span>
                       </span>
-                      <button
-                        phx-click="toggle_reveal"
-                        phx-value-target="option_b"
-                        class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
-                      >
-                        {if @show_option_b, do: "Hide", else: "Reveal"}
-                      </button>
-                    </div>
-
-                    <%!-- Step 1 — token export (always visible, masked-or-real depending on Reveal) --%>
-                    <div class="mt-1">
-                      <div class="flex items-center justify-between mb-1">
-                        <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">1 · Export your token</span>
+                      <div class="flex items-center gap-3">
                         <button
-                          id={"copy-codex-export-#{@selected_agent.id}"}
+                          id={"copy-codex-#{@selected_agent.id}"}
                           phx-hook="CopyToClipboard"
-                          data-text={KiteAgentHubWeb.CodexPrompts.export_command(@selected_agent)}
+                          data-text={KiteAgentHubWeb.CodexPrompts.combined_block(@selected_agent)}
                           class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
                         >
                           Copy
                         </button>
-                      </div>
-                      <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-2 text-[10px] text-gray-300 font-mono whitespace-pre-wrap break-all"><%= if @show_option_b do %><%= KiteAgentHubWeb.CodexPrompts.export_command(@selected_agent) %><% else %>export KAH_API_TOKEN="••••••••"<% end %></pre>
-                    </div>
-
-                    <%!-- Step 2 — codex command with embedded prompt --%>
-                    <div class="mt-2">
-                      <div class="flex items-center justify-between mb-1">
-                        <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">2 · Launch the agent</span>
                         <button
-                          id={"copy-codex-cmd-#{@selected_agent.id}"}
-                          phx-hook="CopyToClipboard"
-                          data-text={KiteAgentHubWeb.CodexPrompts.codex_command(@selected_agent)}
-                          class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                          phx-click="toggle_reveal"
+                          phx-value-target="option_b"
+                          class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
                         >
-                          Copy
+                          {if @show_option_b, do: "Hide", else: "Reveal"}
                         </button>
                       </div>
-                      <%= if @show_option_b do %>
-                        <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto">codex '<%= KiteAgentHubWeb.CodexPrompts.prompt_for(@selected_agent) %>'</pre>
-                      <% else %>
-                        <p class="text-[10px] text-gray-600 px-1">Self-contained prompt for this agent — no repo clone required. Reveal to inspect before running.</p>
-                      <% end %>
                     </div>
-
-                    <p class="text-[10px] text-gray-500 mt-2 leading-snug">
-                      <span class="text-yellow-400">Requires Codex Terminal / Codex CLI.</span>
-                      Normal ChatGPT browser, desktop chat, or mobile chat cannot keep the agent online — they cannot run the long-poll loop locally.
-                    </p>
-                    <p class="text-[10px] text-gray-600 mt-1 leading-snug">
-                      If <code class="text-gray-400">codex</code> is not recognized in your terminal, install or open Codex Terminal and follow its OS-specific setup.
-                      <%= if KiteAgentHubWeb.CodexPrompts.can_trade?(@selected_agent) do %>
-                        <span class="text-yellow-400">Trade Agent — only Trade Agents can submit trades.</span>
-                      <% else %>
-                        <span class="text-gray-500">Read-only — cannot submit trades.</span>
-                      <% end %>
-                    </p>
+                    <%= if @show_option_b do %>
+                      <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= KiteAgentHubWeb.CodexPrompts.combined_block(@selected_agent) %></pre>
+                      <p class="text-[10px] text-gray-500 mt-1 leading-snug">
+                        <span class="text-yellow-400">Requires Codex Terminal / Codex CLI.</span>
+                        ChatGPT browser, desktop, or mobile chat cannot keep the agent online — they cannot run the long-poll loop locally.
+                        If <code class="text-gray-400">codex</code> is not recognized, install or open Codex Terminal and follow its OS-specific setup.
+                        <%= if KiteAgentHubWeb.CodexPrompts.can_trade?(@selected_agent) do %>
+                          <span class="text-yellow-400">Trade Agent — only Trade Agents can submit trades.</span>
+                        <% else %>
+                          <span class="text-gray-500">Read-only — cannot submit trades.</span>
+                        <% end %>
+                      </p>
+                    <% else %>
+                      <p class="text-[10px] text-gray-600">Self-contained two-line shell command — token + codex launcher with the embedded prompt. Copy or reveal when ready.</p>
+                    <% end %>
                   </div>
                 </div>
             </div>
