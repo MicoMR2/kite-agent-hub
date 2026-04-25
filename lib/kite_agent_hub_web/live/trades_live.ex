@@ -82,17 +82,14 @@ defmodule KiteAgentHubWeb.TradesLive do
   @impl true
   def handle_info({:trade_created, trade}, socket) do
     if trade.kite_agent_id == (socket.assigns.selected_agent && socket.assigns.selected_agent.id) do
-      {:noreply, assign(socket, :trades, [trade | socket.assigns.trades])}
+      {:noreply, assign(socket, :trades, reload_visible_trades(socket, trade.kite_agent_id))}
     else
       {:noreply, socket}
     end
   end
 
   def handle_info({:trade_updated, updated}, socket) do
-    trades =
-      Enum.map(socket.assigns.trades, fn t ->
-        if t.id == updated.id, do: updated, else: t
-      end)
+    trades = reload_visible_trades(socket, updated.kite_agent_id)
 
     {:noreply, assign(socket, :trades, trades)}
   end
@@ -102,15 +99,36 @@ defmodule KiteAgentHubWeb.TradesLive do
   # ── Helpers ───────────────────────────────────────────────────────────────────
 
   defp load_trades(agent_id, "all", page) do
-    Trading.list_trades(agent_id, limit: @page_size, offset: (page - 1) * @page_size)
+    Trading.list_trades_with_display_pnl(agent_id,
+      limit: @page_size,
+      offset: (page - 1) * @page_size
+    )
   end
 
   defp load_trades(agent_id, status, page) do
-    Trading.list_trades(agent_id,
+    Trading.list_trades_with_display_pnl(agent_id,
       status: status,
       limit: @page_size,
       offset: (page - 1) * @page_size
     )
+  end
+
+  defp reload_visible_trades(socket, agent_id) do
+    selected_id = socket.assigns.selected_agent && socket.assigns.selected_agent.id
+
+    if selected_id == agent_id do
+      limit = max(socket.assigns.page, 1) * @page_size
+      opts = [limit: limit, offset: 0]
+
+      opts =
+        if socket.assigns.status_filter == "all",
+          do: opts,
+          else: Keyword.put(opts, :status, socket.assigns.status_filter)
+
+      Trading.list_trades_with_display_pnl(agent_id, opts)
+    else
+      socket.assigns.trades
+    end
   end
 
   defp status_classes("open"), do: "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20"
@@ -144,6 +162,11 @@ defmodule KiteAgentHubWeb.TradesLive do
 
   defp format_notional(nil), do: "—"
   defp format_notional(n), do: "$#{Decimal.round(n, 2)}"
+
+  defp platform_label(nil), do: "Kite"
+  defp platform_label(platform), do: platform |> String.replace("_", " ") |> String.upcase()
+
+  defp attestation_url(hash), do: "https://testnet.kitescan.ai/tx/" <> hash
 
   @impl true
   def render(assigns) do
@@ -198,7 +221,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                   phx-value-id={agent.id}
                   class={[
                     "w-full text-left px-4 py-4 rounded-xl border transition-all group",
-                    (@selected_agent && @selected_agent.id == agent.id) &&
+                    @selected_agent && @selected_agent.id == agent.id &&
                       "border-white/20 bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.02)]",
                     (!@selected_agent || @selected_agent.id != agent.id) &&
                       "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
@@ -207,8 +230,9 @@ defmodule KiteAgentHubWeb.TradesLive do
                   <div class="flex items-center justify-between gap-2">
                     <span class={[
                       "text-sm font-bold truncate tracking-wide transition-colors",
-                      (@selected_agent && @selected_agent.id == agent.id) && "text-white",
-                      (!@selected_agent || @selected_agent.id != agent.id) && "text-gray-400 group-hover:text-gray-200"
+                      @selected_agent && @selected_agent.id == agent.id && "text-white",
+                      (!@selected_agent || @selected_agent.id != agent.id) &&
+                        "text-gray-400 group-hover:text-gray-200"
                     ]}>
                       {agent.name}
                     </span>
@@ -237,6 +261,9 @@ defmodule KiteAgentHubWeb.TradesLive do
                   <tr class="border-b border-white/10 bg-black/20">
                     <th class="text-left px-3 py-3 sm:px-6 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Market
+                    </th>
+                    <th class="hidden lg:table-cell text-left px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                      Platform
                     </th>
                     <th class="text-left px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Action
@@ -267,7 +294,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                 <tbody class="divide-y divide-white/5">
                   <%= if @trades == [] do %>
                     <tr>
-                      <td colspan="9" class="px-6 py-20 text-center">
+                      <td colspan="10" class="px-6 py-20 text-center">
                         <div class="flex flex-col items-center gap-4">
                           <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center">
                             <.icon
@@ -284,6 +311,11 @@ defmodule KiteAgentHubWeb.TradesLive do
                       <tr class="hover:bg-white/[0.02] transition-colors group">
                         <td class="px-3 py-3 sm:px-6 sm:py-4 font-black whitespace-nowrap text-white text-sm tracking-tight">
                           {trade.market}
+                        </td>
+                        <td class="hidden lg:table-cell px-3 py-3 sm:px-4 sm:py-4 whitespace-nowrap">
+                          <span class="inline-flex px-2 py-1 rounded border border-cyan-500/20 bg-cyan-500/10 text-[10px] font-black uppercase tracking-widest text-cyan-300">
+                            {platform_label(trade.platform)}
+                          </span>
                         </td>
                         <td class="px-3 py-3 sm:px-4 sm:py-4 whitespace-nowrap">
                           <span class={[
@@ -305,8 +337,8 @@ defmodule KiteAgentHubWeb.TradesLive do
                         <td class="hidden sm:table-cell px-4 py-4 text-right tabular-nums font-mono text-sm text-gray-500 whitespace-nowrap">
                           {format_notional(trade.notional_usd)}
                         </td>
-                        <td class={"px-3 py-3 sm:px-4 sm:py-4 text-right tabular-nums text-sm font-mono whitespace-nowrap #{pnl_class(trade.realized_pnl)}"}>
-                          {format_pnl(trade.realized_pnl)}
+                        <td class={"px-3 py-3 sm:px-4 sm:py-4 text-right tabular-nums text-sm font-mono whitespace-nowrap #{pnl_class(trade.display_pnl)}"}>
+                          {format_pnl(trade.display_pnl)}
                         </td>
                         <td class="px-3 py-3 sm:px-4 sm:py-4 text-center whitespace-nowrap">
                           <span class={"inline-flex px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest #{status_classes(trade.status)}"}>
@@ -314,17 +346,56 @@ defmodule KiteAgentHubWeb.TradesLive do
                           </span>
                         </td>
                         <td class="hidden sm:table-cell px-4 py-4 text-center whitespace-nowrap">
-                          <%= if trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) do %>
+                          <%= if trade.attestation_tx_hash do %>
                             <a
-                              href={"https://testnet.kitescan.ai/tx/#{trade.tx_hash}"}
+                              href={attestation_url(trade.attestation_tx_hash)}
                               target="_blank"
-                              class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest transition-colors"
+                              rel="noopener noreferrer"
+                              title={"Kite chain attestation: " <> trade.attestation_tx_hash}
+                              class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest transition-colors"
                             >
-                              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                              Tx
+                              <svg
+                                class="w-3 h-3"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                                />
+                              </svg>
+                              Chain
                             </a>
                           <% else %>
-                            <span class="text-[10px] text-gray-700 font-mono">—</span>
+                            <%= if trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) do %>
+                              <a
+                                href={"https://testnet.kitescan.ai/tx/#{trade.tx_hash}"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={"Kite intent transaction: " <> trade.tx_hash}
+                                class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest transition-colors"
+                              >
+                                <svg
+                                  class="w-3 h-3"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                                  />
+                                </svg>
+                                Tx
+                              </a>
+                            <% else %>
+                              <span class="text-[10px] text-gray-700 font-mono">—</span>
+                            <% end %>
                           <% end %>
                         </td>
                         <td class="hidden md:table-cell px-3 py-3 sm:px-6 sm:py-4 text-right text-xs text-gray-500 tabular-nums whitespace-nowrap font-mono tracking-widest">
