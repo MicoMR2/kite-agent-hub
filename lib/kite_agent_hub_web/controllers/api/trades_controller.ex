@@ -194,9 +194,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
       {:ok, {key_id, secret, env}} ->
         case AlpacaClient.cancel_order(key_id, secret, order_id, env) do
           {:ok, result} ->
-            Logger.info(
-              "TradesController: alpaca cancel #{order_id} ok (#{inspect(result)})"
-            )
+            Logger.info("TradesController: alpaca cancel #{order_id} ok (#{inspect(result)})")
 
           {:error, reason} ->
             Logger.warning(
@@ -260,7 +258,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
   # legacy flows (no provider, or provider not in the allowlist) keep
   # the existing TradeExecutionWorker contract unchanged.
   defp build_job(params, agent) do
-    case Map.get(params, "provider") do
+    case normalize_provider(Map.get(params, "provider")) do
       p when p in @paper_providers ->
         with {:ok, args} <- validate_paper_params(params, agent, p) do
           {:ok, args, PaperExecutionWorker}
@@ -272,6 +270,9 @@ defmodule KiteAgentHubWeb.API.TradesController do
         end
     end
   end
+
+  defp normalize_provider("oanda"), do: "oanda_practice"
+  defp normalize_provider(provider), do: provider
 
   defp validate_paper_params(params, agent, provider) do
     symbol = params["symbol"] || params["market"]
@@ -330,6 +331,9 @@ defmodule KiteAgentHubWeb.API.TradesController do
       is_nil(market) ->
         {:error, "market is required"}
 
+      forex_market?(market) ->
+        {:error, "forex trades require provider=oanda_practice and symbol like EUR_USD"}
+
       is_nil(side) ->
         {:error, "side is required (long or short)"}
 
@@ -356,6 +360,10 @@ defmodule KiteAgentHubWeb.API.TradesController do
     end
   end
 
+  defp forex_market?(market) when is_binary(market),
+    do: Regex.match?(~r/\A[A-Z]{3}_[A-Z]{3}\z/, market)
+
+  defp forex_market?(_), do: false
 
   defp serialize_trade(trade) do
     %{
@@ -367,6 +375,8 @@ defmodule KiteAgentHubWeb.API.TradesController do
       fill_price: trade.fill_price,
       notional_usd: trade.notional_usd,
       status: trade.status,
+      platform: trade.platform,
+      platform_order_id: trade.platform_order_id,
       realized_pnl: trade.realized_pnl,
       tx_hash: trade.tx_hash,
       # PR #107: expose the Kite chain attestation tx hash so the agent

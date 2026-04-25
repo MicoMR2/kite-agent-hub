@@ -40,6 +40,7 @@ credentials, never sign trades yourself, and never call broker APIs directly.
 | Equities (`AAPL`) | Alpaca paper | Whole-share orders, `time_in_force=day`                  |
 | Crypto (`BTCUSD`) | Alpaca paper | `gtc` time_in_force, qty clamped to live position on sells |
 | Prediction mkts   | Kalshi       | Yes/no contracts                                         |
+| Forex (`EUR_USD`) | OANDA practice | Market orders using signed units                         |
 
 `AlpacaSettlementWorker` polls Alpaca every minute, flips trade status from
 `open` → `settled` once filled, then enqueues a Kite chain attestation job.
@@ -52,7 +53,11 @@ credentials, never sign trades yourself, and never call broker APIs directly.
 |--------|------|---------|
 | `GET`  | `/agents/me`                     | your profile + agent metadata |
 | `GET`  | `/edge-scores`                   | live QRB scores for every open position + exit/hold suggestions |
-| `GET`  | `/trades`                        | your trade history; each row includes `attestation_tx_hash` + `attestation_explorer_url` once attested |
+| `GET`  | `/trades`                        | your trade history; each row includes `platform`, `platform_order_id`, `attestation_tx_hash` + `attestation_explorer_url` once attested |
+| `GET`  | `/portfolio`                     | live Alpaca account, positions, portfolio history, and recent orders |
+| `GET`  | `/forex/portfolio`               | live OANDA account summary, positions, pricing, candles, and tradable instruments |
+| `GET`  | `/broker/orders?status=open`     | live Alpaca open orders |
+| `DELETE` | `/broker/orders/:id`            | cancel a live Alpaca open order that belongs to your org |
 | `POST` | `/trades`                        | submit a trade signal (see payload below) |
 | `GET`  | `/chat?after_id=<uuid>`          | read recent chat messages |
 | `GET`  | `/chat/wait?after_id=<uuid>`     | long-poll for chat, blocks up to 60s, 204 on timeout, 200 on new messages |
@@ -92,6 +97,51 @@ KAH handles the rest:
 
 Response is `202 Accepted` with the new trade id. Poll `GET /trades` to see
 status flip from `open` → `settled`.
+
+---
+
+## OANDA forex payload (`POST /trades`)
+
+OANDA forex uses the paper-provider payload. Do not send `EUR_USD` through the
+equity/crypto payload. The API rejects forex-shaped symbols unless the OANDA
+provider is explicit.
+
+```json
+{
+  "provider": "oanda_practice",
+  "symbol": "EUR_USD",
+  "side": "buy",
+  "units": 100,
+  "reason": "EUR momentum setup"
+}
+```
+
+| Field      | Semantics |
+|------------|-----------|
+| `provider` | Required for forex. Use `oanda_practice`. |
+| `symbol`   | OANDA instrument, for example `EUR_USD`, `GBP_USD`, or `USD_JPY`. |
+| `side`     | `"buy"` sends positive OANDA units. `"sell"` sends negative OANDA units. |
+| `units`    | Positive integer before KAH applies buy/sell direction. |
+| `reason`   | Concise rationale for logs and chat reports. |
+
+Current OANDA execution is practice mode only. Only Trade Agent can submit this
+payload.
+
+---
+
+## Stuck Alpaca order cleanup
+
+If a trade is stuck or a symbol such as `HAL` or `SLB` appears blocked:
+
+1. `GET /trades?status=open` and note `platform` plus `platform_order_id`.
+2. `GET /broker/orders?status=open` and compare against live Alpaca orders.
+3. If the live Alpaca order is stale and still open, cancel it with
+   `DELETE /broker/orders/:id`.
+4. Recheck `GET /portfolio` and `GET /trades` before submitting another order
+   for the same symbol.
+
+The Alpaca account card and `/portfolio` are the live broker source of truth.
+The `/trades` endpoint is the KAH audit trail.
 
 ---
 

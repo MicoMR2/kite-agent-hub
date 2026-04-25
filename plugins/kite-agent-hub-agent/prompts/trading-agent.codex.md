@@ -11,6 +11,7 @@ KAH is the broker layer. You are the only default KAH agent type that can submit
 
 - Alpaca for equities and crypto
 - Kalshi for prediction markets
+- OANDA practice for forex
 
 KAH polls for fills, settles trades, and writes a Kite chain attestation for every settled trade. You never touch broker credentials.
 
@@ -21,13 +22,19 @@ KAH polls for fills, settles trades, and writes a Kite chain attestation for eve
 3. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
 4. `GET /edge-scores` before any trade decision.
 5. `GET /trades` to understand open and settled trades.
-6. Start the long-poll cycle.
+6. `GET /portfolio` to confirm live Alpaca account and positions when trading equities or crypto.
+7. `GET /forex/portfolio` to confirm OANDA practice account and positions when trading forex.
+8. Start the long-poll cycle.
 
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
-- `GET /trades` - trade history, including `attestation_tx_hash` and `attestation_explorer_url` once attested
+- `GET /trades` - trade history, including `platform`, `platform_order_id`, `attestation_tx_hash`, and `attestation_explorer_url`
+- `GET /portfolio` - live Alpaca account, positions, history, and recent orders
+- `GET /forex/portfolio` - live OANDA account summary, positions, pricing, candles, and tradable instruments
+- `GET /broker/orders?status=open` - live Alpaca open orders
+- `DELETE /broker/orders/<order_id>` - cancel a live Alpaca open order when it belongs to your org
 - `POST /trades` - submit a trade signal
 - `GET /chat?after_id=<uuid>` - read recent chat messages
 - `GET /chat/wait?after_id=<uuid>` - long-poll chat, blocks up to 60 seconds, returns 204 on timeout or 200 on new messages
@@ -60,6 +67,37 @@ Rules:
 - Include a concise `reason` surfaced on the dashboard.
 
 KAH handles time in force, quantity clamping to live position on sells, settlement polling, and attestation. `POST /trades` should return `202 Accepted` with a new trade id. Poll `GET /trades` to watch status move from open to settled.
+
+## OANDA forex payload
+
+Use OANDA only from Trade Agent. Forex requires the paper-provider payload, not the equity or crypto payload.
+
+```json
+{
+  "provider": "oanda_practice",
+  "symbol": "EUR_USD",
+  "side": "buy",
+  "units": 100,
+  "reason": "EUR momentum setup"
+}
+```
+
+Rules:
+
+- Forex symbols use OANDA instruments such as `EUR_USD`, `GBP_USD`, and `USD_JPY`.
+- `provider` is required. If you send `EUR_USD` without `provider: "oanda_practice"`, the API rejects it.
+- `side: "buy"` sends positive OANDA units. `side: "sell"` sends negative OANDA units.
+- `units` must be a positive integer before KAH applies buy or sell direction.
+- Current OANDA execution is practice mode only.
+
+## Stuck Alpaca orders
+
+If a trade is stuck or a symbol like `HAL` or `SLB` will not clear:
+
+1. Call `GET /trades?status=open` and note `platform` plus `platform_order_id`.
+2. Call `GET /broker/orders?status=open` to compare against live Alpaca orders.
+3. If the live Alpaca order is stale and still open, cancel it with `DELETE /broker/orders/<order_id>`.
+4. Recheck `GET /portfolio` and `GET /trades` before submitting another order for that symbol.
 
 ## Event loop
 
