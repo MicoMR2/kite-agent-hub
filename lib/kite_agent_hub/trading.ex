@@ -182,6 +182,89 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
+  @doc """
+  List trades with a `:display_pnl` value for UI rows.
+
+  Broker-settled Alpaca rows historically stored `realized_pnl = 0`
+  as a settlement placeholder. The dashboard aggregate is broker-derived,
+  so the trade-history UI needs a row-level realized P&L that does not
+  blindly render that placeholder. We compute FIFO P&L for settled sell
+  rows from the agent's settled trade fills and keep buys/open rows as
+  nil because they have no realized P&L yet.
+  """
+  def list_trades_with_display_pnl(agent_id, opts \\ []) do
+    display_pnl_by_id = display_pnl_by_trade_id(agent_id)
+
+    agent_id
+    |> list_trades(opts)
+    |> Enum.map(fn trade ->
+      Map.put(trade, :display_pnl, Map.get(display_pnl_by_id, trade.id))
+    end)
+  end
+
+  defp display_pnl_by_trade_id(agent_id) do
+    TradeRecord
+    |> where([t], t.kite_agent_id == ^agent_id)
+    |> where([t], t.status == "settled")
+    |> order_by([t], asc: t.inserted_at)
+    |> Repo.all()
+    |> Enum.reduce({%{}, %{}}, fn trade, {lots_by_market, pnl_by_id} ->
+      key = {trade.platform || "kite", trade.market}
+
+      case trade.action do
+        "buy" ->
+          lot = {Decimal.new(trade.contracts || 0), trade.fill_price}
+          {Map.update(lots_by_market, key, [lot], &(&1 ++ [lot])), pnl_by_id}
+
+        "sell" ->
+          lots = Map.get(lots_by_market, key, [])
+          qty = Decimal.new(trade.contracts || 0)
+          {pnl, remaining_lots} = consume_fifo_lots(lots, qty, trade.fill_price, Decimal.new(0))
+
+          pnl =
+            case nonzero_decimal(trade.realized_pnl) do
+              nil -> pnl
+              stored -> stored
+            end
+
+          {
+            Map.put(lots_by_market, key, remaining_lots),
+            Map.put(pnl_by_id, trade.id, pnl)
+          }
+
+        _ ->
+          {lots_by_market, pnl_by_id}
+      end
+    end)
+    |> elem(1)
+  end
+
+  defp consume_fifo_lots([], _qty_left, _sell_price, acc), do: {acc, []}
+
+  defp consume_fifo_lots([{lot_qty, lot_price} | rest], qty_left, sell_price, acc) do
+    if Decimal.compare(qty_left, 0) == :gt do
+      qty_used = Decimal.min(lot_qty, qty_left)
+      pnl = sell_price |> Decimal.sub(lot_price) |> Decimal.mult(qty_used)
+      remaining_qty = Decimal.sub(lot_qty, qty_used)
+      remaining_to_close = Decimal.sub(qty_left, qty_used)
+      next_acc = Decimal.add(acc, pnl)
+
+      if Decimal.compare(remaining_qty, 0) == :gt do
+        {next_acc, [{remaining_qty, lot_price} | rest]}
+      else
+        consume_fifo_lots(rest, remaining_to_close, sell_price, next_acc)
+      end
+    else
+      {acc, [{lot_qty, lot_price} | rest]}
+    end
+  end
+
+  defp nonzero_decimal(nil), do: nil
+
+  defp nonzero_decimal(decimal) do
+    if Decimal.equal?(decimal, 0), do: nil, else: decimal
+  end
+
   def list_open_trades(agent_id) do
     list_trades(agent_id, status: "open", limit: 200)
   end
