@@ -88,11 +88,16 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
           "SettlementWorker: tx #{tx_hash} reverted, marking trade #{trade.id} failed"
         )
 
-        trade
-        |> TradeRecord.changeset(%{status: "failed"})
-        |> Repo.update()
+        case trade
+             |> TradeRecord.changeset(%{status: "failed"})
+             |> Repo.update() do
+          {:ok, updated} ->
+            _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
+            :ok
 
-        :ok
+          _ ->
+            :ok
+        end
 
       {:ok, nil} ->
         # Not mined yet — snooze with exponential backoff

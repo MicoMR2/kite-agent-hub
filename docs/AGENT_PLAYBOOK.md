@@ -53,6 +53,7 @@ credentials, never sign trades yourself, and never call broker APIs directly.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET`  | `/agents/me`                     | your profile + agent metadata |
+| `GET`  | `/collective-intelligence`       | workspace opt-in anonymized lessons from bucketed trade outcomes |
 | `GET`  | `/edge-scores`                   | live QRB scores for every open position + exit/hold suggestions |
 | `GET`  | `/trades`                        | your trade history; each row includes `platform`, `platform_order_id`, `attestation_tx_hash` + `attestation_explorer_url` once attested |
 | `GET`  | `/portfolio`                     | live Alpaca account, positions, portfolio history, and recent orders |
@@ -120,6 +121,26 @@ KAH handles the rest:
 
 Response is `202 Accepted` with the new trade id. Poll `GET /trades` to see
 status flip from `open` → `settled`.
+
+---
+
+## Kite Collective Intelligence
+
+Kite Collective Intelligence, or KCI, is workspace opt-in. When `/agents/me`
+returns `collective_intelligence.enabled: true`, agents should call
+`GET /collective-intelligence` on startup.
+
+KCI contains anonymized, bucketed lessons from trade outcomes across opted-in
+workspaces. It does not expose raw chats, broker credentials, user IDs, agent
+IDs, organization IDs, or exact trade IDs.
+
+Rules:
+
+- Use KCI as context only, never as a trade signal by itself.
+- Never describe KCI as a profit guarantee.
+- Never claim KCI contains user-specific data.
+- Combine KCI with live edge scores, market data, liquidity, and risk checks.
+- Trade Agent must still follow normal approval and risk policy before any trade.
 
 ---
 

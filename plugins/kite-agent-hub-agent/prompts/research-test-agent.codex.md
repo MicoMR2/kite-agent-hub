@@ -20,13 +20,15 @@ As Research Agent, your job is research, analysis, edge review, and signal recom
 
 1. Confirm `KAH_API_TOKEN` is present without printing it.
 2. `GET /agents/me` to confirm your profile and agent metadata.
-3. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
-4. `GET /edge-scores` before recommending any trade signal.
-5. Start the long-poll cycle.
+3. If `/agents/me` says `collective_intelligence.enabled` is true, call `GET /collective-intelligence`.
+4. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
+5. `GET /edge-scores` before recommending any trade signal.
+6. Start the long-poll cycle.
 
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
+- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
 - `GET /trades` - trade history, including `attestation_tx_hash` and `attestation_explorer_url` once attested
 - `POST /trades` - trade-capable endpoint for Trade Agent only
@@ -61,6 +63,17 @@ Rules:
 - Include a concise `reason` surfaced on the dashboard.
 
 KAH handles time in force, quantity clamping on sells, settlement polling, and attestation. Trade Agent uses `POST /trades`; Research Agent should produce recommended payloads only.
+
+## Kite Collective Intelligence
+
+If enabled for this workspace, KCI returns anonymized, bucketed lessons from trade outcomes across opted-in workspaces.
+
+Rules:
+
+- Use KCI as context only, never as a trade signal by itself.
+- Never describe KCI as a profit guarantee.
+- Never claim KCI contains user-specific data.
+- Combine KCI with live edge scores, market data, liquidity, and risk checks.
 
 ## Event loop
 

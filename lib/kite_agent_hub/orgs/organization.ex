@@ -8,6 +8,9 @@ defmodule KiteAgentHub.Orgs.Organization do
   schema "organizations" do
     field :name, :string
     field :slug, :string
+    field :collective_intelligence_enabled, :boolean, default: false
+    field :collective_intelligence_consented_at, :utc_datetime
+    field :collective_intelligence_consent_version, :string
 
     has_many :memberships, KiteAgentHub.Orgs.Membership
     has_many :users, through: [:memberships, :user]
@@ -25,5 +28,15 @@ defmodule KiteAgentHub.Orgs.Organization do
     )
     |> validate_length(:slug, min: 2, max: 60)
     |> unique_constraint(:slug)
+  end
+
+  def collective_intelligence_changeset(org, attrs) do
+    org
+    |> cast(attrs, [
+      :collective_intelligence_enabled,
+      :collective_intelligence_consented_at,
+      :collective_intelligence_consent_version
+    ])
+    |> validate_required([:collective_intelligence_enabled])
   end
 end

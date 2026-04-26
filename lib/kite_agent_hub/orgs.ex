@@ -1,6 +1,6 @@
 defmodule KiteAgentHub.Orgs do
   import Ecto.Query
-  alias KiteAgentHub.Repo
+  alias KiteAgentHub.{CollectiveIntelligence, Repo}
   alias KiteAgentHub.Orgs.{Organization, Membership}
 
   def get_org!(id), do: Repo.get!(Organization, id)
@@ -48,6 +48,63 @@ defmodule KiteAgentHub.Orgs do
       {:error, _, _, _} -> {:error, :failed}
     end
   end
+
+  def can_manage_org?(user_id, org_id) do
+    Repo.with_user(user_id, fn ->
+      Membership
+      |> where([m], m.user_id == ^user_id)
+      |> where([m], m.organization_id == ^org_id)
+      |> where([m], m.role in ["owner", "admin"])
+      |> Repo.exists?()
+    end)
+    |> case do
+      {:ok, result} -> result
+      _ -> false
+    end
+  end
+
+  def update_collective_intelligence(user, org_id, enabled) when is_boolean(enabled) do
+    if can_manage_org?(user.id, org_id) do
+      attrs =
+        if enabled do
+          %{
+            collective_intelligence_enabled: true,
+            collective_intelligence_consented_at: DateTime.utc_now(:second),
+            collective_intelligence_consent_version: CollectiveIntelligence.consent_version()
+          }
+        else
+          %{
+            collective_intelligence_enabled: false,
+            collective_intelligence_consented_at: nil,
+            collective_intelligence_consent_version: nil
+          }
+        end
+
+      result =
+        Repo.with_user(user.id, fn ->
+          org_id
+          |> get_org!()
+          |> Organization.collective_intelligence_changeset(attrs)
+          |> Repo.update()
+        end)
+
+      case result do
+        {:ok, {:ok, org}} ->
+          if not enabled, do: CollectiveIntelligence.purge_org_contributions(org.id)
+          {:ok, org}
+
+        {:ok, {:error, changeset}} ->
+          {:error, changeset}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  def update_collective_intelligence(_user, _org_id, _enabled), do: {:error, :invalid_enabled}
 
   defp slugify(name) do
     name

@@ -154,17 +154,31 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
   defp handle_status(trade, status, _order) when status in ["canceled", "expired"] do
     Logger.info("AlpacaSettlementWorker: trade #{trade.id} #{status} — marking cancelled")
 
-    trade
-    |> TradeRecord.changeset(%{status: "cancelled"})
-    |> Repo.update()
+    case trade
+         |> TradeRecord.changeset(%{status: "cancelled"})
+         |> Repo.update() do
+      {:ok, updated} ->
+        _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
+        {:ok, updated}
+
+      other ->
+        other
+    end
   end
 
   defp handle_status(trade, "rejected", _order) do
     Logger.warning("AlpacaSettlementWorker: trade #{trade.id} REJECTED — marking failed")
 
-    trade
-    |> TradeRecord.changeset(%{status: "failed"})
-    |> Repo.update()
+    case trade
+         |> TradeRecord.changeset(%{status: "failed"})
+         |> Repo.update() do
+      {:ok, updated} ->
+        _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
+        {:ok, updated}
+
+      other ->
+        other
+    end
   end
 
   # done_for_day and replaced are non-terminal but rare — log a warning

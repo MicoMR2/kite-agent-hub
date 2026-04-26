@@ -116,12 +116,18 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
             # see what went wrong on the next GET /trades. Don't try to
             # write a non-string reason — Alpaca returns nested maps that
             # would explode the string column.
-            trade
-            |> KiteAgentHub.Trading.TradeRecord.changeset(%{
-              status: "failed",
-              reason: format_failure_reason(reason)
-            })
-            |> Repo.update()
+            case trade
+                 |> KiteAgentHub.Trading.TradeRecord.changeset(%{
+                   status: "failed",
+                   reason: format_failure_reason(reason)
+                 })
+                 |> Repo.update() do
+              {:ok, updated} ->
+                _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
+
+              _ ->
+                :ok
+            end
 
           :noop ->
             :ok
