@@ -36,6 +36,9 @@ defmodule KiteAgentHubWeb.Layouts do
   def app(assigns) do
     ~H"""
     <.flash_group flash={@flash} />
+    <div class="fixed bottom-4 right-4 z-[80]">
+      <.theme_toggle />
+    </div>
     {render_slot(@inner_block)}
     """
   end
@@ -90,29 +93,38 @@ defmodule KiteAgentHubWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
+    <div class="kah-theme-toggle relative flex flex-row items-center rounded-full border border-white/10 bg-black/40 p-1 shadow-[0_0_24px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+      <div class="absolute left-1 top-1 h-[calc(100%-0.5rem)] w-1/3 rounded-full border border-white/15 bg-white/15 transition-transform duration-200 ease-out [[data-theme-mode=light]_&]:translate-x-full [[data-theme-mode=dark]_&]:translate-x-[200%]" />
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="relative z-10 flex w-9 cursor-pointer justify-center p-2"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
+        type="button"
+        title="Use system theme"
+        aria-label="Use system theme"
       >
         <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="relative z-10 flex w-9 cursor-pointer justify-center p-2"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
+        type="button"
+        title="Use light mode"
+        aria-label="Use light mode"
       >
         <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="relative z-10 flex w-9 cursor-pointer justify-center p-2"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
+        type="button"
+        title="Use dark mode"
+        aria-label="Use dark mode"
       >
         <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
       </button>
