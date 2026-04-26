@@ -58,6 +58,17 @@ defmodule KiteAgentHubWeb.WorkspaceLive do
         <KiteAgentHubWeb.SettingsNav.render active={:workspace} />
 
         <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+          <%!-- Appearance / theme --%>
+          <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 class="text-sm font-black text-white uppercase tracking-widest mb-1">Appearance</h2>
+                <p class="text-xs text-gray-500">System follows your OS, or pick light or dark explicitly. Saved on this device.</p>
+              </div>
+              <Layouts.theme_toggle />
+            </div>
+          </div>
+
           <%!-- Workspaces list --%>
           <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
             <h2 class="text-sm font-black text-white uppercase tracking-widest mb-1">Your Workspaces</h2>

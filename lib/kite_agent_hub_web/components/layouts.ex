@@ -36,9 +36,6 @@ defmodule KiteAgentHubWeb.Layouts do
   def app(assigns) do
     ~H"""
     <.flash_group flash={@flash} />
-    <div class="fixed bottom-4 right-4 z-[80]">
-      <.theme_toggle />
-    </div>
     {render_slot(@inner_block)}
     """
   end
