@@ -12,6 +12,8 @@ defmodule KiteAgentHub.Accounts.User do
     field :first_name, :string
     field :last_name, :string
     field :onboarding_completed_at, :utc_datetime
+    field :accepted_terms_at, :utc_datetime
+    field :accept_terms, :boolean, virtual: true
 
     timestamps(type: :utc_datetime)
   end
@@ -116,10 +118,33 @@ defmodule KiteAgentHub.Accounts.User do
   """
   def registration_changeset(user, attrs, opts \\ []) do
     user
-    |> cast(attrs, [:email, :password])
+    |> cast(attrs, [:email, :password, :accept_terms])
     |> validate_email(opts)
     |> validate_confirmation(:password, message: "does not match password")
     |> validate_password(opts)
+    |> validate_terms_acceptance(opts)
+  end
+
+  # Server-side check on the registration acceptance checkbox so a
+  # client-side bypass (curl POST without the field) cannot create an
+  # account. accepted_terms_at is set to utc_now/0 only on a valid
+  # changeset and is never sourced from client params.
+  defp validate_terms_acceptance(changeset, opts) do
+    if Keyword.get(opts, :require_terms_acceptance, true) do
+      case get_field(changeset, :accept_terms) do
+        true ->
+          put_change(changeset, :accepted_terms_at, DateTime.utc_now(:second))
+
+        _ ->
+          add_error(
+            changeset,
+            :accept_terms,
+            "you must accept the Terms of Service and Privacy Policy"
+          )
+      end
+    else
+      changeset
+    end
   end
 
   @doc """

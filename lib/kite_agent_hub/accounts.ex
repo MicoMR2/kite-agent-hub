@@ -128,7 +128,14 @@ defmodule KiteAgentHub.Accounts do
   end
 
   def change_user_registration(%User{} = user, attrs \\ %{}) do
-    User.registration_changeset(user, attrs, hash_password: false, validate_unique: false)
+    # Skip the terms-acceptance check for live form-render changesets;
+    # the controller still calls registration_changeset/3 with default
+    # opts on submit so the server-side check fires before insert.
+    User.registration_changeset(user, attrs,
+      hash_password: false,
+      validate_unique: false,
+      require_terms_acceptance: false
+    )
   end
 
   ## Settings

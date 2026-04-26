@@ -37,6 +37,24 @@ defmodule KiteAgentHubWeb.Layouts do
     ~H"""
     <.flash_group flash={@flash} />
     {render_slot(@inner_block)}
+    <.legal_footer />
+    """
+  end
+
+  @doc """
+  Footer with links to the legal pages. Rendered on every authenticated
+  app surface (via `Layouts.app/1`) and embedded in the public pages
+  (Home, Onboard, Login, Register) so /terms and /privacy are reachable
+  from anywhere.
+  """
+  def legal_footer(assigns) do
+    ~H"""
+    <footer class="mt-12 py-6 border-t border-white/[0.06] text-[10px] text-gray-600 flex flex-wrap justify-center gap-x-6 gap-y-2">
+      <a href="/terms" class="hover:text-white transition-colors">Terms</a>
+      <a href="/privacy" class="hover:text-white transition-colors">Privacy</a>
+      <a href="/disclaimer" class="hover:text-white transition-colors">Risk Disclosure</a>
+      <span class="text-gray-700">© 2026 Kite Agent Hub</span>
+    </footer>
     """
   end
 
