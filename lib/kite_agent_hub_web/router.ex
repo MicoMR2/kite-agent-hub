@@ -24,6 +24,11 @@ defmodule KiteAgentHubWeb.Router do
       live "/", HomeLive
       live "/onboard", OnboardLive
     end
+
+    # Static legal pages — public, no auth, light/legal-doc styling.
+    get "/terms", LegalController, :terms
+    get "/privacy", LegalController, :privacy
+    get "/disclaimer", LegalController, :disclaimer
   end
 
   # External agent API — stateless JSON, auth via Bearer wallet_address

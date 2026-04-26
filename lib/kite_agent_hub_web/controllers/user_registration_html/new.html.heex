@@ -53,6 +53,27 @@
               />
             </div>
 
+            <div>
+              <label class="flex items-start gap-3 text-xs text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="user[accept_terms]"
+                  value="true"
+                  required
+                  class="mt-0.5 h-4 w-4 rounded border-white/30 bg-white/[0.07] text-violet-500 focus:ring-violet-500/40"
+                />
+                <span>
+                  I agree to the
+                  <a href="/terms" target="_blank" class="text-violet-400 hover:text-violet-300 underline">Terms of Service</a>
+                  and
+                  <a href="/privacy" target="_blank" class="text-violet-400 hover:text-violet-300 underline">Privacy Policy</a>.
+                </span>
+              </label>
+              <%= if msg = @changeset.errors[:accept_terms] do %>
+                <p class="mt-1 text-xs text-red-400">{translate_error(msg)}</p>
+              <% end %>
+            </div>
+
             <button
               type="submit"
               phx-disable-with="Creating account..."

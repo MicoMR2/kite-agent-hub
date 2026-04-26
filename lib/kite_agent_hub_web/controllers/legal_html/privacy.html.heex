@@ -1,0 +1,73 @@
+<h1 class="text-3xl font-bold mb-2">Privacy Policy</h1>
+<p class="text-sm text-gray-500 mb-8">Effective {@effective_date}</p>
+
+<p>
+  This Privacy Policy explains what data Kite Agent Hub ("KAH") collects, how it is used, and the controls you have over it. By using KAH you agree to this policy along with our <a href="/terms" class="underline">Terms of Service</a>.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">1. Account Data</h2>
+<p>
+  When you register we store your email, a Bcrypt-hashed password, the date and time you accepted the Terms (<code>accepted_terms_at</code>), and any optional profile fields you provide. Passwords are never stored in plaintext.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">2. Workspaces &amp; Trade Data</h2>
+<p>
+  Each workspace owns its own agents, trades, and broker credentials. We store:
+</p>
+<ul class="list-disc pl-6 space-y-1">
+  <li>Agent metadata (name, type, status) and a generated API token used to authenticate agent calls.</li>
+  <li>Trade records (symbol, side, action, quantity, fill price, status, realized P&amp;L, timestamps, and any platform order IDs).</li>
+  <li>Optional Kite chain attestation hashes for settled trades.</li>
+</ul>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">3. Wallets &amp; On-Chain Data</h2>
+<p>
+  Trading agents may be assigned a wallet address. Wallet addresses are public chain identifiers; transactions broadcast through them are visible on the underlying blockchain. Private keys are encrypted at rest and never exposed through the API.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">4. Broker Credentials &amp; API Tokens</h2>
+<p>
+  Broker API keys (Alpaca, Kalshi, Polymarket, OANDA, etc.) are encrypted at rest using AES-256-GCM with keys derived from server-side secrets. They are decrypted in memory only at the moment a trade is dispatched. Agent API tokens are scoped to a single agent and can be rotated or revoked from the dashboard.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">5. Kite Collective Intelligence (KCI)</h2>
+<p>
+  KCI is workspace opt-in and disabled by default. When a workspace opts in, KAH stores <strong>anonymized, bucketed</strong> trade outcome features in a shared learning table:
+</p>
+<ul class="list-disc pl-6 space-y-1">
+  <li>HMAC-SHA256 source hashes (org and trade) keyed off a dedicated server-side salt — one-way, not reversible to your account.</li>
+  <li>Agent type, platform, market class, side, action, terminal status, outcome bucket (profit / loss / flat / cancelled / failed).</li>
+  <li>Bucketed notional and hold-time windows.</li>
+  <li>The week the trade was observed.</li>
+</ul>
+<p>
+  KCI <strong>never</strong> stores raw user IDs, agent IDs, organization IDs, exact trade IDs, raw chat content, broker credentials, API tokens, raw strategy text, or free-form trade reasons. Disabling KCI for a workspace immediately stops future contribution and purges that workspace's prior anonymized contributions via the org hash. KCI is decision-support context, not financial advice, and does not guarantee profit.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">6. Cookies &amp; Sessions</h2>
+<p>
+  We use a single signed session cookie to keep you logged in. We do not use third-party advertising cookies. Theme preference (light / dark) is stored in <code>localStorage</code> on your device.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">7. Email</h2>
+<p>
+  We use email only to verify accounts, deliver login instructions, and send security or platform notifications. We do not sell or rent your email address.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">8. Third Parties</h2>
+<p>
+  Trades are routed to third-party broker APIs (Alpaca, Kalshi, Polymarket, OANDA) and on-chain venues at your direction. Their privacy practices govern any data they receive. We do not share your account data with third parties for marketing.
+</p>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">9. Your Controls</h2>
+<ul class="list-disc pl-6 space-y-1">
+  <li>Disconnect a broker at any time from the API Keys settings page.</li>
+  <li>Rotate or delete an agent (and revoke its token) from the Agents settings page.</li>
+  <li>Toggle KCI on or off per workspace at any time.</li>
+  <li>Request account deletion via the support channel; we will remove your account data and purge any KCI contributions tied to your workspace.</li>
+</ul>
+
+<h2 class="text-xl font-semibold mt-10 mb-3">10. Changes</h2>
+<p>
+  We may update this Privacy Policy. The "Effective" date above tracks the most recent change. Continued use of KAH after an update constitutes acceptance.
+</p>

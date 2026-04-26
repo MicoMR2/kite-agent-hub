@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title>
+      {assigns[:page_title] || "Kite Agent Hub"}
+    </.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+  </head>
+  <body class="bg-white text-gray-900 antialiased">
+    <div class="max-w-3xl mx-auto px-6 py-12">
+      <header class="border-b border-gray-200 pb-6 mb-8">
+        <a href="/" class="text-sm font-semibold text-gray-600 hover:text-gray-900">
+          ← Back to Kite Agent Hub
+        </a>
+      </header>
+
+      <main class="legal-doc text-[15px] leading-7">
+        {@inner_content}
+      </main>
+
+      <footer class="mt-16 pt-8 border-t border-gray-200 text-xs text-gray-500 flex flex-wrap gap-x-6 gap-y-2">
+        <a href="/" class="hover:text-gray-900">Home</a>
+        <a href="/terms" class="hover:text-gray-900">Terms</a>
+        <a href="/privacy" class="hover:text-gray-900">Privacy</a>
+        <a href="/disclaimer" class="hover:text-gray-900">Risk Disclosure</a>
+        <span class="text-gray-400">© 2026 Kite Agent Hub</span>
+      </footer>
+    </div>
+  </body>
+</html>
