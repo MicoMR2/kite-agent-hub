@@ -92,19 +92,44 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   Returns {:ok, %{id, ticker, side, count, status}} or {:error, reason}.
   """
-  def place_order(key_id, pem, ticker, side, count, price, env \\ "paper") do
-    body = %{
-      "ticker" => ticker,
-      "action" => "buy",
-      "side" => side,
-      "count" => count,
-      "type" => "limit",
-      "yes_price" => if(side == "yes", do: price, else: 100 - price),
-      "no_price" => if(side == "no", do: price, else: 100 - price)
-    }
+  def place_order(key_id, pem, ticker, side, count, price, env \\ "paper", opts \\ []) do
+    with {:ok, body} <- order_body(ticker, side, count, price, opts) do
+      post("/portfolio/orders", body, key_id, pem, env)
+      |> parse_placed_order()
+    end
+  end
 
-    post("/portfolio/orders", body, key_id, pem, env)
-    |> parse_placed_order()
+  @doc false
+  def order_body(ticker, side, count, price, opts \\ []) do
+    opts = normalize_opts(opts)
+    action = normalize_action(opts["action"] || "buy")
+
+    with {:ok, price_cents} <- normalize_price(price) do
+      body =
+        %{
+          "ticker" => ticker,
+          "action" => action,
+          "side" => side,
+          "count" => count,
+          "type" => normalize_order_type(opts["order_type"] || opts["type"] || "limit")
+        }
+        |> put_kalshi_prices(side, price_cents, opts)
+        |> put_optional("client_order_id", opts["client_order_id"])
+        |> put_optional("count_fp", opts["count_fp"])
+        |> put_optional("yes_price_dollars", opts["yes_price_dollars"])
+        |> put_optional("no_price_dollars", opts["no_price_dollars"])
+        |> put_optional("expiration_ts", parse_int(opts["expiration_ts"]))
+        |> put_optional("time_in_force", normalize_time_in_force(opts["time_in_force"]))
+        |> put_optional("buy_max_cost", parse_int(opts["buy_max_cost"]))
+        |> put_optional("post_only", parse_bool(opts["post_only"]))
+        |> put_optional("reduce_only", reduce_only_value(action, opts["reduce_only"]))
+        |> put_optional("self_trade_prevention_type", opts["self_trade_prevention_type"])
+        |> put_optional("order_group_id", opts["order_group_id"])
+        |> put_optional("cancel_order_on_pause", parse_bool(opts["cancel_order_on_pause"]))
+        |> put_optional("subaccount", parse_int(opts["subaccount"]))
+
+      {:ok, body}
+    end
   end
 
   @doc "Fetch recent fills (trade history). Returns list of fill maps."
@@ -151,6 +176,105 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
+  defp put_kalshi_prices(body, side, price_cents, opts) do
+    yes_price = normalize_price_value(opts["yes_price"])
+    no_price = normalize_price_value(opts["no_price"])
+
+    body
+    |> Map.put(
+      "yes_price",
+      yes_price || if(side == "yes", do: price_cents, else: 100 - price_cents)
+    )
+    |> Map.put("no_price", no_price || if(side == "no", do: price_cents, else: 100 - price_cents))
+  end
+
+  defp normalize_action("sell"), do: "sell"
+  defp normalize_action(_), do: "buy"
+
+  defp normalize_order_type(type) when is_binary(type),
+    do: type |> String.trim() |> String.downcase()
+
+  defp normalize_order_type(type), do: type |> to_string() |> String.downcase()
+
+  defp normalize_time_in_force(nil), do: nil
+
+  defp normalize_time_in_force(value) when is_binary(value),
+    do: value |> String.trim() |> String.downcase()
+
+  defp normalize_time_in_force(value), do: to_string(value)
+
+  defp reduce_only_value("sell", nil), do: true
+  defp reduce_only_value(_action, value), do: parse_bool(value)
+
+  defp normalize_price(price) do
+    case normalize_price_value(price) do
+      cents when is_integer(cents) and cents in 1..99 -> {:ok, cents}
+      _ -> {:error, "kalshi price must be between 1 and 99 cents"}
+    end
+  end
+
+  defp normalize_price_value(nil), do: nil
+  defp normalize_price_value(price) when is_integer(price), do: price
+
+  defp normalize_price_value(price) when is_float(price) and price > 0 and price <= 1,
+    do: round(price * 100)
+
+  defp normalize_price_value(price) when is_float(price), do: round(price)
+
+  defp normalize_price_value(price) when is_binary(price) do
+    price = String.trim(price)
+
+    cond do
+      price == "" ->
+        nil
+
+      String.contains?(price, ".") ->
+        case Float.parse(price) do
+          {value, ""} when value > 0 and value <= 1 -> round(value * 100)
+          {value, ""} -> round(value)
+          _ -> nil
+        end
+
+      true ->
+        case Integer.parse(price) do
+          {value, ""} -> value
+          _ -> nil
+        end
+    end
+  end
+
+  defp normalize_price_value(_price), do: nil
+
+  defp parse_int(nil), do: nil
+  defp parse_int(value) when is_integer(value), do: value
+
+  defp parse_int(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+
+  defp parse_int(_value), do: nil
+
+  defp parse_bool(nil), do: nil
+  defp parse_bool(value) when is_boolean(value), do: value
+  defp parse_bool("true"), do: true
+  defp parse_bool("false"), do: false
+  defp parse_bool(value), do: value
+
+  defp normalize_opts(opts) when is_map(opts),
+    do: Map.new(opts, fn {key, value} -> {to_string(key), value} end)
+
+  defp normalize_opts(opts) when is_list(opts),
+    do: Map.new(opts, fn {key, value} -> {to_string(key), value} end)
+
+  defp normalize_opts(_opts), do: %{}
+
+  defp put_optional(map, _key, nil), do: map
+  defp put_optional(map, _key, ""), do: map
+  defp put_optional(map, key, value), do: Map.put(map, key, value)
+
   defp post(path, body, key_id, pem, env) do
     ts_ms = System.os_time(:millisecond)
     full_path = @api_prefix <> path
@@ -165,10 +289,17 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
         ]
 
         case Req.post(base_host(env) <> full_path, json: body, headers: headers) do
-          {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
-          {:ok, %{status: 401, body: resp_body}} -> {:error, "kalshi 401: #{inspect(resp_body)}"}
-          {:ok, %{status: status, body: resp_body}} -> {:error, "kalshi #{status}: #{inspect(resp_body)}"}
-          {:error, reason} -> {:error, "kalshi HTTP: #{inspect(reason)}"}
+          {:ok, %{status: s, body: resp_body}} when s in [200, 201] ->
+            {:ok, resp_body}
+
+          {:ok, %{status: 401, body: resp_body}} ->
+            {:error, "kalshi 401: #{inspect(resp_body)}"}
+
+          {:ok, %{status: status, body: resp_body}} ->
+            {:error, "kalshi #{status}: #{inspect(resp_body)}"}
+
+          {:error, reason} ->
+            {:error, "kalshi HTTP: #{inspect(reason)}"}
         end
 
       {:error, reason} ->
@@ -229,7 +360,10 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     has_begin = String.contains?(normalized_pem, "BEGIN")
     pem_len = String.length(normalized_pem)
     line_count = normalized_pem |> String.split("\n") |> length()
-    Logger.info("Kalshi: PEM diagnostics — length=#{pem_len}, lines=#{line_count}, has_BEGIN=#{has_begin}")
+
+    Logger.info(
+      "Kalshi: PEM diagnostics — length=#{pem_len}, lines=#{line_count}, has_BEGIN=#{has_begin}"
+    )
 
     try do
       entries = :public_key.pem_decode(normalized_pem)
@@ -272,7 +406,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       contracts: p["position"] || 0,
       avg_price: (p["average_price"] || 0) / 100.0,
       current_price: (p["last_price"] || 0) / 100.0,
-      value: ((p["position"] || 0) * (p["last_price"] || 0)) / 100.0,
+      value: (p["position"] || 0) * (p["last_price"] || 0) / 100.0,
       settled: p["settled"] || false
     }
   end

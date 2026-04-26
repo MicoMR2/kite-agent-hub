@@ -44,7 +44,12 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   Returns {:ok, [%{t: unix_ts, v: equity_float}]} or {:error, reason}.
   """
   def portfolio_history(key_id, secret, period \\ "1M", timeframe \\ "1D", env \\ "paper") do
-    case get("/v2/account/portfolio/history?period=#{period}&timeframe=#{timeframe}", key_id, secret, env) do
+    case get(
+           "/v2/account/portfolio/history?period=#{period}&timeframe=#{timeframe}",
+           key_id,
+           secret,
+           env
+         ) do
       {:ok, %{"timestamp" => ts, "equity" => equity}} when is_list(ts) ->
         points =
           Enum.zip(ts, equity)
@@ -349,17 +354,34 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
 
   Returns {:ok, %{id, symbol, side, qty, status}} or {:error, reason}.
   """
-  def place_order(key_id, secret, symbol, qty, side \\ "buy", env \\ "paper") do
-    body = %{
-      "symbol" => symbol,
-      "qty" => to_string(qty),
-      "side" => side,
-      "type" => "market",
-      "time_in_force" => time_in_force_for(symbol)
-    }
+  def place_order(key_id, secret, symbol, qty, side \\ "buy", env \\ "paper", opts \\ []) do
+    body = order_body(symbol, qty, side, opts)
 
     post("/v2/orders", body, key_id, secret, env)
     |> parse_placed_order()
+  end
+
+  @doc false
+  def order_body(symbol, qty, side \\ "buy", opts \\ []) do
+    opts = normalize_opts(opts)
+    order_type = normalize_order_type(opts["order_type"] || opts["type"] || "market")
+
+    %{
+      "symbol" => symbol,
+      "qty" => to_string(qty),
+      "side" => side,
+      "type" => order_type,
+      "time_in_force" => normalize_time_in_force(opts["time_in_force"], symbol)
+    }
+    |> put_optional("limit_price", opts["limit_price"] || opts["price"])
+    |> put_optional("stop_price", opts["stop_price"])
+    |> put_optional("trail_price", opts["trail_price"])
+    |> put_optional("trail_percent", opts["trail_percent"])
+    |> put_optional("extended_hours", parse_bool(opts["extended_hours"]))
+    |> put_optional("order_class", normalize_order_class(opts["order_class"]))
+    |> put_optional("take_profit", nested_take_profit(opts))
+    |> put_optional("stop_loss", nested_stop_loss(opts))
+    |> put_optional("client_order_id", opts["client_order_id"])
   end
 
   # Alpaca's crypto venue rejects time_in_force=day with
@@ -373,19 +395,88 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   defp time_in_force_for(symbol) when symbol in ["BTCUSD", "ETHUSD", "SOLUSD"], do: "gtc"
   defp time_in_force_for(_symbol), do: "day"
 
+  defp normalize_time_in_force(nil, symbol), do: time_in_force_for(symbol)
+
+  defp normalize_time_in_force(tif, _symbol) when is_binary(tif),
+    do: tif |> String.trim() |> String.downcase()
+
+  defp normalize_time_in_force(tif, _symbol), do: tif |> to_string() |> String.downcase()
+
+  defp normalize_order_type(type) when is_binary(type),
+    do: type |> String.trim() |> String.downcase()
+
+  defp normalize_order_type(type), do: type |> to_string() |> String.downcase()
+
+  defp normalize_order_class(nil), do: nil
+
+  defp normalize_order_class(order_class) when is_binary(order_class),
+    do: order_class |> String.trim() |> String.downcase()
+
+  defp normalize_order_class(order_class), do: to_string(order_class)
+
+  defp nested_take_profit(%{"take_profit" => take_profit}) when is_map(take_profit),
+    do: stringify_map(take_profit)
+
+  defp nested_take_profit(%{"take_profit_limit_price" => price}) when not is_nil(price),
+    do: %{"limit_price" => price}
+
+  defp nested_take_profit(_opts), do: nil
+
+  defp nested_stop_loss(%{"stop_loss" => stop_loss}) when is_map(stop_loss),
+    do: stringify_map(stop_loss)
+
+  defp nested_stop_loss(opts) do
+    %{}
+    |> put_optional("stop_price", opts["stop_loss_stop_price"] || opts["stop_loss_price"])
+    |> put_optional("limit_price", opts["stop_loss_limit_price"])
+    |> case do
+      map when map == %{} -> nil
+      map -> map
+    end
+  end
+
+  defp normalize_opts(opts) when is_map(opts) do
+    Map.new(opts, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  defp normalize_opts(opts) when is_list(opts) do
+    Map.new(opts, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  defp normalize_opts(_opts), do: %{}
+
+  defp stringify_map(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
+
+  defp parse_bool(nil), do: nil
+  defp parse_bool(value) when is_boolean(value), do: value
+  defp parse_bool("true"), do: true
+  defp parse_bool("false"), do: false
+  defp parse_bool(value), do: value
+
+  defp put_optional(map, _key, nil), do: map
+  defp put_optional(map, _key, ""), do: map
+  defp put_optional(map, key, value), do: Map.put(map, key, value)
+
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  defp post(path, body, key_id, secret, env \\ "paper") do
+  defp post(path, body, key_id, secret, env) do
     headers = [
       {"APCA-API-KEY-ID", key_id},
       {"APCA-API-SECRET-KEY", secret}
     ]
 
     case Req.post(base_url(env) <> path, json: body, headers: headers) do
-      {:ok, %{status: s, body: resp_body}} when s in [200, 201] -> {:ok, resp_body}
-      {:ok, %{status: 401}} -> {:error, :unauthorized}
-      {:ok, %{status: status, body: resp_body}} -> {:error, "alpaca #{status}: #{inspect(resp_body)}"}
-      {:error, reason} -> {:error, "alpaca HTTP: #{inspect(reason)}"}
+      {:ok, %{status: s, body: resp_body}} when s in [200, 201] ->
+        {:ok, resp_body}
+
+      {:ok, %{status: 401}} ->
+        {:error, :unauthorized}
+
+      {:ok, %{status: status, body: resp_body}} ->
+        {:error, "alpaca #{status}: #{inspect(resp_body)}"}
+
+      {:error, reason} ->
+        {:error, "alpaca HTTP: #{inspect(reason)}"}
     end
   end
 
@@ -435,7 +526,7 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     end
   end
 
-  defp get(path, key_id, secret, env \\ "paper") do
+  defp get(path, key_id, secret, env) do
     require Logger
 
     key_prefix = if is_binary(key_id), do: String.slice(key_id, 0..3), else: "nil"

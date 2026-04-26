@@ -1,16 +1,16 @@
 defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   @moduledoc """
-  Oban worker that dispatches paper-mode trade jobs to OANDA practice
-  or Polymarket paper. Live order dispatch is intentionally rejected
-  here — real-money routing is a separate PR with its own pre-build
-  review.
+  Oban worker that dispatches provider-specific trade jobs to OANDA
+  practice, Kalshi, or Polymarket paper. Live OANDA and live Polymarket
+  dispatch are intentionally rejected here — real-money routing for
+  those platforms needs its own pre-build review.
 
   Enqueue via:
 
       %{
         "agent_id"        => agent.id,
         "organization_id" => org.id,
-        "provider"        => "oanda_practice" | "polymarket",
+        "provider"        => "oanda_practice" | "kalshi" | "polymarket",
         "symbol"          => "EUR_USD" | "0x<condition_id>",
         "side"            => "buy" | "sell" | "yes" | "no",
         "units"           => 100,
@@ -40,9 +40,10 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   require Logger
 
-  alias KiteAgentHub.{Trading, Oanda, Polymarket}
+  alias KiteAgentHub.{Credentials, Trading, Oanda, Polymarket}
+  alias KiteAgentHub.TradingPlatforms.KalshiClient
 
-  @allowed_providers ~w(oanda_practice polymarket)
+  @allowed_providers ~w(oanda_practice kalshi polymarket)
 
   @impl Oban.Worker
   def perform(%Oban.Job{id: job_id, args: args}) do
@@ -71,6 +72,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   defp validate_symbol(_), do: {:error, :invalid_symbol}
 
   defp validate_units(n) when is_integer(n) and n > 0, do: :ok
+
   defp validate_units(n) when is_binary(n) do
     case Integer.parse(n) do
       {i, ""} when i > 0 -> :ok
@@ -92,7 +94,11 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   # ── Dispatch ───────────────────────────────────────────────────────────────
 
-  defp dispatch(%{agent_type: "trading"} = agent, %{"provider" => "oanda_practice"} = args, job_id) do
+  defp dispatch(
+         %{agent_type: "trading"} = agent,
+         %{"provider" => "oanda_practice"} = args,
+         job_id
+       ) do
     org_id = args["organization_id"]
     symbol = args["symbol"]
 
@@ -102,7 +108,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
         n when is_binary(n) -> n |> String.to_integer() |> signed_units(args["side"])
       end
 
-    case Oanda.place_practice_order(agent, org_id, symbol, units) do
+    case Oanda.place_practice_order(agent, org_id, symbol, units, oanda_opts(args)) do
       {:ok, body} ->
         Logger.info("PaperExecutionWorker job=#{job_id} provider=oanda_practice filled")
         {:ok, body}
@@ -110,6 +116,44 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       err ->
         Logger.warning(
           "PaperExecutionWorker job=#{job_id} provider=oanda_practice failed: #{inspect(err)}"
+        )
+
+        err
+    end
+  end
+
+  defp dispatch(%{agent_type: "trading"} = agent, %{"provider" => "kalshi"} = args, job_id) do
+    org_id = args["organization_id"] || agent.organization_id
+    symbol = args["symbol"]
+    side = args["side"]
+    units = parse_units!(args["units"])
+
+    price =
+      args["price"] ||
+        args["yes_price"] ||
+        args["no_price"] ||
+        args["yes_price_dollars"] ||
+        args["no_price_dollars"] ||
+        args["limit_price"]
+
+    with {:ok, {key_id, pem, env}} <- Credentials.fetch_secret_with_env(org_id, :kalshi),
+         {:ok, order} <-
+           KalshiClient.place_order(
+             key_id,
+             pem,
+             symbol,
+             side,
+             units,
+             price,
+             env,
+             kalshi_opts(args)
+           ) do
+      Logger.info("PaperExecutionWorker job=#{job_id} provider=kalshi accepted order=#{order.id}")
+      {:ok, order}
+    else
+      err ->
+        Logger.warning(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi failed: #{inspect(err)}"
         )
 
         err
@@ -156,6 +200,26 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       _ -> abs(n)
     end
   end
+
+  defp parse_units!(n) when is_integer(n), do: n
+  defp parse_units!(n) when is_binary(n), do: String.to_integer(n)
+
+  @kalshi_order_fields ~w(
+    action order_type type time_in_force yes_price no_price yes_price_dollars no_price_dollars
+    count_fp expiration_ts buy_max_cost post_only reduce_only self_trade_prevention_type
+    order_group_id cancel_order_on_pause subaccount client_order_id
+  )
+
+  defp kalshi_opts(args), do: Map.take(args, @kalshi_order_fields)
+
+  @oanda_order_fields ~w(
+    order_type type time_in_force timeInForce position_fill positionFill price limit_price
+    stop_price price_bound gtd_time trigger_condition take_profit take_profit_price
+    stop_loss stop_loss_price trailing_stop_loss trailing_stop_distance
+    client_extensions trade_client_extensions client_order_id client_tag client_comment
+  )
+
+  defp oanda_opts(args), do: Map.take(args, @oanda_order_fields)
 
   defp normalize_outcome("yes"), do: "yes"
   defp normalize_outcome("no"), do: "no"

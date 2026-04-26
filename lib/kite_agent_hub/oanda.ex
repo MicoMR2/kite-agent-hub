@@ -131,15 +131,18 @@ defmodule KiteAgentHub.Oanda do
 
   Requires a trading-agent; non-trading agents get `:not_a_trading_agent`.
   Live orders are intentionally not supported — this path hardcodes
-  to the practice endpoint via OandaClient.place_practice_order/4.
+  to the practice endpoint via OandaClient.place_practice_order/5.
 
   Returns `{:ok, body}` on 200/201 from OANDA, or `{:error, reason}`
   on any failure (missing creds, decryption, auth, transport).
   """
-  def place_practice_order(%{agent_type: "trading"}, org_id, instrument, units)
+  def place_practice_order(agent, org_id, instrument, units),
+    do: place_practice_order(agent, org_id, instrument, units, %{})
+
+  def place_practice_order(%{agent_type: "trading"}, org_id, instrument, units, opts)
       when is_binary(instrument) and is_integer(units) do
     with_credential(org_id, :practice, fn token, account_id ->
-      OandaClient.place_practice_order(token, account_id, instrument, units)
+      OandaClient.place_practice_order(token, account_id, instrument, units, opts)
     end)
   rescue
     e ->
@@ -147,8 +150,10 @@ defmodule KiteAgentHub.Oanda do
       {:error, :exception}
   end
 
-  def place_practice_order(%{agent_type: _}, _org, _inst, _u), do: {:error, :not_a_trading_agent}
-  def place_practice_order(_agent, _org, _inst, _u), do: {:error, :invalid_agent}
+  def place_practice_order(%{agent_type: _}, _org, _inst, _u, _opts),
+    do: {:error, :not_a_trading_agent}
+
+  def place_practice_order(_agent, _org, _inst, _u, _opts), do: {:error, :invalid_agent}
 
   # Like with_token/3 but propagates {:error, _} instead of collapsing
   # to []. Used by mutating paths (place_practice_order) where callers

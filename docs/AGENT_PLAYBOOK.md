@@ -38,9 +38,10 @@ credentials, never sign trades yourself, and never call broker APIs directly.
 | Asset class       | Routing      | Notes                                                    |
 |-------------------|--------------|----------------------------------------------------------|
 | Equities (`AAPL`) | Alpaca paper | Whole-share orders, `time_in_force=day`                  |
+| Options (`AAPL260117C00100000`) | Alpaca paper | OCC option symbols, whole contracts, broker approval rules |
 | Crypto (`BTCUSD`) | Alpaca paper | `gtc` time_in_force, qty clamped to live position on sells |
-| Prediction mkts   | Kalshi       | Yes/no contracts                                         |
-| Forex (`EUR_USD`) | OANDA practice | Market orders using signed units                         |
+| Prediction mkts   | Kalshi       | Yes/no contracts, reduce-only exits, IOC/FOK support     |
+| Forex (`EUR_USD`) | OANDA practice | Signed units plus optional TP/SL/trailing controls       |
 
 `AlpacaSettlementWorker` polls Alpaca every minute, flips trade status from
 `open` → `settled` once filled, then enqueues a Kite chain attestation job.
@@ -87,6 +88,28 @@ credentials, never sign trades yourself, and never call broker APIs directly.
 | `fill_price` | Your reference price. KAH submits a market order; this is informational.       |
 | `reason`     | Free-form rationale. Surfaced on the dashboard trade row.                      |
 
+Optional Alpaca controls include `order_type`, `limit_price`, `stop_price`,
+`trail_price`, `trail_percent`, `order_class`, `take_profit`,
+`take_profit_limit_price`, `stop_loss`, `stop_loss_stop_price`,
+`stop_loss_limit_price`, and `client_order_id`.
+
+For Alpaca options, use the same payload with an OCC contract symbol and whole
+contract quantity:
+
+```json
+{
+  "market": "AAPL260117C00100000",
+  "side": "long",
+  "action": "buy",
+  "contracts": 1,
+  "fill_price": 1.05,
+  "order_type": "limit",
+  "limit_price": "1.05",
+  "time_in_force": "day",
+  "reason": "options edge=71, defined contract risk"
+}
+```
+
 KAH handles the rest:
 
 - `time_in_force` is set per asset class (`gtc` for crypto, `day` for equities)
@@ -126,6 +149,62 @@ provider is explicit.
 
 Current OANDA execution is practice mode only. Only Trade Agent can submit this
 payload.
+
+Optional OANDA controls are passed through to the v20 practice order request:
+
+| Field | Semantics |
+|-------|-----------|
+| `order_type` | `market`, `limit`, `stop`, or another OANDA-supported order type. Defaults to `market`. |
+| `price` or `limit_price` | Required by limit-style orders. |
+| `time_in_force` | Defaults to `FOK` for market orders and `GTC` for non-market orders. |
+| `position_fill` | Use `reduce_only` when shrinking or closing a position. |
+| `take_profit_price` | Creates `takeProfitOnFill`. |
+| `stop_loss_price` | Creates `stopLossOnFill`. |
+| `trailing_stop_distance` | Creates `trailingStopLossOnFill`. |
+| `client_order_id` | Adds OANDA client extensions for traceability. |
+
+---
+
+## Kalshi prediction-market payload (`POST /trades`)
+
+Kalshi uses a provider payload because contracts are binary yes/no outcomes.
+
+```json
+{
+  "provider": "kalshi",
+  "symbol": "KXTEST-26JAN01-YES",
+  "side": "yes",
+  "action": "buy",
+  "units": 2,
+  "price": 56,
+  "time_in_force": "immediate_or_cancel",
+  "reason": "edge=64, liquidity acceptable"
+}
+```
+
+To exit early, sell the same side with `reduce_only: true`:
+
+```json
+{
+  "provider": "kalshi",
+  "symbol": "KXTEST-26JAN01-YES",
+  "side": "yes",
+  "action": "sell",
+  "units": 2,
+  "price": 62,
+  "reduce_only": true,
+  "time_in_force": "immediate_or_cancel",
+  "reason": "locking gain, edge decayed"
+}
+```
+
+Rules:
+
+- `side` must be `yes` or `no`.
+- `action` must be `buy` or `sell`.
+- `price` can be cents like `56` or dollars like `0.56`.
+- Use `buy_max_cost`, `time_in_force`, and `reduce_only` to cap risk.
+- No Kalshi strategy can guarantee profit. Early exits can lock a gain or reduce a loss only when market price and liquidity cooperate.
 
 ---
 
