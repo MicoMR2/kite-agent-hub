@@ -38,6 +38,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   # Markets routed to Alpaca paper trading (crypto + equities)
   @alpaca_markets ~w(ETH-USDC BTC-USDC SOL-USDC ETHUSD BTCUSD SOLUSD SPY QQQ AAPL TSLA)
+  @alpaca_option_symbol ~r/\A[A-Z]{1,6}\d{6}[CP]\d{8}\z/
 
   # Alpaca symbol mapping from Kite market notation
   @alpaca_symbol_map %{
@@ -80,7 +81,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     # controller. Re-running normalization here means malformed markets
     # never reach detect_platform/1 regardless of how the job was queued.
     market = normalize_market(args["market"]) || "ETH-USDC"
-    platform = detect_platform(market)
+    platform = detect_platform(market, args["provider"])
 
     trade_attrs = %{
       kite_agent_id: agent.id,
@@ -98,7 +99,9 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
     case Trading.create_trade(trade_attrs) do
       {:ok, trade} ->
-        Logger.info("TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id} on #{platform}")
+        Logger.info(
+          "TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id} on #{platform}"
+        )
 
         case maybe_execute_on_platform(platform, agent, args, owner_user_id) do
           {:ok, platform_order_id} ->
@@ -154,17 +157,21 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   # placement and leaves the trade row stranded at status="open"
   # forever. The whitelist alone was the bottleneck the agent kept
   # hitting in prod.
-  defp detect_platform(market) when market in @alpaca_markets, do: "alpaca"
+  @doc false
+  def detect_platform(market, provider \\ nil)
 
-  defp detect_platform(market) when is_binary(market) do
-    if Regex.match?(~r/\A[A-Z]{1,5}\z/, market) do
+  def detect_platform(_market, "alpaca"), do: "alpaca"
+  def detect_platform(market, _provider) when market in @alpaca_markets, do: "alpaca"
+
+  def detect_platform(market, _provider) when is_binary(market) do
+    if Regex.match?(~r/\A[A-Z]{1,5}\z/, market) or Regex.match?(@alpaca_option_symbol, market) do
       "alpaca"
     else
       "kite"
     end
   end
 
-  defp detect_platform(_market), do: "kite"
+  def detect_platform(_market, _provider), do: "kite"
 
   # Execute on Alpaca. Returns:
   #   {:ok, order_id}     — order accepted by Alpaca, id stored on the trade row
@@ -201,7 +208,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         # through unchanged.
         case clamp_sell_qty(side, key_id, secret, env, symbol, requested_qty) do
           {:ok, qty} ->
-            do_place_order(key_id, secret, symbol, qty, side, env)
+            do_place_order(key_id, secret, symbol, qty, side, env, alpaca_order_opts(args))
 
           {:noop, reason} ->
             Logger.info(
@@ -219,8 +226,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   defp maybe_execute_on_platform(_platform, _agent, _args, _owner_user_id), do: :noop
 
-  defp do_place_order(key_id, secret, symbol, qty, side, env) do
-    case AlpacaClient.place_order(key_id, secret, symbol, qty, side, env) do
+  defp do_place_order(key_id, secret, symbol, qty, side, env, opts) do
+    case AlpacaClient.place_order(key_id, secret, symbol, qty, side, env, opts) do
       {:ok, order} ->
         Logger.info(
           "TradeExecutionWorker: Alpaca order #{order.id} placed — #{symbol} #{side} #{qty} (env=#{env})"
@@ -275,6 +282,14 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   defp normalize_alpaca_side("buy"), do: "buy"
   defp normalize_alpaca_side("sell"), do: "sell"
   defp normalize_alpaca_side(_), do: "buy"
+
+  @alpaca_order_fields ~w(
+    order_type type time_in_force limit_price stop_price trail_price trail_percent
+    extended_hours order_class take_profit take_profit_limit_price stop_loss
+    stop_loss_stop_price stop_loss_limit_price client_order_id
+  )
+
+  defp alpaca_order_opts(args), do: Map.take(args, @alpaca_order_fields)
 
   defp maybe_submit_onchain(trade, agent, args, owner_user_id) do
     signed_tx = args["signed_tx_hex"]
@@ -429,9 +444,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         f
 
       _ ->
-        Logger.warning(
-          "TradeExecutionWorker: parse_qty fallback (binary): #{inspect(qty)} → 1"
-        )
+        Logger.warning("TradeExecutionWorker: parse_qty fallback (binary): #{inspect(qty)} → 1")
 
         1
     end

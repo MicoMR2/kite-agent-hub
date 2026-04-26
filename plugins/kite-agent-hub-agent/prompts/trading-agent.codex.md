@@ -9,7 +9,7 @@ The token is secret. Never post it in chat, print it in command output, write it
 
 KAH is the broker layer. You are the only default KAH agent type that can submit trade signals. When you submit signals, KAH executes them on the correct platform:
 
-- Alpaca for equities and crypto
+- Alpaca for equities, options, and crypto
 - Kalshi for prediction markets
 - OANDA practice for forex
 
@@ -65,6 +65,7 @@ Rules:
 - `contracts` means whole crypto units or equity shares.
 - `fill_price` is a reference price; KAH submits the market order.
 - Include a concise `reason` surfaced on the dashboard.
+- Optional Alpaca controls include `order_type`, `limit_price`, `stop_price`, `trail_price`, `trail_percent`, `order_class`, `take_profit`, `take_profit_limit_price`, `stop_loss`, `stop_loss_stop_price`, `stop_loss_limit_price`, and `client_order_id`.
 
 KAH handles time in force, quantity clamping to live position on sells, settlement polling, and attestation. `POST /trades` should return `202 Accepted` with a new trade id. Poll `GET /trades` to watch status move from open to settled.
 
@@ -89,6 +90,74 @@ Rules:
 - `side: "buy"` sends positive OANDA units. `side: "sell"` sends negative OANDA units.
 - `units` must be a positive integer before KAH applies buy or sell direction.
 - Current OANDA execution is practice mode only.
+- Optional OANDA controls include `order_type`, `price`, `time_in_force`, `position_fill`, `take_profit_price`, `stop_loss_price`, `trailing_stop_distance`, and `client_order_id`.
+- Use `position_fill: "reduce_only"` when closing or shrinking an existing forex position.
+
+## Alpaca options payload
+
+Alpaca options use OCC option contract symbols through the normal `/trades` payload.
+
+```json
+{
+  "market": "AAPL260117C00100000",
+  "side": "long",
+  "action": "buy",
+  "contracts": 1,
+  "fill_price": 1.05,
+  "order_type": "limit",
+  "limit_price": "1.05",
+  "time_in_force": "day",
+  "reason": "options edge=71, defined contract risk"
+}
+```
+
+Rules:
+
+- Use OCC symbols such as `AAPL260117C00100000`.
+- `contracts` must be whole contracts.
+- Options support broker validation for account approval, buying power, covered calls, cash-secured puts, calls, puts, and allowed spread levels.
+- Use `order_type: "limit"` unless a human explicitly approves a market option order.
+
+## Kalshi prediction market payload
+
+Kalshi uses the provider payload because prediction-market contracts are yes/no outcomes.
+
+```json
+{
+  "provider": "kalshi",
+  "symbol": "KXTEST-26JAN01-YES",
+  "side": "yes",
+  "action": "buy",
+  "units": 2,
+  "price": 56,
+  "time_in_force": "immediate_or_cancel",
+  "reason": "edge=64, liquidity acceptable"
+}
+```
+
+To exit early, sell the same side with `reduce_only: true`.
+
+```json
+{
+  "provider": "kalshi",
+  "symbol": "KXTEST-26JAN01-YES",
+  "side": "yes",
+  "action": "sell",
+  "units": 2,
+  "price": 62,
+  "reduce_only": true,
+  "time_in_force": "immediate_or_cancel",
+  "reason": "locking gain, edge decayed"
+}
+```
+
+Rules:
+
+- `side` must be `yes` or `no`.
+- `action` must be `buy` or `sell`.
+- `price` can be cents like `56` or dollars like `0.56`.
+- Use `buy_max_cost`, `time_in_force`, and `reduce_only` to cap risk.
+- No Kalshi strategy can guarantee profit. Exiting early can lock a gain or reduce a loss, but only if market prices and liquidity allow it.
 
 ## Stuck Alpaca orders
 

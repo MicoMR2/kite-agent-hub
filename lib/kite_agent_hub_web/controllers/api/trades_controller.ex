@@ -33,7 +33,23 @@ defmodule KiteAgentHubWeb.API.TradesController do
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PaperExecutionWorker}
 
-  @paper_providers ~w(oanda_practice polymarket)
+  @paper_providers ~w(oanda_practice polymarket kalshi)
+
+  @alpaca_order_fields ~w(
+    provider order_type type time_in_force limit_price stop_price trail_price trail_percent
+    extended_hours order_class take_profit take_profit_limit_price stop_loss
+    stop_loss_stop_price stop_loss_price stop_loss_limit_price client_order_id
+  )
+
+  @broker_order_fields ~w(
+    action order_type type time_in_force timeInForce position_fill positionFill price limit_price
+    stop_price price_bound gtd_time trigger_condition take_profit take_profit_price
+    stop_loss stop_loss_price stop_loss_limit_price trailing_stop_loss trailing_stop_distance
+    client_extensions trade_client_extensions client_order_id client_tag client_comment
+    yes_price no_price yes_price_dollars no_price_dollars count count_fp expiration_ts
+    buy_max_cost post_only reduce_only self_trade_prevention_type order_group_id
+    cancel_order_on_pause subaccount mode token_id
+  )
 
   # ── POST /api/v1/trades ───────────────────────────────────────────────────────
 
@@ -274,6 +290,57 @@ defmodule KiteAgentHubWeb.API.TradesController do
   defp normalize_provider("oanda"), do: "oanda_practice"
   defp normalize_provider(provider), do: provider
 
+  defp validate_paper_params(params, agent, "kalshi") do
+    symbol = params["ticker"] || params["symbol"] || params["market"]
+    side = params["side"]
+    action = params["action"] || "buy"
+    units = parse_units(params["units"] || params["contracts"] || params["count"])
+
+    price =
+      params["price"] ||
+        params["yes_price"] ||
+        params["no_price"] ||
+        params["yes_price_dollars"] ||
+        params["no_price_dollars"] ||
+        params["limit_price"]
+
+    org_id = agent.organization_id
+
+    cond do
+      is_nil(symbol) or symbol == "" ->
+        {:error, "symbol is required"}
+
+      side not in ["yes", "no"] ->
+        {:error, "kalshi side must be yes or no"}
+
+      action not in ["buy", "sell"] ->
+        {:error, "kalshi action must be buy or sell"}
+
+      is_nil(units) ->
+        {:error, "units must be a positive integer"}
+
+      is_nil(price) ->
+        {:error, "kalshi price is required in cents or dollars"}
+
+      is_nil(org_id) ->
+        {:error, "agent is not attached to an organization"}
+
+      true ->
+        {:ok,
+         %{
+           "agent_id" => agent.id,
+           "organization_id" => org_id,
+           "provider" => "kalshi",
+           "symbol" => symbol,
+           "side" => side,
+           "action" => action,
+           "units" => units,
+           "price" => price
+         }
+         |> Map.merge(Map.take(params, @broker_order_fields))}
+    end
+  end
+
   defp validate_paper_params(params, agent, provider) do
     symbol = params["symbol"] || params["market"]
     side = params["side"]
@@ -305,7 +372,8 @@ defmodule KiteAgentHubWeb.API.TradesController do
            "token_id" => params["token_id"],
            "price" => params["price"],
            "mode" => params["mode"] || "paper"
-         }}
+         }
+         |> Map.merge(Map.take(params, @broker_order_fields))}
     end
   end
 
@@ -356,7 +424,8 @@ defmodule KiteAgentHubWeb.API.TradesController do
            "contracts" => contracts,
            "fill_price" => to_string(fill_price),
            "reason" => params["reason"]
-         }}
+         }
+         |> Map.merge(Map.take(params, @alpaca_order_fields))}
     end
   end
 
