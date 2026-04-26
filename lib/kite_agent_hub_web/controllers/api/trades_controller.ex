@@ -27,7 +27,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   alias KiteAgentHub.Api.RateLimiter
   alias KiteAgentHub.Billing.LlmUsageLog
-  alias KiteAgentHub.Credentials
+  alias KiteAgentHub.{CollectiveIntelligence, Credentials}
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
@@ -240,8 +240,15 @@ defmodule KiteAgentHubWeb.API.TradesController do
           id: agent.id,
           name: agent.name,
           status: agent.status,
+          agent_type: agent.agent_type,
           wallet_address: agent.wallet_address,
-          vault_address: agent.vault_address
+          vault_address: agent.vault_address,
+          collective_intelligence: %{
+            enabled: CollectiveIntelligence.enabled_for_org?(agent.organization_id),
+            name: "Kite Collective Intelligence",
+            endpoint: "/api/v1/collective-intelligence",
+            scope: "workspace"
+          }
         },
         stats: stats
       })

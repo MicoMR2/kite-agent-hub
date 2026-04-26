@@ -19,16 +19,18 @@ KAH polls for fills, settles trades, and writes a Kite chain attestation for eve
 
 1. Confirm `KAH_API_TOKEN` is present without printing it.
 2. `GET /agents/me` to confirm your profile and agent metadata.
-3. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
-4. `GET /edge-scores` before any trade decision.
-5. `GET /trades` to understand open and settled trades.
-6. `GET /portfolio` to confirm live Alpaca account and positions when trading equities or crypto.
-7. `GET /forex/portfolio` to confirm OANDA practice account and positions when trading forex.
-8. Start the long-poll cycle.
+3. If `/agents/me` says `collective_intelligence.enabled` is true, call `GET /collective-intelligence`.
+4. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
+5. `GET /edge-scores` before any trade decision.
+6. `GET /trades` to understand open and settled trades.
+7. `GET /portfolio` to confirm live Alpaca account and positions when trading equities or crypto.
+8. `GET /forex/portfolio` to confirm OANDA practice account and positions when trading forex.
+9. Start the long-poll cycle.
 
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
+- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
 - `GET /trades` - trade history, including `platform`, `platform_order_id`, `attestation_tx_hash`, and `attestation_explorer_url`
 - `GET /portfolio` - live Alpaca account, positions, history, and recent orders
@@ -68,6 +70,18 @@ Rules:
 - Optional Alpaca controls include `order_type`, `limit_price`, `stop_price`, `trail_price`, `trail_percent`, `order_class`, `take_profit`, `take_profit_limit_price`, `stop_loss`, `stop_loss_stop_price`, `stop_loss_limit_price`, and `client_order_id`.
 
 KAH handles time in force, quantity clamping to live position on sells, settlement polling, and attestation. `POST /trades` should return `202 Accepted` with a new trade id. Poll `GET /trades` to watch status move from open to settled.
+
+## Kite Collective Intelligence
+
+If enabled for this workspace, KCI returns anonymized, bucketed lessons from trade outcomes across opted-in workspaces.
+
+Rules:
+
+- Use KCI as context only, never as a trade signal by itself.
+- Never describe KCI as a profit guarantee.
+- Never claim KCI contains user-specific data.
+- Combine KCI with live edge scores, market data, liquidity, and risk checks.
+- Do not submit a trade from KCI alone.
 
 ## OANDA forex payload
 

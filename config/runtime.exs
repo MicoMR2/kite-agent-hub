@@ -16,6 +16,28 @@ import Config
 polymarket_mode =
   if System.get_env("POLYMARKET_MODE") == "live", do: :live, else: :paper
 
+# Kite Collective Intelligence salt — keys the HMAC used for
+# source_org_hash / source_trade_hash so opt-out purges still match
+# rows even if KiteAgentHubWeb.Endpoint :secret_key_base is rotated.
+# In prod we require a dedicated secret; the dev/test fallback in
+# CollectiveIntelligence.salt/0 is intentionally a constant so the
+# privacy guarantee is never silently dependent on shared key state.
+collective_intelligence_salt = System.get_env("COLLECTIVE_INTELLIGENCE_SALT")
+
+if config_env() == :prod and (collective_intelligence_salt in [nil, ""]) do
+  raise """
+  COLLECTIVE_INTELLIGENCE_SALT is not set.
+
+  KCI uses an HMAC-SHA256 keyed off this secret to anonymize trade and
+  org references. Without a dedicated salt the privacy guarantee depends
+  on Endpoint :secret_key_base — if that ever rotates, opt-out purges
+  silently miss rows.
+
+  Set it on Fly:
+      fly secrets set COLLECTIVE_INTELLIGENCE_SALT=$(openssl rand -hex 64)
+  """
+end
+
 config :kite_agent_hub,
   workos_api_key: System.get_env("WORKOS_API_KEY") || "",
   workos_client_id: System.get_env("WORKOS_CLIENT_ID") || "",
@@ -28,7 +50,8 @@ config :kite_agent_hub,
   # tiny PYUSD transfer here from the agent wallet on every settled
   # trade — produces the on-chain proof the hackathon judges look for.
   kite_treasury_address: System.get_env("KITE_TREASURY_ADDRESS") || "",
-  polymarket_mode: polymarket_mode
+  polymarket_mode: polymarket_mode,
+  collective_intelligence_salt: collective_intelligence_salt
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the

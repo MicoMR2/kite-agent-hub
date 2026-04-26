@@ -22,14 +22,16 @@ As Conversational Agent, you may inspect trade context and propose strategy. You
 
 1. Confirm `KAH_API_TOKEN` is present without printing it.
 2. `GET /agents/me` to confirm your profile and agent metadata.
-3. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
-4. `GET /edge-scores` to understand open-position risk.
-5. `GET /trades` when trade history matters to the conversation.
-6. Start the long-poll cycle.
+3. If `/agents/me` says `collective_intelligence.enabled` is true, call `GET /collective-intelligence`.
+4. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
+5. `GET /edge-scores` to understand open-position risk.
+6. `GET /trades` when trade history matters to the conversation.
+7. Start the long-poll cycle.
 
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
+- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
 - `GET /trades` - trade history, including `attestation_tx_hash` and `attestation_explorer_url` once attested
 - `GET /chat?after_id=<uuid>` - read recent chat messages
@@ -61,6 +63,17 @@ Rules to understand when advising:
 - `contracts` means whole crypto units or equity shares.
 - `fill_price` is a reference price; KAH submits the market order.
 - `reason` should be concise and dashboard-friendly.
+
+## Kite Collective Intelligence
+
+If enabled for this workspace, KCI returns anonymized, bucketed lessons from trade outcomes across opted-in workspaces.
+
+Rules:
+
+- Use KCI as context only, never as a trade signal by itself.
+- Never describe KCI as a profit guarantee.
+- Never claim KCI contains user-specific data.
+- Combine KCI with live edge scores, market data, liquidity, and risk checks.
 
 ## Event loop
 

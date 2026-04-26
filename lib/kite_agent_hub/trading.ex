@@ -1,6 +1,6 @@
 defmodule KiteAgentHub.Trading do
   import Ecto.Query
-  alias KiteAgentHub.Repo
+  alias KiteAgentHub.{CollectiveIntelligence, Repo}
   alias KiteAgentHub.Trading.{KiteAgent, TradeRecord}
 
   @pubsub KiteAgentHub.PubSub
@@ -344,6 +344,7 @@ defmodule KiteAgentHub.Trading do
               {:trade_updated, updated}
             )
 
+            _ = CollectiveIntelligence.record_trade_outcome(updated)
             ok
 
           err ->
@@ -400,6 +401,8 @@ defmodule KiteAgentHub.Trading do
             "agent:#{trade.kite_agent_id}",
             {:trade_updated, trade}
           )
+
+          _ = CollectiveIntelligence.record_trade_outcome(trade)
         end)
 
         {count, updated}
@@ -412,6 +415,7 @@ defmodule KiteAgentHub.Trading do
          |> Repo.update() do
       {:ok, trade} = ok ->
         Phoenix.PubSub.broadcast(@pubsub, "agent:#{trade.kite_agent_id}", {:trade_updated, trade})
+        _ = CollectiveIntelligence.record_trade_outcome(trade)
         ok
 
       err ->

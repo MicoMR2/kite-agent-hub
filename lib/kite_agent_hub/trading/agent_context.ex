@@ -54,11 +54,13 @@ defmodule KiteAgentHub.Trading.AgentContext do
     - GET /api/v1/trades/:id — get trade details
     - GET /api/v1/agents/me — your agent profile
     - GET /api/v1/edge-scores — live QRB edge scores for all open positions + suggestions
+    - GET /api/v1/collective-intelligence — opt-in anonymized cross-workspace lessons when enabled
     - GET /api/v1/portfolio — Alpaca account, buying power, positions
     - GET /api/v1/forex/portfolio — OANDA practice balance, NAV, P&L, open positions
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
+    #{collective_intelligence_section()}
 
     ## Edge Scoring (QRB Methodology)
     Before any trade, compute an edge score 0-100:
@@ -122,9 +124,11 @@ defmodule KiteAgentHub.Trading.AgentContext do
     - GET /api/v1/trades — review recent trade history for context
     - GET /api/v1/agents/me — your agent profile
     - GET /api/v1/edge-scores — live QRB edge scores for all open positions + suggestions
+    - GET /api/v1/collective-intelligence — opt-in anonymized cross-workspace lessons when enabled
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
+    #{collective_intelligence_section()}
 
     ## Your Job
     1. Monitor markets on Alpaca and Kalshi
@@ -167,12 +171,14 @@ defmodule KiteAgentHub.Trading.AgentContext do
     - GET /api/v1/trades — review trade history
     - GET /api/v1/agents/me — your agent profile
     - GET /api/v1/edge-scores — current edge scores
+    - GET /api/v1/collective-intelligence — opt-in anonymized cross-workspace lessons when enabled
 
     ## Your Role
     - Answer questions about trading strategy and platform mechanics
     - Summarize trade history and performance on request
     - Coordinate between research and trading agents
     - Escalate anomalies or questions to human operators
+    #{collective_intelligence_section()}
     """
   end
 
@@ -201,5 +207,14 @@ defmodule KiteAgentHub.Trading.AgentContext do
     else
       ""
     end
+  end
+
+  defp collective_intelligence_section do
+    """
+    ## Kite Collective Intelligence
+    If /agents/me says collective_intelligence.enabled is true, call GET /api/v1/collective-intelligence on startup.
+    Use it only as generalized historical context from anonymized, bucketed trade outcomes.
+    Never treat it as a profit guarantee, never reveal it as user-specific data, and never trade from KCI alone.
+    """
   end
 end
