@@ -51,6 +51,7 @@ defmodule KiteAgentHubWeb.TradesLiveTest do
 
     assert html =~ "+$10.50"
     assert html =~ "ALPACA"
+    assert html =~ "kah-platform-alpaca"
     assert html =~ "https://testnet.kitescan.ai/tx/#{hash}"
   end
 

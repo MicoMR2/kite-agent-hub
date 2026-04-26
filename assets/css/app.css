@@ -193,15 +193,115 @@
   --leading-relaxed:    1.6;
 }
 
-/* Canvas is fixed #0a0a0f regardless of daisyUI theme toggle — the
-   shipped dashboard hardcodes this value across every layout. */
+html[data-theme="light"] {
+  --canvas:            #f5efe3;
+  --canvas-80:         rgba(245,239,227,0.86);
+  --canvas-95:         rgba(245,239,227,0.96);
+  --surface-01:        rgba(255,255,255,0.52);
+  --surface-02:        rgba(255,255,255,0.68);
+  --surface-03:        rgba(255,255,255,0.76);
+  --surface-05:        rgba(255,255,255,0.86);
+  --surface-08:        rgba(15,23,42,0.06);
+  --surface-12:        rgba(15,23,42,0.10);
+  --border-hair:       rgba(15,23,42,0.07);
+  --border-default:    rgba(15,23,42,0.12);
+  --border-strong:     rgba(15,23,42,0.22);
+  --fg-1:  #111827;
+  --fg-2:  #1f2937;
+  --fg-3:  #334155;
+  --fg-4:  #475569;
+  --fg-5:  #64748b;
+  --fg-6:  #94a3b8;
+  --fg-7:  #cbd5e1;
+  --shadow-card-faint:  0 18px 48px rgba(15,23,42,0.08);
+  --shadow-card-soft:   0 22px 70px rgba(15,23,42,0.12);
+}
+
 html,
-body {
+body,
+.kah-theme-body {
   background-color: var(--canvas);
   color: var(--fg-2);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+html[data-theme="light"] .kah-theme-body {
+  background:
+    radial-gradient(circle at 20% -10%, rgba(250,204,21,0.18), transparent 32rem),
+    radial-gradient(circle at 85% 4%, rgba(59,130,246,0.14), transparent 28rem),
+    linear-gradient(180deg, #fffaf0 0%, var(--canvas) 42%, #efe7d7 100%);
+}
+
+/* Light mode compatibility for existing hardcoded dark Tailwind classes.
+   This keeps the current LiveViews readable without a risky whole-app rewrite. */
+html[data-theme="light"] [class~="bg-[#0a0a0f]"] {
+  background-color: var(--canvas) !important;
+}
+
+html[data-theme="light"] [class~="bg-[#0a0a0f]/80"],
+html[data-theme="light"] [class~="bg-[#0a0a0f]/60"] {
+  background-color: var(--canvas-80) !important;
+}
+
+html[data-theme="light"] [class~="bg-black/20"],
+html[data-theme="light"] [class~="bg-black/40"] {
+  background-color: rgba(255,255,255,0.48) !important;
+}
+
+html[data-theme="light"] [class~="bg-white/[0.01]"],
+html[data-theme="light"] [class~="bg-white/[0.02]"],
+html[data-theme="light"] [class~="bg-white/[0.03]"],
+html[data-theme="light"] [class~="bg-white/[0.05]"] {
+  background-color: var(--surface-02) !important;
+}
+
+html[data-theme="light"] [class~="bg-white/10"] {
+  background-color: var(--surface-08) !important;
+}
+
+html[data-theme="light"] [class~="border-white/5"],
+html[data-theme="light"] [class~="border-white/10"] {
+  border-color: var(--border-default) !important;
+}
+
+html[data-theme="light"] [class~="border-white/20"] {
+  border-color: var(--border-strong) !important;
+}
+
+html[data-theme="light"] [class~="text-white"],
+html[data-theme="light"] [class~="text-gray-100"] {
+  color: var(--fg-1) !important;
+}
+
+html[data-theme="light"] [class~="text-gray-200"],
+html[data-theme="light"] [class~="text-gray-300"] {
+  color: var(--fg-3) !important;
+}
+
+html[data-theme="light"] [class~="text-gray-400"] {
+  color: var(--fg-4) !important;
+}
+
+html[data-theme="light"] [class~="text-gray-500"] {
+  color: var(--fg-5) !important;
+}
+
+html[data-theme="light"] [class~="text-gray-600"],
+html[data-theme="light"] [class~="text-gray-700"] {
+  color: var(--fg-6) !important;
+}
+
+.kah-theme-toggle {
+  color: var(--fg-2);
+  border-color: var(--border-default);
+  background: rgba(10,10,15,0.62);
+}
+
+html[data-theme="light"] .kah-theme-toggle {
+  background: rgba(255,255,255,0.82);
+  box-shadow: 0 18px 55px rgba(15,23,42,0.16);
 }
 
 /* Add variants based on LiveView classes */
@@ -246,6 +346,87 @@ body {
    applied across the dashboard.
    ========================================================================= */
 @layer utilities {
+  .kah-platform-pill,
+  .kah-platform-tab {
+    --platform-rgb: 148 163 184;
+    --platform-text-rgb: var(--platform-rgb);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(var(--platform-rgb) / 0.62);
+    background:
+      linear-gradient(90deg, rgb(var(--platform-rgb) / 0.16), rgb(var(--platform-rgb) / 0.05));
+    color: rgb(var(--platform-text-rgb));
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--platform-rgb) / 0.18),
+      0 0 18px rgb(var(--platform-rgb) / 0.26);
+  }
+
+  .kah-platform-pill {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .kah-platform-tab {
+    position: relative;
+    margin: 0.35rem 0.125rem;
+    border-radius: 9999px;
+    border-bottom-width: 1px;
+  }
+
+  .kah-platform-tab-muted {
+    opacity: 0.74;
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--platform-rgb) / 0.10),
+      0 0 12px rgb(var(--platform-rgb) / 0.12);
+  }
+
+  .kah-platform-tab-muted:hover,
+  .kah-platform-tab-active {
+    opacity: 1;
+    color: rgb(var(--platform-text-rgb));
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--platform-rgb) / 0.28),
+      0 0 22px rgb(var(--platform-rgb) / 0.34),
+      0 0 44px rgb(var(--platform-rgb) / 0.12);
+  }
+
+  .kah-platform-alpaca {
+    --platform-rgb: 250 204 21;
+    --platform-text-rgb: 253 224 71;
+  }
+
+  .kah-platform-kalshi {
+    --platform-rgb: 34 197 94;
+    --platform-text-rgb: 74 222 128;
+  }
+
+  .kah-platform-polymarket {
+    --platform-rgb: 59 130 246;
+    --platform-text-rgb: 96 165 250;
+  }
+
+  .kah-platform-forex {
+    --platform-rgb: 249 115 22;
+    --platform-text-rgb: 251 146 60;
+  }
+
+  .kah-platform-kite {
+    --platform-rgb: 20 184 166;
+    --platform-text-rgb: 45 212 191;
+  }
+
+  html[data-theme="light"] .kah-platform-pill,
+  html[data-theme="light"] .kah-platform-tab {
+    --platform-text-rgb: var(--platform-rgb);
+    background:
+      linear-gradient(90deg, rgb(var(--platform-rgb) / 0.20), rgb(255 255 255 / 0.70));
+  }
+
   .kah-eyebrow {
     font-size: 9px;
     font-weight: 700;

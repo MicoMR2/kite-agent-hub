@@ -8,30 +8,39 @@
     <.live_title>
       {assigns[:page_title] || "Kite Agent Hub"}
     </.live_title>
+    <script>
+      (() => {
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+        const systemTheme = () => media.matches ? "dark" : "light";
+        const setTheme = (theme) => {
+          const mode = theme || "system";
+          const resolved = mode === "system" ? systemTheme() : mode;
+
+          if (mode === "system") {
+            localStorage.removeItem("phx:theme");
+          } else {
+            localStorage.setItem("phx:theme", mode);
+          }
+
+          document.documentElement.setAttribute("data-theme", resolved);
+          document.documentElement.setAttribute("data-theme-mode", mode);
+        };
+        setTheme(localStorage.getItem("phx:theme") || "system");
+        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
+        media.addEventListener("change", () => {
+          if (!localStorage.getItem("phx:theme")) setTheme("system");
+        });
+        window.addEventListener("phx:set-theme", (e) => {
+          const button = e.target.closest("[data-phx-theme]");
+          if (button) setTheme(button.dataset.phxTheme);
+        });
+      })();
+    </script>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
-    <script>
-      (() => {
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
-          }
-        };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
-        }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
-      })();
-    </script>
   </head>
-  <body class="bg-[#0a0a0f] text-gray-100 antialiased selection:bg-[#22c55e]/30">
+  <body class="kah-theme-body antialiased selection:bg-[#22c55e]/30">
     {@inner_content}
   </body>
 </html>

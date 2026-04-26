@@ -166,6 +166,24 @@ defmodule KiteAgentHubWeb.TradesLive do
   defp platform_label(nil), do: "Kite"
   defp platform_label(platform), do: platform |> String.replace("_", " ") |> String.upcase()
 
+  defp platform_pill_class(platform) do
+    "kah-platform-pill #{platform_color_class(platform)}"
+  end
+
+  defp platform_color_class(platform) when is_binary(platform) do
+    case String.downcase(platform) do
+      "alpaca" -> "kah-platform-alpaca"
+      "kalshi" -> "kah-platform-kalshi"
+      "polymarket" -> "kah-platform-polymarket"
+      "oanda" -> "kah-platform-forex"
+      "oanda_practice" -> "kah-platform-forex"
+      "forex" -> "kah-platform-forex"
+      _ -> "kah-platform-kite"
+    end
+  end
+
+  defp platform_color_class(_), do: "kah-platform-kite"
+
   defp attestation_url(hash), do: "https://testnet.kitescan.ai/tx/" <> hash
 
   @impl true
@@ -313,7 +331,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                           {trade.market}
                         </td>
                         <td class="hidden lg:table-cell px-3 py-3 sm:px-4 sm:py-4 whitespace-nowrap">
-                          <span class="inline-flex px-2 py-1 rounded border border-cyan-500/20 bg-cyan-500/10 text-[10px] font-black uppercase tracking-widest text-cyan-300">
+                          <span class={platform_pill_class(trade.platform)}>
                             {platform_label(trade.platform)}
                           </span>
                         </td>

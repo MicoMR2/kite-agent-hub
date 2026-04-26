@@ -1201,11 +1201,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 phx-click="switch_tab"
                 phx-value-tab={tab_key}
                 class={[
-                  "px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all border-b-2 whitespace-nowrap",
-                  if(@active_tab == String.to_atom(tab_key),
-                    do: "border-[#22c55e] text-white",
-                    else: "border-transparent text-gray-500 hover:text-gray-300"
-                  )
+                  "px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  dashboard_tab_class(tab_key, @active_tab == String.to_atom(tab_key))
                 ]}
               >
                 {label}
@@ -3033,6 +3030,29 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp alpaca_period_to_api("3Y"), do: {"3A", "1D"}
   defp alpaca_period_to_api("All"), do: {"10A", "1D"}
   defp alpaca_period_to_api(_), do: {"1M", "1D"}
+
+  defp dashboard_tab_class("alpaca", active?),
+    do: platform_dashboard_tab_class("kah-platform-alpaca", active?)
+
+  defp dashboard_tab_class("kalshi", active?),
+    do: platform_dashboard_tab_class("kah-platform-kalshi", active?)
+
+  defp dashboard_tab_class("polymarket", active?),
+    do: platform_dashboard_tab_class("kah-platform-polymarket", active?)
+
+  defp dashboard_tab_class("forex", active?),
+    do: platform_dashboard_tab_class("kah-platform-forex", active?)
+
+  defp dashboard_tab_class(_tab_key, true), do: "border-b-2 border-[#22c55e] text-white"
+
+  defp dashboard_tab_class(_tab_key, false),
+    do: "border-b-2 border-transparent text-gray-500 hover:text-gray-300"
+
+  defp platform_dashboard_tab_class(platform_class, true),
+    do: "kah-platform-tab kah-platform-tab-active #{platform_class}"
+
+  defp platform_dashboard_tab_class(platform_class, false),
+    do: "kah-platform-tab kah-platform-tab-muted #{platform_class}"
 
   # The real api_token is NEVER interpolated into the pastable
   # prompt blocks — it only lives in the masked Agent Token card
