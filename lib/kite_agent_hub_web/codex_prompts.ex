@@ -8,6 +8,11 @@ defmodule KiteAgentHubWeb.CodexPrompts do
   clone the repo or run a script. The site serves the full prompt string
   directly into a `codex '<prompt>'` shell command.
 
+  The agent token is deliberately not interpolated into the Codex command.
+  The copied shell block asks the local terminal for `KAH_API_TOKEN` without
+  echoing it, then exports that variable before Codex starts. This keeps the
+  secret out of Codex chat text, browser-visible prompt text, and shell history.
+
   CyberSec guardrail (PR #217 msg 7733): the prompt path is resolved via
   explicit `case` on the agent_type value — never via string
   interpolation — so a tampered DB value cannot traverse outside the
@@ -30,8 +35,6 @@ defmodule KiteAgentHubWeb.CodexPrompts do
   @conversational_prompt File.read!(@conversational_path)
   @trading_prompt File.read!(@trading_path)
 
-  @token_placeholder "kite_your_token_here"
-
   @doc """
   Returns the embedded prompt body for the given agent. The agent_type
   field is matched explicitly — anything else falls back to the
@@ -42,18 +45,22 @@ defmodule KiteAgentHubWeb.CodexPrompts do
   def prompt_for(_), do: @research_prompt
 
   @doc """
-  Single-line export command. Token is the agent's api_token, falling
-  back to a placeholder so the rendered block is meaningful even before
-  Reveal.
+  Token prompt for the local shell. This never includes the agent api_token.
   """
-  def export_command(agent) do
-    token =
-      case agent do
-        %{api_token: t} when is_binary(t) and byte_size(t) > 0 -> t
-        _ -> @token_placeholder
-      end
-
-    ~s|export KAH_API_TOKEN="#{token}"|
+  def token_prompt_block do
+    """
+    if [ -z "${KAH_API_TOKEN:-}" ]; then
+      printf "Paste KAH agent token: "
+      stty -echo
+      trap "stty echo" EXIT
+      IFS= read -r KAH_API_TOKEN
+      stty echo
+      trap - EXIT
+      printf "\\n"
+    fi
+    export KAH_API_TOKEN
+    """
+    |> String.trim()
   end
 
   @doc """
@@ -67,10 +74,10 @@ defmodule KiteAgentHubWeb.CodexPrompts do
   end
 
   @doc """
-  Combined two-line copy block (token export then codex invocation).
+  Combined copy block (local hidden token prompt then codex invocation).
   """
   def combined_block(agent) do
-    export_command(agent) <> "\n" <> codex_command(agent)
+    token_prompt_block() <> "\n" <> codex_command(agent)
   end
 
   @doc """

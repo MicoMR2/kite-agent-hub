@@ -710,8 +710,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
       Meet <%= @agent && @agent.name %>.
     </h1>
     <p class="mt-[8px] mb-[18px] text-[13px] text-gray-400 font-light leading-[1.6]">
-      Pick a runner — Claude Code or Codex. Both blocks pre-fill your token,
-      and you can copy without revealing.
+      Pick a runner — Claude Code or Codex. Codex uses a local hidden token prompt
+      so you do not paste secrets into Codex chat.
     </p>
 
     <div class="kah-card p-4">
@@ -775,7 +775,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
       <%= if @reveal_option_a do %>
         <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto"><%= claude_code_prompt(@agent) %></pre>
-        <p class="text-[10px] text-gray-600 mt-1">Paste into Claude Code or any LLM chat.</p>
+        <p class="text-[10px] text-gray-600 mt-1">Includes the token — use only in a trusted local coding client, not public or shared chats.</p>
       <% else %>
         <p class="text-[10px] text-gray-600">System prompt with your token embedded. Copy or reveal.</p>
       <% end %>
@@ -813,6 +813,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
         <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto"><%= KiteAgentHubWeb.CodexPrompts.combined_block(@agent) %></pre>
         <p class="text-[10px] text-gray-500 mt-1 leading-snug">
           <span class="text-yellow-400">Requires Codex Terminal / Codex CLI.</span>
+          The command asks Terminal for your token privately before Codex starts; do not paste the token into Codex chat.
           ChatGPT browser, desktop, or mobile chat cannot keep the agent online — they cannot run the long-poll loop locally.
           If <code class="text-gray-400">codex</code> is not recognized, install or open Codex Terminal and follow its OS-specific setup.
           <%= if KiteAgentHubWeb.CodexPrompts.can_trade?(@agent) do %>
@@ -822,7 +823,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
           <% end %>
         </p>
       <% else %>
-        <p class="text-[10px] text-gray-600">Self-contained two-line shell command — token + codex launcher with the embedded prompt. Copy or reveal when ready.</p>
+        <p class="text-[10px] text-gray-600">Self-contained shell command — hidden local token prompt + Codex launcher with the embedded prompt. Copy or reveal when ready.</p>
       <% end %>
     </div>
 
