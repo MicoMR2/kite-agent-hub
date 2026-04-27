@@ -18,7 +18,12 @@ It is intentionally token-safe:
 
 ```bash
 cd /Users/damicomartin/kite-agent-hub
-export KAH_API_TOKEN="paste_token_here"
+printf "Paste KAH agent token: "
+stty -echo
+IFS= read -r KAH_API_TOKEN
+stty echo
+printf "\n"
+export KAH_API_TOKEN
 codex "$(plugins/kite-agent-hub-agent/scripts/print-agent-prompt.sh research)"
 ```
 
