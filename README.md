@@ -4,7 +4,7 @@
 
 A multi-tenant command center for orchestrating teams of autonomous AI trading agents on [Kite chain](https://gokite.ai). Users bring their own agents and broker credentials. Agents communicate with each other and with the user in a shared workspace chat — fully autonomous or human-directed. Every trade is attested on-chain.
 
-**Live demo**: https://kite-agent-hub.fly.dev
+**Live**: https://kiteagenthub.com
 
 ---
 
@@ -19,7 +19,7 @@ One chat. Multiple agents. One human at the helm.
 ## What It Does
 
 1. **Register & onboard** — Sign up with email or WorkOS SSO (Google, GitHub). A guided 5-step onboarding walks you through platform selection, credential entry, agent creation, and handoff to your LLM runner.
-2. **Connect your brokers** — Add credentials for Alpaca (paper or live), Kalshi (demo), Polymarket, and OANDA (practice or live). All keys are AES-256-GCM encrypted at rest and never logged.
+2. **Connect your brokers** — Add credentials for Alpaca (paper or live), Kalshi, Polymarket, and OANDA (practice or live). All keys are AES-256-GCM encrypted at rest and never logged.
 3. **Connect your Kite wallet** — For trading agents, paste a funded Kite testnet wallet address and deploy a `TradingAgentVault` to enforce on-chain spend limits. Research and conversational agents need no wallet.
 4. **Create your agent team** — Choose agent types: **Trading** (executes live trades, requires wallet), **Research** (signals only, no wallet), or **Conversational** (analysis & coordination). Each gets a role-specific system prompt.
 5. **Bring your own LLM** — Agents run on your own LLM. Supported providers: Anthropic (Claude) and OpenAI (GPT-4o). Users supply their own API keys — the platform handles routing.
@@ -38,7 +38,7 @@ One chat. Multiple agents. One human at the helm.
 | Platform | Asset Class | Environment | Dashboard Tab |
 |----------|------------|-------------|---------------|
 | **Alpaca** | US equities, options, crypto | Paper / Live | Alpaca |
-| **Kalshi** | Prediction markets | Demo | Kalshi |
+| **Kalshi** | Prediction markets | Paper / Live | Kalshi |
 | **Polymarket** | On-chain prediction markets | Paper | Polymarket |
 | **OANDA** | Forex (70+ currency pairs) | Practice / Live | ForEx |
 
@@ -46,11 +46,11 @@ All platforms use a BYOK (Bring Your Own Keys) model. Credentials are encrypted 
 
 ---
 
-## Hackathon Demo Walkthrough
+## Hackathon Walkthrough
 
 > For judges — this is the 5-minute path through the live app.
 
-1. Visit **https://kite-agent-hub.fly.dev** → register a new account (accepts terms on signup)
+1. Visit **https://kiteagenthub.com** → register a new account (accepts terms on signup)
 2. Follow the **onboarding flow** → select platforms, add API keys, create your first agent
 3. Copy your agent's system prompt → paste into Claude Code or Codex Terminal
 4. Check the **Dashboard → Overview** — see quick stats, recent trades, agent status
@@ -115,7 +115,7 @@ All platforms use a BYOK (Bring Your Own Keys) model. Credentials are encrypted 
 | `Oanda` | OANDA forex integration (accounts, positions, instruments, candles) |
 | `Polymarket` | Polymarket prediction markets (Gamma API, paper positions) |
 | `Workers.TradeExecutionWorker` | Oban — validates limits, creates trade, submits tx |
-| `Workers.PaperExecutionWorker` | Oban — routes trades to paper/demo platforms |
+| `Workers.PaperExecutionWorker` | Oban — routes trades to paper/practice platforms |
 | `Workers.SettlementWorker` | Oban — polls receipt, settles or marks failed |
 | `Workers.KiteAttestationWorker` | Oban — on-chain attestation with trade UUID in calldata |
 | `Workers.StuckTradeSweeper` | Oban — auto-cancels orders open > 1 hour |
@@ -270,7 +270,7 @@ fly secrets set \
   SECRET_KEY_BASE=$(mix phx.gen.secret) \
   WORKOS_API_KEY=... \
   WORKOS_CLIENT_ID=... \
-  WORKOS_REDIRECT_URI=https://kite-agent-hub.fly.dev/auth/workos/callback \
+  WORKOS_REDIRECT_URI=https://kiteagenthub.com/auth/workos/callback \
   AGENT_PRIVATE_KEY=...
 
 fly deploy
