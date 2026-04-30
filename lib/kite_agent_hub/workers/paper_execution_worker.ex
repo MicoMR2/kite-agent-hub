@@ -47,7 +47,23 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
          :ok <- validate_symbol(args["symbol"]),
          :ok <- validate_units(args["units"]),
          {:ok, agent} <- load_agent(args["agent_id"]) do
-      dispatch(agent, args, job_id)
+      # Establish RLS context before any trade record writes — mirrors
+      # the pattern used by TradeExecutionWorker / AlpacaSettlementWorker.
+      # Without this, Trading.create_trade inserts run with no
+      # `app.current_user_id` set, which propagates inconsistent rows
+      # through the {:trade_created, ...} PubSub broadcast and crashes
+      # the dashboard's handle_info → triggers a socket reconnect loop.
+      case Repo.owner_user_id_for_agent(agent.id) do
+        nil ->
+          Logger.warning(
+            "PaperExecutionWorker job=#{job_id} no owner_user_id for agent #{agent.id} — skipping"
+          )
+
+          {:error, :no_owner}
+
+        owner_user_id ->
+          Repo.with_user(owner_user_id, fn -> dispatch(agent, args, job_id) end)
+      end
     else
       {:error, reason} = err ->
         Logger.warning(
