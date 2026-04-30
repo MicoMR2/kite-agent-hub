@@ -71,11 +71,23 @@ const CopyToClipboard = {
   }
 }
 
+// ChatInputClear — listen for a server-pushed "clear-chat-input" event
+// and reset the input's .value property. The controlled value attribute
+// alone doesn't reliably re-sync the displayed text after the user has
+// typed, so we clear the property directly.
+const ChatInputClear = {
+  mounted() {
+    this.handleEvent("clear-chat-input", () => {
+      this.el.value = ""
+    })
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard, LocalTime},
+  hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard, LocalTime, ChatInputClear},
 })
 
 // Show progress bar on live navigation and form submits

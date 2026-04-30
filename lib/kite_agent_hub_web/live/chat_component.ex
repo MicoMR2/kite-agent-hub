@@ -49,12 +49,21 @@ defmodule KiteAgentHubWeb.ChatComponent do
         {:ok, _msg} ->
           # Parent LV receives the broadcast and pushes the new message
           # list back through `send_update`, so the component does not
-          # re-fetch here.
-          {:noreply, assign(socket, :chat_input, "")}
+          # re-fetch here. Push event clears the input client-side since
+          # the controlled value attribute alone doesn't reliably re-sync
+          # the displayed text after the user has typed.
+          {:noreply,
+           socket
+           |> assign(:chat_input, "")
+           |> push_event("clear-chat-input", %{})}
 
         {:error, reason} ->
           Logger.warning("Chat send failed: #{inspect(reason)}")
-          {:noreply, assign(socket, :chat_input, "")}
+
+          {:noreply,
+           socket
+           |> assign(:chat_input, "")
+           |> push_event("clear-chat-input", %{})}
       end
     else
       {:noreply, socket}
@@ -223,11 +232,13 @@ defmodule KiteAgentHubWeb.ChatComponent do
           <%!-- Input --%>
           <form phx-submit="send_message" phx-target={@myself} class="border-t border-white/10 px-3 py-3 flex gap-2">
             <input
+              id="chat-text-input"
               type="text"
               name="text"
               value={@chat_input}
               placeholder="Message your agents..."
               autocomplete="off"
+              phx-hook="ChatInputClear"
               class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-white/20"
             />
             <button
