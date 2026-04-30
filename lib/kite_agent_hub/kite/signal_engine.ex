@@ -34,7 +34,7 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   alias KiteAgentHub.Billing.LlmUsageLog
   alias KiteAgentHub.Credentials
-  alias KiteAgentHub.Kite.LLM.{Anthropic, OpenAI, Ollama}
+  alias KiteAgentHub.Kite.LLM.{Anthropic, OpenAI}
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading.KiteAgent
 
@@ -45,7 +45,7 @@ defmodule KiteAgentHub.Kite.SignalEngine do
   Provider dispatch order:
     1. per-agent `llm_provider` (uses agent.llm_model + the matching
        per-org `Credentials.fetch_llm_key/2` for Anthropic/OpenAI,
-       or a local Ollama server)
+       for Anthropic/OpenAI)
     2. per-org credential: Anthropic then OpenAI
     3. `{:hold, "byo_llm_mode"}` — agent sits idle, external clients
        drive trades via `/api/v1/trades` with the agent api_token
@@ -99,7 +99,6 @@ defmodule KiteAgentHub.Kite.SignalEngine do
 
   defp provider_name(Anthropic), do: "anthropic"
   defp provider_name(OpenAI), do: "openai"
-  defp provider_name(Ollama), do: "ollama"
   defp provider_name(_), do: "unknown"
 
   # ── Provider resolution ─────────────────────────────────────────────────────
@@ -118,20 +117,13 @@ defmodule KiteAgentHub.Kite.SignalEngine do
     end
   end
 
-  defp resolve_provider(%KiteAgent{llm_provider: "ollama"} = agent) do
-    # No API key needed. Deployer-controlled base URL is read inside
-    # the Ollama impl — agent-supplied URLs land in a later PR behind
-    # SSRF validation.
-    {:ok, Ollama, %{model: agent.llm_model}}
-  end
-
   defp resolve_provider(%KiteAgent{} = agent), do: resolve_org_or_shim(agent)
 
   # The shared ANTHROPIC_API_KEY shim has been retired — the
   # platform never spends the owner's Anthropic credits on a user's
   # behalf. Orgs supply their own key via the encrypted credentials
-  # vault, or agents run on a local Ollama, or the agent sits idle
-  # while an external BYO client drives trades via /api/v1/trades.
+  # vault, or the agent sits idle while an external BYO client
+  # drives trades via /api/v1/trades.
   defp resolve_org_or_shim(%KiteAgent{} = agent) do
     case Credentials.fetch_llm_key(agent.organization_id, "anthropic") do
       {:ok, key} ->
