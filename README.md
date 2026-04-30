@@ -184,4 +184,12 @@ fly deploy
 
 ---
 
+## License
+
+Kite Agent Hub is licensed under the [Apache License 2.0](LICENSE). You are free to use, modify, and redistribute the code, including for commercial purposes, subject to the terms of the license.
+
+For commercial licensing inquiries or partnership questions, please open an issue.
+
+---
+
 Built for the [Encode Club × Kite AI Hackathon](https://www.encode.club/kite-ai-hackathon).
