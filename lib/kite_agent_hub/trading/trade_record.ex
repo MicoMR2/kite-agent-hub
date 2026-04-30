@@ -8,7 +8,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
   @statuses ~w(open settled cancelled failed)
   @sides ~w(yes no long short buy sell)
   @actions ~w(buy sell)
-  @platforms ~w(kite alpaca kalshi)
+  @platforms ~w(kite alpaca kalshi oanda)
 
   schema "trade_records" do
     field :trade_id_onchain, :string
