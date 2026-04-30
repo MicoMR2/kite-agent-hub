@@ -145,6 +145,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_account, nil)
       |> assign(:forex_candles, [])
       |> assign(:forex_symbol, "EUR_USD")
+      |> assign(:stats_refresh_timer, nil)
       |> assign(:chat_messages, chat_messages)
       |> stream(:trades, trades)
 
@@ -314,6 +315,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
     Process.send_after(self(), {:tab_refresh, tab}, 30_000)
   end
 
+  # Debounce broker stats refresh so rapid-fire trade broadcasts
+  # (e.g., create + settle in the same second) collapse into one API
+  # call instead of hammering Alpaca/Kalshi on every event.
+  defp schedule_stats_refresh(socket) do
+    existing = socket.assigns[:stats_refresh_timer]
+    if existing, do: Process.cancel_timer(existing)
+
+    timer = Process.send_after(self(), :refresh_broker_stats, @stats_debounce_ms)
+    assign(socket, :stats_refresh_timer, timer)
+  end
+
   @impl true
   def handle_event("activate_vault", %{"vault" => %{"vault_address" => vault_address}}, socket) do
     agent = socket.assigns.selected_agent
@@ -420,32 +432,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # ── PubSub / async messages ───────────────────────────────────────────────────
 
+  # Debounce interval for stats refresh triggered by trade broadcasts.
+  # Multiple trades settling in quick succession only trigger one API
+  # call instead of hammering Alpaca/Kalshi on every single event.
+  @stats_debounce_ms 3_000
+
   @impl true
   def handle_info({:trade_created, trade}, socket) do
-    stats =
-      case socket.assigns[:organization] do
-        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
-        _ -> socket.assigns[:pnl_stats]
-      end
-
     {:noreply,
      socket
-     |> assign(:pnl_stats, stats)
+     |> schedule_stats_refresh()
      |> stream_insert(:trades, trade, at: 0)}
   end
 
   def handle_info({:trade_updated, trade}, socket) do
-    stats =
-      case socket.assigns[:organization] do
-        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
-        _ -> socket.assigns[:pnl_stats]
-      end
-
-    # PR #103: refresh the on-chain attestation summary card whenever a
-    # trade row updates. Cheap query (count + 5-row select) and only the
-    # currently-selected agent's trades come through this PubSub topic,
-    # so we don't need to filter further. Wrapped in try/rescue so a
-    # transient DB failure cannot crash the LV on every trade update.
     agent = socket.assigns[:selected_agent]
 
     {att_count, recent_att, all_att} =
@@ -468,11 +468,26 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     {:noreply,
      socket
-     |> assign(:pnl_stats, stats)
+     |> schedule_stats_refresh()
      |> assign(:attestation_count, att_count)
      |> assign(:recent_attestations, recent_att)
      |> assign(:all_attestations, all_att)
      |> stream_insert(:trades, trade)}
+  end
+
+  # Debounced stats refresh: only fires once after the debounce window,
+  # regardless of how many trade broadcasts arrived in that window.
+  def handle_info(:refresh_broker_stats, socket) do
+    stats =
+      case socket.assigns[:organization] do
+        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
+        _ -> socket.assigns[:pnl_stats]
+      end
+
+    {:noreply,
+     socket
+     |> assign(:pnl_stats, stats)
+     |> assign(:stats_refresh_timer, nil)}
   end
 
   def handle_info({:agent_updated, agent}, socket) do
