@@ -439,40 +439,63 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   @impl true
   def handle_info({:trade_created, trade}, socket) do
-    {:noreply,
-     socket
-     |> schedule_stats_refresh()
-     |> stream_insert(:trades, trade, at: 0)}
+    try do
+      {:noreply,
+       socket
+       |> schedule_stats_refresh()
+       |> stream_insert(:trades, trade, at: 0)}
+    rescue
+      e ->
+        require Logger
+
+        Logger.warning(
+          "DashboardLive: :trade_created handler raised — #{Exception.message(e)} — ignoring to keep socket alive"
+        )
+
+        {:noreply, socket}
+    end
   end
 
   def handle_info({:trade_updated, trade}, socket) do
-    agent = socket.assigns[:selected_agent]
+    try do
+      agent = socket.assigns[:selected_agent]
+      active_tab = socket.assigns[:active_tab]
 
-    {att_count, recent_att, all_att} =
-      try do
-        {
-          attestation_count(agent),
-          recent_attestations(agent),
-          if(socket.assigns.active_tab == :attestations,
-            do: all_attestations(agent),
-            else: socket.assigns.all_attestations)
-        }
-      rescue
-        _ ->
+      {att_count, recent_att, all_att} =
+        try do
           {
-            socket.assigns.attestation_count,
-            socket.assigns.recent_attestations,
-            socket.assigns.all_attestations
+            attestation_count(agent),
+            recent_attestations(agent),
+            if(active_tab == :attestations,
+              do: all_attestations(agent),
+              else: socket.assigns[:all_attestations] || [])
           }
-      end
+        rescue
+          _ ->
+            {
+              socket.assigns[:attestation_count] || 0,
+              socket.assigns[:recent_attestations] || [],
+              socket.assigns[:all_attestations] || []
+            }
+        end
 
-    {:noreply,
-     socket
-     |> schedule_stats_refresh()
-     |> assign(:attestation_count, att_count)
-     |> assign(:recent_attestations, recent_att)
-     |> assign(:all_attestations, all_att)
-     |> stream_insert(:trades, trade)}
+      {:noreply,
+       socket
+       |> schedule_stats_refresh()
+       |> assign(:attestation_count, att_count)
+       |> assign(:recent_attestations, recent_att)
+       |> assign(:all_attestations, all_att)
+       |> stream_insert(:trades, trade)}
+    rescue
+      e ->
+        require Logger
+
+        Logger.warning(
+          "DashboardLive: :trade_updated handler raised — #{Exception.message(e)} — ignoring to keep socket alive"
+        )
+
+        {:noreply, socket}
+    end
   end
 
   # Debounced stats refresh: only fires once after the debounce window,
