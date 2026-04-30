@@ -1,7 +1,7 @@
 defmodule KiteAgentHubWeb.DashboardLive do
   use KiteAgentHubWeb, :live_view
 
-  alias KiteAgentHub.{Onboarding, Orgs, Trading, Chat, Polymarket, TradeLocker, Oanda}
+  alias KiteAgentHub.{Onboarding, Orgs, Trading, Chat, Polymarket, Oanda}
 
   require Logger
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
@@ -677,7 +677,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   # Async ForEx tab loader. Prefers OANDA live when configured, then
-  # OANDA practice, then TradeLocker. Also pulls balance + candles for
+  # OANDA practice. Also pulls balance + candles for
   # the selected symbol so the tab header and chart can render. All
   # errors swallow so a transient API outage cannot crash the LV.
   def handle_info(:load_forex, socket) do
@@ -703,8 +703,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                  Oanda.candles(org_id, symbol, "M5", 120, :practice)}
 
               _ ->
-                {TradeLocker.list_positions(org_id),
-                 TradeLocker.list_instruments(org_id), :tradelocker, nil, nil, []}
+                {[], [], :none, nil, nil, []}
             end
           rescue
             e ->
@@ -2731,12 +2730,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
           <%= if @active_tab == :forex do %>
           <% forex_agent_can_trade =
                @selected_agent &&
-                 (Oanda.can_trade?(@selected_agent) || TradeLocker.can_trade?(@selected_agent)) %>
+                 Oanda.can_trade?(@selected_agent) %>
           <% forex_provider_label =
                case {@forex_provider, @forex_oanda_env} do
                  {:oanda, :live} -> "OANDA Live"
                  {:oanda, _} -> "OANDA Practice"
-                 {:tradelocker, _} -> "TradeLocker"
+                 {:none, _} -> "ForEx"
                  _ -> "no provider"
                end %>
           <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
@@ -2845,7 +2844,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
                 <% true -> %>
-                  <p class="text-xs text-gray-500 py-2">No open positions. Add OANDA or TradeLocker credentials in Settings to connect.</p>
+                  <p class="text-xs text-gray-500 py-2">No open positions. Add OANDA credentials in Settings to connect.</p>
               <% end %>
             </div>
 

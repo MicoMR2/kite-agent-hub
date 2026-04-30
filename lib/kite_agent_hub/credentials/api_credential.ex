@@ -16,16 +16,11 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
 
   # Broker, LLM, prediction-market, and forex providers share this
   # table. For :polymarket, key_id holds the Relayer address (0x + 40
-  # hex chars). For :tradelocker, key_id holds the login email,
-  # encrypted_secret holds the password, server holds the brand code
-  # (allowlisted) and account_id holds the numeric trading account id.
-  # oanda and oanda_live are separate rows — practice uses
+  # hex chars). oanda and oanda_live are separate rows — practice uses
   # api-fxpractice.oanda.com, live uses api-fxtrade.oanda.com. The UI
   # renders them as two connector cards so paper and real-money keys
   # are never conflated.
-  @valid_providers ~w(alpaca kalshi openai anthropic polymarket tradelocker oanda oanda_live)
-  @valid_envs ~w(paper live)
-  @valid_tradelocker_servers ~w(PRDTL)
+  @valid_providers ~w(alpaca kalshi openai anthropic polymarket oanda oanda_live)
 
   schema "api_credentials" do
     field :org_id, :binary_id
@@ -53,7 +48,6 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
     |> validate_length(:key_id, min: 4)
     |> validate_length(:secret, min: 8)
     |> validate_polymarket_address()
-    |> validate_tradelocker_fields()
     |> validate_oanda_fields()
     |> encrypt_secret()
   end
@@ -66,7 +60,6 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
     |> validate_length(:key_id, min: 4)
     |> validate_length(:secret, min: 8)
     |> validate_polymarket_address()
-    |> validate_tradelocker_fields()
     |> validate_oanda_fields()
     |> encrypt_secret()
   end
@@ -82,34 +75,6 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
           :key_id,
           ~r/^0x[a-fA-F0-9]{40}$/,
           message: "must be a 0x-prefixed 40-hex-character EVM address"
-        )
-
-      _ ->
-        changeset
-    end
-  end
-
-  # TradeLocker-specific: key_id must look like an email, server must
-  # be on the allowlist (defense against using a typo'd brand as an
-  # arbitrary host), account_id is digits only.
-  defp validate_tradelocker_fields(changeset) do
-    case get_field(changeset, :provider) do
-      "tradelocker" ->
-        changeset
-        |> validate_format(
-          :key_id,
-          ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/,
-          message: "must be a valid email address"
-        )
-        |> validate_inclusion(
-          :server,
-          @valid_tradelocker_servers,
-          message: "must be a known TradeLocker server brand (#{Enum.join(@valid_tradelocker_servers, ", ")})"
-        )
-        |> validate_format(
-          :account_id,
-          ~r/^\d{4,20}$/,
-          message: "must be a 4-20 digit account id"
         )
 
       _ ->
