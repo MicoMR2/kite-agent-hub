@@ -33,7 +33,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PaperExecutionWorker}
 
-  @paper_providers ~w(oanda_practice polymarket kalshi)
+  @paper_providers ~w(oanda_practice kalshi)
 
   @alpaca_order_fields ~w(
     provider order_type type time_in_force limit_price stop_price trail_price trail_percent
@@ -276,10 +276,10 @@ defmodule KiteAgentHubWeb.API.TradesController do
   end
 
   # Route the inbound trade to the correct Oban worker based on the
-  # optional "provider" field. Paper providers (oanda_practice,
-  # polymarket) take a separate arg shape and go to PaperExecutionWorker;
-  # legacy flows (no provider, or provider not in the allowlist) keep
-  # the existing TradeExecutionWorker contract unchanged.
+  # optional "provider" field. Paper providers (oanda_practice, kalshi)
+  # take a separate arg shape and go to PaperExecutionWorker; legacy
+  # flows (no provider, or provider not in the allowlist) keep the
+  # existing TradeExecutionWorker contract unchanged.
   defp build_job(params, agent) do
     case normalize_provider(Map.get(params, "provider")) do
       p when p in @paper_providers ->

@@ -1,37 +1,32 @@
 defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   @moduledoc """
   Oban worker that dispatches provider-specific trade jobs to OANDA
-  practice, Kalshi, or Polymarket paper. Live OANDA and live Polymarket
-  dispatch are intentionally rejected here — real-money routing for
-  those platforms needs its own pre-build review.
+  practice and Kalshi. Each dispatch creates a TradeRecord upfront,
+  calls the broker API, and settles or fails the record based on the
+  response. Settled trades are automatically enqueued for on-chain
+  attestation via KiteAttestationWorker.
 
   Enqueue via:
 
       %{
         "agent_id"        => agent.id,
         "organization_id" => org.id,
-        "provider"        => "oanda_practice" | "kalshi" | "polymarket",
-        "symbol"          => "EUR_USD" | "0x<condition_id>",
+        "provider"        => "oanda_practice" | "kalshi",
+        "symbol"          => "EUR_USD" | "KXBTCD-25APR30",
         "side"            => "buy" | "sell" | "yes" | "no",
-        "units"           => 100,
-        # polymarket only:
-        "token_id"        => "0x...",
-        "price"           => "0.50"
+        "units"           => 100
       }
       |> KiteAgentHub.Workers.PaperExecutionWorker.new()
       |> Oban.insert()
 
   Guards:
     * provider must be in the allowlist — `"oanda_live"` is actively
-      rejected at the entry point (CyberSec ②).
+      rejected at the entry point.
     * units > 0, symbol non-empty.
     * agent_type must be `"trading"`; non-trading agents are rejected
-      before any platform call (CyberSec ④).
-    * Polymarket dispatch asserts `mode: "paper"` — no live CLOB path
-      exists in this worker (CyberSec ⑤).
+      before any platform call.
     * Credentials are fetched from the encrypted store inside the
-      platform module; job args never carry tokens or account ids
-      (CyberSec ⑥).
+      platform module; job args never carry tokens or account ids.
   """
 
   use Oban.Worker,
@@ -40,11 +35,11 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   require Logger
 
-  alias KiteAgentHub.{Credentials, Repo, Trading, Oanda, Polymarket}
+  alias KiteAgentHub.{Credentials, Repo, Trading, Oanda}
   alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.TradingPlatforms.KalshiClient
 
-  @allowed_providers ~w(oanda_practice kalshi polymarket)
+  @allowed_providers ~w(oanda_practice kalshi)
 
   @impl Oban.Worker
   def perform(%Oban.Job{id: job_id, args: args}) do
@@ -147,55 +142,37 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
         args["no_price_dollars"] ||
         args["limit_price"]
 
-    with {:ok, {key_id, pem, env}} <- Credentials.fetch_secret_with_env(org_id, :kalshi),
-         {:ok, order} <-
-           KalshiClient.place_order(
-             key_id,
-             pem,
-             symbol,
-             side,
-             units,
-             price,
-             env,
-             kalshi_opts(args)
-           ) do
-      Logger.info("PaperExecutionWorker job=#{job_id} provider=kalshi accepted order=#{order.id}")
-      {:ok, order}
-    else
-      err ->
-        Logger.warning(
-          "PaperExecutionWorker job=#{job_id} provider=kalshi failed: #{inspect(err)}"
+    case create_kalshi_trade(agent, args, units, price) do
+      {:ok, trade} ->
+        with {:ok, {key_id, pem, env}} <- Credentials.fetch_secret_with_env(org_id, :kalshi),
+             {:ok, order} <-
+               KalshiClient.place_order(
+                 key_id,
+                 pem,
+                 symbol,
+                 side,
+                 units,
+                 price,
+                 env,
+                 kalshi_opts(args)
+               ) do
+          handle_kalshi_response(trade, order, job_id)
+        else
+          {:error, reason} = err ->
+            Logger.warning(
+              "PaperExecutionWorker job=#{job_id} provider=kalshi failed: #{inspect(reason)}"
+            )
+
+            mark_trade_failed(trade, "kalshi error: #{inspect(reason)}")
+            err
+        end
+
+      {:error, changeset} ->
+        Logger.error(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi trade create failed: #{inspect(changeset.errors)}"
         )
 
-        err
-    end
-  end
-
-  defp dispatch(%{agent_type: "trading"} = agent, %{"provider" => "polymarket"} = args, job_id) do
-    if args["mode"] in [nil, "paper"] do
-      attrs = %{
-        market_id: args["symbol"],
-        token_id: args["token_id"] || args["symbol"],
-        outcome: normalize_outcome(args["side"]),
-        size: args["units"],
-        price: args["price"],
-        organization_id: args["organization_id"]
-      }
-
-      case Polymarket.place_paper_order(agent, attrs) do
-        {:ok, pos} ->
-          Logger.info("PaperExecutionWorker job=#{job_id} provider=polymarket paper-filled")
-          {:ok, pos}
-
-        err ->
-          Logger.warning(
-            "PaperExecutionWorker job=#{job_id} provider=polymarket failed: #{inspect(err)}"
-          )
-
-          err
-      end
-    else
-      {:error, :polymarket_live_not_supported}
+        {:error, :trade_create_failed}
     end
   end
 
@@ -231,12 +208,6 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   )
 
   defp oanda_opts(args), do: Map.take(args, @oanda_order_fields)
-
-  defp normalize_outcome("yes"), do: "yes"
-  defp normalize_outcome("no"), do: "no"
-  defp normalize_outcome("buy"), do: "yes"
-  defp normalize_outcome("sell"), do: "no"
-  defp normalize_outcome(_), do: "yes"
 
   # ── OANDA TradeRecord lifecycle ────────────────────────────────────────────
 
@@ -354,6 +325,84 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   defp maybe_put_order_id(attrs, nil), do: attrs
   defp maybe_put_order_id(attrs, id), do: Map.put(attrs, :platform_order_id, to_string(id))
+
+  # ── Kalshi TradeRecord lifecycle ────────────────────────────────────────────
+
+  defp create_kalshi_trade(agent, args, units, price) do
+    fill_price =
+      case price do
+        p when is_binary(p) and p != "" ->
+          case Decimal.parse(p) do
+            {dec, _} -> dec
+            :error -> Decimal.new(0)
+          end
+
+        p when is_integer(p) ->
+          Decimal.new(p)
+
+        _ ->
+          Decimal.new(0)
+      end
+
+    side = args["side"] || "yes"
+    action = if side in ["no", "sell"], do: "sell", else: "buy"
+
+    Trading.create_trade(%{
+      kite_agent_id: agent.id,
+      market: args["symbol"],
+      side: side,
+      action: action,
+      contracts: units,
+      fill_price: fill_price,
+      status: "open",
+      source: "oban",
+      reason: args["reason"],
+      platform: "kalshi"
+    })
+  end
+
+  # Kalshi orders can be "executed" (filled immediately) or "resting"
+  # (limit order waiting to match). Executed orders settle and attest
+  # synchronously; resting orders stay open for a future settlement
+  # worker to poll.
+  defp handle_kalshi_response(trade, order, job_id) do
+    update_attrs = maybe_put_order_id(%{}, order.id)
+
+    case order.status do
+      "executed" ->
+        Logger.info(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi FILLED order=#{order.id}"
+        )
+
+        with {:ok, updated} <- trade |> TradeRecord.changeset(update_attrs) |> Repo.update(),
+             {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
+          enqueue_attestation(settled)
+          {:ok, settled}
+        else
+          {:error, reason} ->
+            Logger.error(
+              "PaperExecutionWorker job=#{job_id} provider=kalshi settle failed: #{inspect(reason)}"
+            )
+
+            {:error, reason}
+        end
+
+      status when status in ["canceled", "cancelled"] ->
+        Logger.info(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi cancelled order=#{order.id}"
+        )
+
+        mark_trade_failed(trade, "kalshi cancelled")
+        {:error, :kalshi_cancelled}
+
+      status ->
+        Logger.info(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi order=#{order.id} status=#{status} — trade left open"
+        )
+
+        trade |> TradeRecord.changeset(update_attrs) |> Repo.update()
+    end
+  end
 
   # KiteAttestationWorker mirrors the Alpaca settlement path — the worker
   # is idempotent (skips if attestation_tx_hash already set) so any retry
