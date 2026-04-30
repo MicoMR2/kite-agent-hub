@@ -1751,7 +1751,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">How to Connect Your LLM</h3>
                     <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
                       <li>Reveal your Agent Token and copy it (secret — do not share)</li>
-                      <li>Pick a path: Claude Code, Codex Terminal, or a local Ollama model</li>
+                      <li>Pick a path: Claude Code or Codex Terminal</li>
                       <li>For Codex, paste the command and enter the token only when Terminal asks; for other paths, reveal the matching block and keep the token private</li>
                     </ol>
                     <p class="text-[10px] text-gray-600 mt-2">Switching tabs collapses every revealed block automatically.</p>
@@ -3144,22 +3144,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
         }
       }
     }, pretty: true)
-  end
-
-  defp ollama_setup(_agent) do
-    """
-    # 1. Install Ollama (macOS / Linux)
-    curl -fsSL https://ollama.com/install.sh | sh
-    ollama pull qwen2.5:7b
-
-    # 2. Run the reference BYO runner
-    export KAH_AGENT_TOKEN=#{@token_placeholder}
-    export KAH_BASE_URL=https://kite-agent-hub.fly.dev
-    export OLLAMA_MODEL=qwen2.5:7b
-    python3 priv/byo/qwen_runner.py
-
-    # Full guide: docs/byo-local-agent.md
-    """
   end
 
   # Token mask: show first 8 chars + dots when collapsed.

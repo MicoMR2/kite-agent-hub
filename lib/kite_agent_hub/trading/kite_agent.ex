@@ -7,7 +7,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
 
   @statuses ~w(pending active paused error archived)
   @agent_types ~w(trading research conversational)
-  @llm_providers ~w(anthropic openai ollama)
+  @llm_providers ~w(anthropic openai)
 
   schema "kite_agents" do
     field :name, :string

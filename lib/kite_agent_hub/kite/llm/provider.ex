@@ -2,19 +2,16 @@ defmodule KiteAgentHub.Kite.LLM.Provider do
   @moduledoc """
   Behaviour for LLM providers that power `SignalEngine`.
 
-  Each implementation wraps a single vendor (Anthropic, OpenAI, a
-  local Ollama server, etc.) and returns the generated text as a
-  plain string. Parsing the JSON signal is the caller's job; the
-  provider only has to speak HTTP and hand back the model output.
+  Each implementation wraps a single vendor (Anthropic, OpenAI)
+  and returns the generated text as a plain string. Parsing the
+  JSON signal is the caller's job; the provider only has to speak
+  HTTP and hand back the model output.
 
   Expected `opts` keys:
 
-    * `:model` — vendor-specific model identifier (required for
-      OpenAI + Anthropic; Ollama also requires it as the local tag,
-      e.g. `"llama3.1:8b"`)
+    * `:model` — vendor-specific model identifier
     * `:api_key` — decrypted secret from
-      `KiteAgentHub.Credentials.fetch_llm_key/2` (Anthropic/OpenAI)
-    * `:base_url` — overrides the default endpoint (Ollama only)
+      `KiteAgentHub.Credentials.fetch_llm_key/2`
     * `:max_tokens` — optional per-call cap
 
   Return values:

@@ -4,8 +4,7 @@ import Config
 #
 # LLM provider keys are no longer read at app scope: each org
 # supplies its own key via the encrypted credentials vault
-# (Anthropic / OpenAI), or points agents at a local Ollama via
-# per-agent config (see KiteAgentHub.Kite.LLM.*). The previous
+# (Anthropic / OpenAI) via the encrypted credentials vault. The previous
 # shared `anthropic_api_key` has been retired — the platform
 # never spends the owner's Anthropic credits on a user's behalf.
 # Polymarket operating mode. :paper simulates fills against live Gamma
@@ -44,7 +43,6 @@ config :kite_agent_hub,
   workos_redirect_uri:
     System.get_env("WORKOS_REDIRECT_URI") ||
       "http://localhost:4000/auth/workos/callback",
-  ollama_base_url: System.get_env("OLLAMA_BASE_URL"),
   agent_private_key: System.get_env("AGENT_PRIVATE_KEY") || "",
   # PR #101: Kite chain treasury address. KiteAttestationWorker sends a
   # tiny PYUSD transfer here from the agent wallet on every settled
