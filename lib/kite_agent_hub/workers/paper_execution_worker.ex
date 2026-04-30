@@ -40,7 +40,8 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   require Logger
 
-  alias KiteAgentHub.{Credentials, Trading, Oanda, Polymarket}
+  alias KiteAgentHub.{Credentials, Repo, Trading, Oanda, Polymarket}
+  alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.TradingPlatforms.KalshiClient
 
   @allowed_providers ~w(oanda_practice kalshi polymarket)
@@ -101,24 +102,34 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
        ) do
     org_id = args["organization_id"]
     symbol = args["symbol"]
+    raw_units = parse_units!(args["units"])
+    signed = signed_units(raw_units, args["side"])
 
-    units =
-      case args["units"] do
-        n when is_integer(n) -> signed_units(n, args["side"])
-        n when is_binary(n) -> n |> String.to_integer() |> signed_units(args["side"])
-      end
+    # Open a TradeRecord upfront so the audit trail exists even if the
+    # OANDA call fails. fill_price is a placeholder until OANDA returns
+    # the actual fill — the schema requires it on insert. The price
+    # field is overwritten from orderFillTransaction.price on settle.
+    case create_oanda_trade(agent, args, raw_units) do
+      {:ok, trade} ->
+        case Oanda.place_practice_order(agent, org_id, symbol, signed, oanda_opts(args)) do
+          {:ok, body} ->
+            handle_oanda_response(trade, body, job_id)
 
-    case Oanda.place_practice_order(agent, org_id, symbol, units, oanda_opts(args)) do
-      {:ok, body} ->
-        Logger.info("PaperExecutionWorker job=#{job_id} provider=oanda_practice filled")
-        {:ok, body}
+          {:error, reason} = err ->
+            Logger.warning(
+              "PaperExecutionWorker job=#{job_id} provider=oanda_practice transport failed: #{inspect(reason)}"
+            )
 
-      err ->
-        Logger.warning(
-          "PaperExecutionWorker job=#{job_id} provider=oanda_practice failed: #{inspect(err)}"
+            mark_trade_failed(trade, "oanda transport error: #{inspect(reason)}")
+            err
+        end
+
+      {:error, changeset} ->
+        Logger.error(
+          "PaperExecutionWorker job=#{job_id} provider=oanda_practice trade create failed: #{inspect(changeset.errors)}"
         )
 
-        err
+        {:error, :trade_create_failed}
     end
   end
 
@@ -226,4 +237,130 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   defp normalize_outcome("buy"), do: "yes"
   defp normalize_outcome("sell"), do: "no"
   defp normalize_outcome(_), do: "yes"
+
+  # ── OANDA TradeRecord lifecycle ────────────────────────────────────────────
+
+  defp create_oanda_trade(agent, args, raw_units) do
+    placeholder_price =
+      case args["price"] do
+        p when is_binary(p) and p != "" ->
+          case Decimal.parse(p) do
+            {dec, _} -> dec
+            :error -> Decimal.new(0)
+          end
+
+        _ ->
+          Decimal.new(0)
+      end
+
+    side = if args["side"] == "sell", do: "short", else: "long"
+    action = if args["side"] == "sell", do: "sell", else: "buy"
+
+    Trading.create_trade(%{
+      kite_agent_id: agent.id,
+      market: args["symbol"],
+      side: side,
+      action: action,
+      contracts: raw_units,
+      fill_price: placeholder_price,
+      status: "open",
+      source: "oban",
+      reason: args["reason"],
+      platform: "oanda"
+    })
+  end
+
+  # OANDA market+FOK orders fill or cancel synchronously. The response
+  # body is documented at developer.oanda.com/rest-live-v20/transaction-df/
+  # We look for orderFillTransaction (filled) or orderCancelTransaction
+  # (rejected, e.g. FOK couldn't fill at the requested size). Anything
+  # else leaves the trade open — limit/stop orders still need the future
+  # OandaSettlementWorker that polls /accounts/{id}/orders/{id}.
+  defp handle_oanda_response(trade, body, job_id) when is_map(body) do
+    cond do
+      fill = body["orderFillTransaction"] ->
+        settle_oanda_trade(trade, fill, job_id)
+
+      cancel = body["orderCancelTransaction"] ->
+        reason = cancel["reason"] || "OANDA cancelled"
+        Logger.info("PaperExecutionWorker job=#{job_id} provider=oanda_practice cancelled: #{reason}")
+        mark_trade_failed(trade, "oanda cancel: #{reason}")
+        {:error, {:oanda_cancel, reason}}
+
+      true ->
+        Logger.info(
+          "PaperExecutionWorker job=#{job_id} provider=oanda_practice accepted (no synchronous fill) — trade left open"
+        )
+
+        {:ok, trade}
+    end
+  end
+
+  defp settle_oanda_trade(trade, fill, job_id) do
+    fill_price = parse_fill_price(fill["price"]) || trade.fill_price
+    fill_units = parse_fill_units(fill["units"]) || trade.contracts
+    order_id = fill["orderID"] || fill["id"]
+
+    Logger.info(
+      "PaperExecutionWorker job=#{job_id} provider=oanda_practice FILLED — #{fill_units} @ #{fill_price}"
+    )
+
+    update_attrs =
+      %{
+        fill_price: fill_price,
+        contracts: fill_units,
+        notional_usd: Decimal.mult(Decimal.new(fill_units), fill_price)
+      }
+      |> maybe_put_order_id(order_id)
+
+    with {:ok, updated} <- trade |> TradeRecord.changeset(update_attrs) |> Repo.update(),
+         {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
+      enqueue_attestation(settled)
+      {:ok, settled}
+    else
+      {:error, reason} ->
+        Logger.error(
+          "PaperExecutionWorker job=#{job_id} provider=oanda_practice settle failed: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp mark_trade_failed(trade, reason) when is_binary(reason) do
+    trade
+    |> TradeRecord.changeset(%{status: "failed", reason: reason})
+    |> Repo.update()
+  end
+
+  defp parse_fill_price(price) when is_binary(price) do
+    case Decimal.parse(price) do
+      {dec, _} -> dec
+      :error -> nil
+    end
+  end
+
+  defp parse_fill_price(_), do: nil
+
+  defp parse_fill_units(units) when is_binary(units) do
+    case Integer.parse(units) do
+      {n, _} -> abs(n)
+      :error -> nil
+    end
+  end
+
+  defp parse_fill_units(units) when is_integer(units), do: abs(units)
+  defp parse_fill_units(_), do: nil
+
+  defp maybe_put_order_id(attrs, nil), do: attrs
+  defp maybe_put_order_id(attrs, id), do: Map.put(attrs, :platform_order_id, to_string(id))
+
+  # KiteAttestationWorker mirrors the Alpaca settlement path — the worker
+  # is idempotent (skips if attestation_tx_hash already set) so any retry
+  # is safe.
+  defp enqueue_attestation(%{id: trade_id}) do
+    %{trade_id: trade_id}
+    |> KiteAgentHub.Workers.KiteAttestationWorker.new()
+    |> Oban.insert()
+  end
 end
