@@ -85,10 +85,20 @@ defmodule KiteAgentHubWeb.Router do
   end
 
   scope "/", KiteAgentHubWeb do
-    pipe_through [:browser, :require_authenticated_user]
+    # /users/settings flows are sudo-gated: a session token older than
+    # the sudo window forces re-auth before email/password changes go
+    # through. Confirm-email tokens are short-lived + single-use, so
+    # they don't need the sudo plug — the magic link IS the second
+    # factor.
+    pipe_through [:browser, :require_authenticated_user, :require_sudo_mode]
 
     get "/users/settings", UserSettingsController, :edit
     put "/users/settings", UserSettingsController, :update
+  end
+
+  scope "/", KiteAgentHubWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
     get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
   end
 

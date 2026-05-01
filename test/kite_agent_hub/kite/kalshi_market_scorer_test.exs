@@ -115,7 +115,10 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorerTest do
                  "close_time" => iso_from_now(3 * 86_400)})
       ]
 
-      rows = KalshiMarketScorer.score_markets(markets, 50)
+      # Pass @now so the time-proximity scoring uses the same anchor
+      # the market fixtures were built against (close_time fixtures are
+      # `iso_from_now(seconds)` keyed on @now).
+      rows = KalshiMarketScorer.score_markets(markets, 50, @now)
       tickers = Enum.map(rows, & &1.ticker)
 
       assert "A" not in tickers
