@@ -35,12 +35,18 @@ One chat. Multiple agents. One human at the helm.
 
 ## Supported Trading Platforms
 
-| Platform | Asset Class | Environment | Dashboard Tab |
-|----------|------------|-------------|---------------|
-| **Alpaca** | US equities, options, crypto | Paper / Live | Alpaca |
-| **Kalshi** | Prediction markets | Paper / Live | Kalshi |
-| **Polymarket** | On-chain prediction markets | Paper | Polymarket |
-| **OANDA** | Forex (70+ currency pairs) | Practice / Live | ForEx |
+| Platform | Asset Class | Order Types | Environment | Dashboard Tab |
+|----------|------------|-------------|-------------|---------------|
+| **Alpaca** | US equities (whole + fractional), options (OCC symbols), crypto (fractional) | Long / short, market / limit / stop / trail, USD-notional or unit qty | Paper / Live | Alpaca |
+| **Kalshi** | Prediction markets | Yes/No, reduce-only exits | Paper / Live | Kalshi |
+| **Polymarket** | On-chain prediction markets | Binary outcomes | Paper | Polymarket |
+| **OANDA** | Forex (70+ currency pairs) | Market / limit, take-profit / stop-loss / trailing-stop | Practice / Live | ForEx |
+
+**Alpaca specifics**:
+- Fractional crypto (e.g. `0.001 BTC`) and dollar-based equity orders via the `notional` field — no more silently-dropped sub-1 trades.
+- OCC option contract symbols (e.g. `AAPL260117C00100000`) routed to Alpaca's `/v2/orders` with options-aware payload sanitization (whole-qty enforcement, no extended-hours, no notional).
+- Shorts: `side: "short"` + `action: "sell"` to open, `action: "buy"` to cover. Pre-flighted against Alpaca's `easy_to_borrow` flag and crypto-shorting restriction so agents see clear errors instead of generic 403s.
+- The Alpaca tab surfaces full account headroom — equity, buying power, Reg-T BP, Day-Trade BP, account multiplier, and shorting status.
 
 All platforms use a BYOK (Bring Your Own Keys) model. Credentials are encrypted with AES-256-GCM at rest and decrypted only during broker API calls.
 
@@ -200,6 +206,34 @@ GET    /api/v1/trades              List trades (?status=open&limit=50)
 GET    /api/v1/trades/:id          Get single trade
 DELETE /api/v1/trades/:id          Cancel trade
 ```
+
+#### Trade payload
+```json
+{
+  "market": "AAPL",
+  "side": "long",
+  "action": "buy",
+  "contracts": 5,
+  "fill_price": 187.50,
+  "reason": "edge=82, momentum strong"
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `market` | yes | Equity ticker, crypto pair, OCC option symbol, OANDA forex pair, Kalshi/Polymarket market ID |
+| `side` | yes | `long` or `short`. Shorts only on Alpaca ETB equities. |
+| `action` | yes | `buy` opens longs / covers shorts; `sell` closes longs / opens shorts |
+| `contracts` | one of | Position size in units. Crypto is fractionable (`0.001`). Options must be whole. |
+| `notional` | one of | USD dollar amount — alternative to `contracts` for fractional / dollar-based orders. Not allowed for options. |
+| `fill_price` | yes | Reference price; KAH submits the broker market or limit order |
+| `reason` | optional | Surfaced on the dashboard and in collective-intelligence buckets |
+| `order_type`, `limit_price`, `stop_price`, `take_profit`, `stop_loss`, ... | optional | Forwarded to the broker. See `plugins/kite-agent-hub-agent/prompts/trading-agent.codex.md` for the full set. |
+
+Examples:
+- Open a $250 fractional AAPL long: `{"market":"AAPL","side":"long","action":"buy","notional":250,"fill_price":187.50}`
+- Open a SPY put: `{"market":"SPY260117P00400000","side":"long","action":"buy","contracts":1,"order_type":"limit","limit_price":2.10,"fill_price":2.10}`
+- Open a TSLA short: `{"market":"TSLA","side":"short","action":"sell","contracts":3,"fill_price":265.00}`
 
 ### Agents
 ```
