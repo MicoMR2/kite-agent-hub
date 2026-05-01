@@ -483,6 +483,23 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
+  @doc """
+  Same as `list_recent_attestations/2` but each row carries a
+  `:display_pnl` value computed via the same FIFO logic used for the
+  trades list. Without this, the dashboard's attestations tab reads
+  `realized_pnl` straight off the row — and Alpaca-settled rows store
+  `0` there as a placeholder, so every PnL cell renders as $0.0000.
+  """
+  def list_recent_attestations_with_display_pnl(agent_id, limit \\ 5) do
+    display_pnl_by_id = display_pnl_by_trade_id(agent_id)
+
+    agent_id
+    |> list_recent_attestations(limit)
+    |> Enum.map(fn att ->
+      Map.put(att, :display_pnl, Map.get(display_pnl_by_id, att.id))
+    end)
+  end
+
   # ── Edge-score snapshots ─────────────────────────────────────────────────────
 
   alias KiteAgentHub.Kite.EdgeScoreSnapshot

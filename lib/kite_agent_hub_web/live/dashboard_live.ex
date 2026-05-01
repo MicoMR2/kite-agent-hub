@@ -1115,7 +1115,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp all_attestations(nil), do: []
   defp all_attestations(%{id: id}) do
     try do
-      Trading.list_recent_attestations(id, 100)
+      Trading.list_recent_attestations_with_display_pnl(id, 100)
     rescue
       _ -> []
     end
@@ -2033,14 +2033,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </p>
                         </div>
                         <div class="col-span-1 md:col-span-2">
-                          <%= if att.realized_pnl do %>
+                          <%= if att.display_pnl do %>
                             <p class={[
                               "text-sm font-bold font-mono",
-                              Decimal.gt?(att.realized_pnl, 0) && "text-[#22c55e]",
-                              Decimal.lt?(att.realized_pnl, 0) && "text-[#ef4444]",
-                              Decimal.eq?(att.realized_pnl, 0) && "text-gray-500"
+                              Decimal.gt?(att.display_pnl, 0) && "text-[#22c55e]",
+                              Decimal.lt?(att.display_pnl, 0) && "text-[#ef4444]",
+                              Decimal.eq?(att.display_pnl, 0) && "text-gray-500"
                             ]}>
-                              {if Decimal.gt?(att.realized_pnl, 0), do: "+"}${Decimal.round(att.realized_pnl, 4)}
+                              {if Decimal.gt?(att.display_pnl, 0), do: "+"}${Decimal.round(att.display_pnl, 4)}
                             </p>
                           <% else %>
                             <p class="text-xs text-gray-600 font-mono">—</p>
