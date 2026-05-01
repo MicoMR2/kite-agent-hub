@@ -394,13 +394,13 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     |> parse_placed_order()
   end
 
-  # OCC option contract symbol: <root 1-6><YYMMDD><C|P><strike8>.
-  # e.g. AAPL260117C00100000 — Apple Jan 17, 2026 $100 call.
-  @option_symbol ~r/\A[A-Z]{1,6}\d{6}[CP]\d{8}\z/
-
-  @doc false
-  def options_symbol?(symbol) when is_binary(symbol), do: Regex.match?(@option_symbol, symbol)
-  def options_symbol?(_), do: false
+  @doc """
+  Forward to `KiteAgentHub.Trading.OccSymbol.match?/1`. Kept on
+  `AlpacaClient` because the order-routing call sites read more
+  naturally as `options_symbol?(symbol)` next to the rest of the
+  Alpaca-payload logic.
+  """
+  defdelegate options_symbol?(symbol), to: KiteAgentHub.Trading.OccSymbol, as: :match?
 
   @doc false
   def order_body(symbol, qty, side \\ "buy", opts \\ []) do

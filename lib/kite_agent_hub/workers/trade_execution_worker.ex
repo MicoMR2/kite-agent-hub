@@ -38,7 +38,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   # Markets routed to Alpaca paper trading (crypto + equities)
   @alpaca_markets ~w(ETH-USDC BTC-USDC SOL-USDC ETHUSD BTCUSD SOLUSD SPY QQQ AAPL TSLA)
-  @alpaca_option_symbol ~r/\A[A-Z]{1,6}\d{6}[CP]\d{8}\z/
+
+  alias KiteAgentHub.Trading.OccSymbol
 
   # Alpaca symbol mapping from Kite market notation
   @alpaca_symbol_map %{
@@ -177,7 +178,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   def detect_platform(market, _provider) when market in @alpaca_markets, do: "alpaca"
 
   def detect_platform(market, _provider) when is_binary(market) do
-    if Regex.match?(~r/\A[A-Z]{1,5}\z/, market) or Regex.match?(@alpaca_option_symbol, market) do
+    if Regex.match?(~r/\A[A-Z]{1,5}\z/, market) or OccSymbol.match?(market) do
       "alpaca"
     else
       "kite"

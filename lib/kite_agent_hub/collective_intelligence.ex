@@ -12,10 +12,9 @@ defmodule KiteAgentHub.CollectiveIntelligence do
   alias KiteAgentHub.CollectiveIntelligence.TradeInsight
   alias KiteAgentHub.Orgs.Organization
   alias KiteAgentHub.Repo
-  alias KiteAgentHub.Trading.TradeRecord
+  alias KiteAgentHub.Trading.{OccSymbol, TradeRecord}
 
   @consent_version "kci-v1-2026-04-25"
-  @option_symbol ~r/\A[A-Z]{1,6}\d{6}[CP]\d{8}\z/
   @crypto_markets ~w(BTCUSD ETHUSD SOLUSD BTC-USDC ETH-USDC SOL-USDC)
 
   def consent_version, do: @consent_version
@@ -186,7 +185,7 @@ defmodule KiteAgentHub.CollectiveIntelligence do
   defp market_class(%TradeRecord{market: market}) when is_binary(market) do
     cond do
       market in @crypto_markets -> "crypto"
-      Regex.match?(@option_symbol, market) -> "option"
+      OccSymbol.match?(market) -> "option"
       Regex.match?(~r/\A[A-Z]{3}_[A-Z]{3}\z/, market) -> "forex"
       Regex.match?(~r/\A[A-Z]{1,6}\z/, market) -> "equity"
       true -> "other"
