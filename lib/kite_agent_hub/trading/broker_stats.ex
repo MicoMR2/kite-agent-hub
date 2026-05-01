@@ -39,6 +39,17 @@ defmodule KiteAgentHub.Trading.BrokerStats do
     open_count: 0
   }
 
+  @empty_account %{
+    equity: nil,
+    buying_power: nil,
+    regt_buying_power: nil,
+    daytrading_buying_power: nil,
+    non_marginable_buying_power: nil,
+    multiplier: nil,
+    shorting_enabled: nil,
+    status: nil
+  }
+
   @doc """
   Fetch live broker stats for an organization. Combines Alpaca FIFO
   realized P&L from closed orders + Kalshi settlement revenue.
@@ -51,6 +62,27 @@ defmodule KiteAgentHub.Trading.BrokerStats do
     alpaca = alpaca_stats(org_id)
     kalshi = kalshi_stats(org_id)
     merge(alpaca, kalshi)
+  end
+
+  @doc """
+  Fetch the Alpaca account-level summary used by the dashboard's
+  margin-headroom card. Returns the empty shape (all nils) when no
+  Alpaca credentials are wired so the template can simply check
+  `equity != nil` to decide whether to render. Never raises.
+  """
+  def account_info(nil), do: @empty_account
+
+  def account_info(org_id) do
+    case Credentials.fetch_secret_with_env(org_id, :alpaca) do
+      {:ok, {key_id, secret, env}} ->
+        case AlpacaClient.account(key_id, secret, env) do
+          {:ok, account} -> Map.merge(@empty_account, account)
+          _ -> @empty_account
+        end
+
+      _ ->
+        @empty_account
+    end
   end
 
   # ── Alpaca ──────────────────────────────────────────────────────────────────
