@@ -10,6 +10,9 @@
 
         <.form :let={f} for={@email_changeset} action={~p"/users/settings"} id="update_email">
           <input type="hidden" name="action" value="update_email" />
+          <div :for={error <- f[:email].errors} class="text-xs text-[#ef4444] mb-3 font-mono">
+            Email {translate_error(error)}
+          </div>
           <div class="space-y-4">
             <div>
               <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
@@ -44,6 +47,15 @@
 
         <.form :let={f} for={@password_changeset} action={~p"/users/settings"} id="update_password">
           <input type="hidden" name="action" value="update_password" />
+          <div :for={error <- f[:password].errors} class="text-xs text-[#ef4444] mb-2 font-mono">
+            Password {translate_error(error)}
+          </div>
+          <div
+            :for={error <- f[:password_confirmation].errors}
+            class="text-xs text-[#ef4444] mb-2 font-mono"
+          >
+            Password confirmation {translate_error(error)}
+          </div>
           <div class="space-y-4">
             <div>
               <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">

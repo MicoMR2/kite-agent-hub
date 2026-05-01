@@ -23,7 +23,9 @@ defmodule KiteAgentHubWeb.UserAuthTest do
     test "stores the user token in the session", %{conn: conn, user: user} do
       conn = UserAuth.log_in_user(conn, user)
       assert token = get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/dashboard"
+      # Fresh user_fixture/0 has no org/agents, so signed_in_path/1
+      # routes to /onboard.
+      assert redirected_to(conn) == ~p"/onboard"
       assert Accounts.get_user_by_session_token(token)
     end
 
@@ -229,7 +231,9 @@ defmodule KiteAgentHubWeb.UserAuthTest do
         |> UserAuth.redirect_if_user_is_authenticated([])
 
       assert conn.halted
-      assert redirected_to(conn) == ~p"/dashboard"
+      # Fresh user_fixture/0 has no org/agents, so signed_in_path/1
+      # routes to /onboard.
+      assert redirected_to(conn) == ~p"/onboard"
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do

@@ -13,7 +13,9 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/users/log-in")
       response = html_response(conn, 200)
       assert response =~ "Welcome back"
-      assert response =~ ~p"/users/register"
+      # Login page now links to /onboard for new-user signup
+      # (not /users/register).
+      assert response =~ ~p"/onboard"
       assert response =~ "Sign in"
     end
 
@@ -36,7 +38,9 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/users/log-in?mode=password")
       response = html_response(conn, 200)
       assert response =~ "Welcome back"
-      assert response =~ ~p"/users/register"
+      # Login page now links to /onboard for new-user signup
+      # (not /users/register).
+      assert response =~ ~p"/onboard"
       assert response =~ "Sign in"
     end
   end
@@ -83,12 +87,17 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/dashboard"
+      # Fresh user_fixture/0 has no org/agents, so signed_in_path/1
+      # routes to /onboard. Tests with users that have agents should
+      # assert ~p"/dashboard".
+      assert redirected_to(conn) == ~p"/onboard"
 
-      # Now do a logged in request and assert on the nav
+      # Now do a logged in request and assert on the nav. Dashboard
+      # doesn't render the raw email, but the settings + log-out links
+      # confirm we're in the authenticated layout.
       conn = get(conn, ~p"/dashboard")
       response = html_response(conn, 200)
-      assert response =~ user.email
+      _ = user
       assert response =~ ~p"/users/settings"
       assert response =~ ~p"/users/log-out"
     end
@@ -106,7 +115,10 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         })
 
       assert conn.resp_cookies["_kite_agent_hub_web_user_remember_me"]
-      assert redirected_to(conn) == ~p"/dashboard"
+      # Fresh user_fixture/0 has no org/agents, so signed_in_path/1
+      # routes to /onboard. Tests with users that have agents should
+      # assert ~p"/dashboard".
+      assert redirected_to(conn) == ~p"/onboard"
     end
 
     test "logs the user in with return to", %{conn: conn, user: user} do
@@ -158,12 +170,17 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/dashboard"
+      # Fresh user_fixture/0 has no org/agents, so signed_in_path/1
+      # routes to /onboard. Tests with users that have agents should
+      # assert ~p"/dashboard".
+      assert redirected_to(conn) == ~p"/onboard"
 
-      # Now do a logged in request and assert on the nav
+      # Now do a logged in request and assert on the nav. Dashboard
+      # doesn't render the raw email, but the settings + log-out links
+      # confirm we're in the authenticated layout.
       conn = get(conn, ~p"/dashboard")
       response = html_response(conn, 200)
-      assert response =~ user.email
+      _ = user
       assert response =~ ~p"/users/settings"
       assert response =~ ~p"/users/log-out"
     end
@@ -179,15 +196,20 @@ defmodule KiteAgentHubWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/dashboard"
+      # Fresh user_fixture/0 has no org/agents, so signed_in_path/1
+      # routes to /onboard. Tests with users that have agents should
+      # assert ~p"/dashboard".
+      assert redirected_to(conn) == ~p"/onboard"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "User confirmed successfully."
 
       assert Accounts.get_user!(user.id).confirmed_at
 
-      # Now do a logged in request and assert on the nav
+      # Now do a logged in request and assert on the nav. Dashboard
+      # doesn't render the raw email, but the settings + log-out links
+      # confirm we're in the authenticated layout.
       conn = get(conn, ~p"/dashboard")
       response = html_response(conn, 200)
-      assert response =~ user.email
+      _ = user
       assert response =~ ~p"/users/settings"
       assert response =~ ~p"/users/log-out"
     end

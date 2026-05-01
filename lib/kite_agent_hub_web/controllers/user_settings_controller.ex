@@ -46,7 +46,13 @@ defmodule KiteAgentHubWeb.UserSettingsController do
         |> UserAuth.log_in_user(user)
 
       {:error, changeset} ->
-        render(conn, :edit, password_changeset: changeset)
+        # Phoenix's `<.form>` only surfaces field errors when
+        # `changeset.action != nil`. The email path (line 33) sets
+        # `:insert`; mirror that here so the user actually sees
+        # "should be at least 12 character(s)" etc. on validation
+        # failure. Without this the form silently re-renders without
+        # surfacing why.
+        render(conn, :edit, password_changeset: %{changeset | action: :update})
     end
   end
 

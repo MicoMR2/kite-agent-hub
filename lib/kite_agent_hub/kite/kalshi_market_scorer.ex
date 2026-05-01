@@ -124,10 +124,8 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorer do
     }
   end
 
-  @spec score_markets([map()], non_neg_integer()) :: [score_row()]
-  def score_markets(markets, min_score \\ 0) when is_list(markets) do
-    now = DateTime.utc_now()
-
+  @spec score_markets([map()], non_neg_integer(), DateTime.t()) :: [score_row()]
+  def score_markets(markets, min_score \\ 0, now \\ DateTime.utc_now()) when is_list(markets) do
     markets
     |> Enum.map(&score_market(&1, now))
     |> Enum.filter(&(&1.score >= min_score))

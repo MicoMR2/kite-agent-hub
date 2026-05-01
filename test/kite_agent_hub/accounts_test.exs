@@ -350,14 +350,19 @@ defmodule KiteAgentHub.AccountsTest do
       assert {:error, :not_found} = Accounts.login_user_by_magic_link(encoded_token)
     end
 
-    test "raises when unconfirmed user has password set" do
+    test "confirms instead of issuing a session when unconfirmed user has a password set" do
+      # Earlier behavior was to raise — we now treat the magic link as
+      # the email-confirmation step for password users and return
+      # `{:confirmed, user}` so the controller can route them to the
+      # password login page instead of granting a session directly.
+      # See `Accounts.login_user_by_magic_link/1` for the rationale.
       user = unconfirmed_user_fixture()
       {1, nil} = Repo.update_all(User, set: [hashed_password: "hashed"])
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
-      assert_raise RuntimeError, ~r/magic link log in is not allowed/, fn ->
-        Accounts.login_user_by_magic_link(encoded_token)
-      end
+      assert {:confirmed, confirmed_user} = Accounts.login_user_by_magic_link(encoded_token)
+      assert confirmed_user.id == user.id
+      assert confirmed_user.confirmed_at
     end
   end
 
