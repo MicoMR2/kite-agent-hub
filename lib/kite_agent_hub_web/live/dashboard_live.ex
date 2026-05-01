@@ -9,11 +9,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    try do
+      do_mount(socket)
+    rescue
+      e ->
+        Logger.error("DashboardLive mount CRASHED: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}")
+        {:ok, assign_minimal_socket(socket)}
+    catch
+      kind, reason ->
+        Logger.error("DashboardLive mount CAUGHT #{kind}: #{inspect(reason)}")
+        {:ok, assign_minimal_socket(socket)}
+    end
+  end
+
+  defp do_mount(socket) do
     user = socket.assigns.current_scope.user
 
-    # Wrap every DB call reachable from mount so a transient failure
-    # cannot crash the LV and trigger the mount-reconnect loop (KAH
-    # rule — see feedback_kah_lv_rescue).
     orgs =
       try do
         Orgs.list_orgs_for_user(user.id)
@@ -23,13 +34,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     org = List.first(orgs)
 
-    # Idempotently provision the default agent, wallet, and vault on the
-    # user's first dashboard visit. Registration (Accounts.register_user)
-    # creates the user + org + membership only — agent/wallet/vault are
-    # deferred here so users who never return don't leave orphan rows.
-    # Onboarding.provision_for_user/2 short-circuits when the agent
-    # already exists, so every subsequent mount is a single LIMIT 1 read.
-    # Rescued so a transient failure cannot crash the LV mount.
     if org do
       try do
         Onboarding.provision_for_user(user, org)
@@ -65,34 +69,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
         {[], []}
       end
 
-    # Stats start empty and load asynchronously after mount completes — see
-    # handle_info(:load_broker_stats, ...) below. PR #98: previously this
-    # was a synchronous BrokerStats.live_stats call inside mount, which
-    # made every dashboard load wait on Alpaca + Kalshi HTTP roundtrips
-    # before sending the first byte to the browser. With both APIs slow,
-    # mount could exceed Phoenix's timeout and the LiveView socket would
-    # die before connecting → blank screen. Async load keeps mount fast
-    # (<50ms) and the cards re-render with real numbers when the broker
-    # responses come back.
     stats = empty_broker_stats()
 
     selected_agent = List.first(agents)
 
     if connected?(socket) do
-      if selected_agent do
-        Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{selected_agent.id}")
-        fetch_chain_data(selected_agent)
-      end
+      try do
+        if selected_agent do
+          Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{selected_agent.id}")
+          fetch_chain_data(selected_agent)
+        end
 
-      if org, do: Chat.subscribe(org.id)
-      send(self(), :load_edge_scores)
-      if org, do: send(self(), :load_broker_stats)
+        if org, do: Chat.subscribe(org.id)
+        send(self(), :load_edge_scores)
+        if org, do: send(self(), :load_broker_stats)
+      rescue
+        e -> Logger.warning("Dashboard mount connected block failed: #{inspect(e)}")
+      end
     end
 
-    # Load the initial chat messages here so the parent LV owns the
-    # messages list. The ChatComponent renders it as a pure prop.
-    # Wrapped in try/rescue because a DB blip in mount would trigger
-    # the LV mount-reconnect loop (PR #199/#200 taught us this).
     chat_messages =
       try do
         if org do
@@ -150,6 +145,52 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> stream(:trades, trades)
 
     {:ok, socket}
+  end
+
+  # Minimal socket so the dashboard renders SOMETHING instead of crash-looping.
+  # Every assign that the template reads must have a safe default here.
+  defp assign_minimal_socket(socket) do
+    socket
+    |> assign(:organization, nil)
+    |> assign(:agents, [])
+    |> assign(:selected_agent, nil)
+    |> assign(:pnl_stats, empty_broker_stats())
+    |> assign(:wallet_balance_eth, nil)
+    |> assign(:block_number, nil)
+    |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
+    |> assign(:active_tab, :overview)
+    |> assign(:edge_scores, [])
+    |> assign(:edge_scores_loading, false)
+    |> assign(:portfolio_scores, nil)
+    |> assign(:alpaca_data, nil)
+    |> assign(:alpaca_history, [])
+    |> assign(:alpaca_period, "1M")
+    |> assign(:kalshi_data, nil)
+    |> assign(:wallet_txs, nil)
+    |> assign(:wallet_tokens, nil)
+    |> assign(:show_agent_context, false)
+    |> assign(:agent_context_text, nil)
+    |> assign(:show_agent_token, false)
+    |> assign(:show_option_a, false)
+    |> assign(:show_option_b, false)
+    |> assign(:show_option_c, false)
+    |> assign(:attestation_count, 0)
+    |> assign(:recent_attestations, [])
+    |> assign(:all_attestations, [])
+    |> assign(:polymarket_data, nil)
+    |> assign(:polymarket_positions, [])
+    |> assign(:polymarket_mode, :paper)
+    |> assign(:forex_positions, [])
+    |> assign(:forex_instruments, [])
+    |> assign(:forex_loading, false)
+    |> assign(:forex_provider, :none)
+    |> assign(:forex_oanda_env, nil)
+    |> assign(:forex_account, nil)
+    |> assign(:forex_candles, [])
+    |> assign(:forex_symbol, "EUR_USD")
+    |> assign(:stats_refresh_timer, nil)
+    |> assign(:chat_messages, [])
+    |> stream(:trades, [])
   end
 
   @impl true
