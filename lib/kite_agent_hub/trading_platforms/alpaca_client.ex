@@ -40,6 +40,39 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   @doc """
+  Fetch asset metadata for a single symbol. Used by the worker's short
+  pre-flight check (`easy_to_borrow`) and any future fractional-only
+  filters (`fractionable`). Returns:
+
+      {:ok, %{symbol, tradable, shortable, easy_to_borrow,
+              fractionable, marginable, options_enabled}}
+
+  Or `{:error, reason}` if the symbol is unknown or the account is
+  unauthorized for asset metadata.
+  """
+  def asset(key_id, secret, symbol, env \\ "paper") do
+    case get("/v2/assets/#{symbol}", key_id, secret, env) do
+      {:ok, body} when is_map(body) ->
+        {:ok,
+         %{
+           symbol: body["symbol"],
+           tradable: parse_bool(body["tradable"]),
+           shortable: parse_bool(body["shortable"]),
+           easy_to_borrow: parse_bool(body["easy_to_borrow"]),
+           fractionable: parse_bool(body["fractionable"]),
+           marginable: parse_bool(body["marginable"]),
+           options_enabled: body["attributes"] |> List.wrap() |> Enum.member?("options_enabled")
+         }}
+
+      {:ok, _} ->
+        {:error, "alpaca asset response not a map"}
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
   Fetch portfolio equity history for sparkline chart.
   Returns {:ok, [%{t: unix_ts, v: equity_float}]} or {:error, reason}.
   """
@@ -610,7 +643,15 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
        buying_power: parse_float(body["buying_power"]),
        portfolio_value: parse_float(body["portfolio_value"]),
        day_trade_count: body["daytrade_count"] || 0,
-       status: body["status"] || "unknown"
+       status: body["status"] || "unknown",
+       # Margin / shortable fields exposed for the dashboard headroom
+       # cards and the worker's short-selling pre-flight. multiplier=1
+       # means cash account; 2/4 means margin account.
+       regt_buying_power: parse_float(body["regt_buying_power"]),
+       daytrading_buying_power: parse_float(body["daytrading_buying_power"]),
+       non_marginable_buying_power: parse_float(body["non_marginable_buying_power"]),
+       multiplier: parse_float(body["multiplier"]),
+       shorting_enabled: parse_bool(body["shorting_enabled"])
      }}
   end
 

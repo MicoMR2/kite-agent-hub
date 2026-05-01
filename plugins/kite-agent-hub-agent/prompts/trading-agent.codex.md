@@ -62,8 +62,9 @@ Rules:
 - Crypto symbols: `BTCUSD`, `ETHUSD`, `SOLUSD`.
 - Equity symbols: `AAPL`, `SPY`, etc.
 - Use `side: "long"` or `side: "short"` for the directional view.
-- Use `action: "buy"` to open and `action: "sell"` to close.
-- Always start new positions with `buy`.
+- For longs: `action: "buy"` to open, `action: "sell"` to close.
+- For shorts: `action: "sell"` to open the short, `action: "buy"` to cover and close.
+- Shorts only work on equities Alpaca flags as easy-to-borrow. The platform pre-flights this and rejects with a clear reason if the symbol is hard-to-borrow or your account is not margin-enabled. Crypto cannot be shorted on Alpaca.
 - `contracts` is the position size in units (equity shares, crypto coins, option contracts). **Crypto is fractionable** — use `0.001` for one-thousandth of a BTC. Options must be whole numbers.
 - `notional` is an alternative to `contracts`: a USD dollar amount for fractional / dollar-based equity orders or crypto. If you set `notional`, omit `contracts`. The broker computes the actual fill size at execution price. Do not use `notional` for options.
 - `fill_price` is a reference price; KAH submits the market order.
