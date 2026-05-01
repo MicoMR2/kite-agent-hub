@@ -24,6 +24,46 @@ defmodule KiteAgentHub.TradingPlatforms.OrderPayloadTest do
     assert TradeExecutionWorker.detect_platform("AAPL260117C00100000") == "alpaca"
   end
 
+  test "Alpaca options orders never include extended_hours (Alpaca rejects it)" do
+    body =
+      AlpacaClient.order_body("AAPL260117C00100000", 1, "buy", %{
+        "order_type" => "market",
+        "extended_hours" => true
+      })
+
+    refute Map.has_key?(body, "extended_hours")
+  end
+
+  test "Alpaca equity orders still pass through extended_hours" do
+    body =
+      AlpacaClient.order_body("SPY", 1, "buy", %{
+        "order_type" => "market",
+        "extended_hours" => true
+      })
+
+    assert body["extended_hours"] == true
+  end
+
+  test "Alpaca options orders truncate fractional qty to whole" do
+    body =
+      AlpacaClient.order_body("AAPL260117C00100000", 1.7, "buy", %{
+        "order_type" => "market"
+      })
+
+    assert body["qty"] == "1"
+  end
+
+  test "Alpaca options orders coerce sub-1 fractional qty up to 1" do
+    body =
+      AlpacaClient.order_body("AAPL260117C00100000", 0.5, "buy", %{
+        "order_type" => "market"
+      })
+
+    # Better to submit qty=1 (smallest legal option order) than 0 (Alpaca 422)
+    # if an agent ever passes a sub-1 fractional by mistake.
+    assert body["qty"] == "1"
+  end
+
   test "Kalshi order body supports reduce-only early exits" do
     {:ok, body} =
       KalshiClient.order_body("KXTEST-26JAN01-YES", "yes", 2, "0.56", %{

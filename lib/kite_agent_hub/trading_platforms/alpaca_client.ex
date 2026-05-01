@@ -361,14 +361,23 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     |> parse_placed_order()
   end
 
+  # OCC option contract symbol: <root 1-6><YYMMDD><C|P><strike8>.
+  # e.g. AAPL260117C00100000 — Apple Jan 17, 2026 $100 call.
+  @option_symbol ~r/\A[A-Z]{1,6}\d{6}[CP]\d{8}\z/
+
+  @doc false
+  def options_symbol?(symbol) when is_binary(symbol), do: Regex.match?(@option_symbol, symbol)
+  def options_symbol?(_), do: false
+
   @doc false
   def order_body(symbol, qty, side \\ "buy", opts \\ []) do
     opts = normalize_opts(opts)
     order_type = normalize_order_type(opts["order_type"] || opts["type"] || "market")
+    options? = options_symbol?(symbol)
 
     %{
       "symbol" => symbol,
-      "qty" => to_string(qty),
+      "qty" => normalize_qty(qty, options?),
       "side" => side,
       "type" => order_type,
       "time_in_force" => normalize_time_in_force(opts["time_in_force"], symbol)
@@ -377,12 +386,29 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     |> put_optional("stop_price", opts["stop_price"])
     |> put_optional("trail_price", opts["trail_price"])
     |> put_optional("trail_percent", opts["trail_percent"])
-    |> put_optional("extended_hours", parse_bool(opts["extended_hours"]))
+    # Alpaca rejects options orders that include `extended_hours` at all.
+    # Strip the field for OCC symbols even if the agent passed it.
+    |> put_optional_unless_options("extended_hours", parse_bool(opts["extended_hours"]), options?)
     |> put_optional("order_class", normalize_order_class(opts["order_class"]))
     |> put_optional("take_profit", nested_take_profit(opts))
     |> put_optional("stop_loss", nested_stop_loss(opts))
     |> put_optional("client_order_id", opts["client_order_id"])
   end
+
+  # Options orders must use whole-number qty. Truncate fractional input
+  # rather than letting Alpaca 422 the order — agents typically pass
+  # `contracts: 1` already, this is a defensive guard.
+  defp normalize_qty(qty, true = _options?) do
+    case qty |> to_string() |> Float.parse() do
+      {f, _} -> f |> trunc() |> max(1) |> to_string()
+      :error -> to_string(qty)
+    end
+  end
+
+  defp normalize_qty(qty, _equity?), do: to_string(qty)
+
+  defp put_optional_unless_options(map, _key, _value, true), do: map
+  defp put_optional_unless_options(map, key, value, false), do: put_optional(map, key, value)
 
   # Alpaca's crypto venue rejects time_in_force=day with
   # `code=42210000 "invalid crypto time_in_force"`. Crypto only accepts
