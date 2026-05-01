@@ -83,6 +83,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         if org, do: Chat.subscribe(org.id)
         send(self(), :load_edge_scores)
         if org, do: send(self(), :load_broker_stats)
+        if org, do: send(self(), :load_account_info)
       rescue
         e -> Logger.warning("Dashboard mount connected block failed: #{inspect(e)}")
       end
@@ -107,6 +108,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:agents, agents)
       |> assign(:selected_agent, selected_agent)
       |> assign(:pnl_stats, stats)
+      |> assign(:account_info, empty_account_info())
       |> assign(:wallet_balance_eth, nil)
       |> assign(:block_number, nil)
       |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
@@ -155,6 +157,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:agents, [])
     |> assign(:selected_agent, nil)
     |> assign(:pnl_stats, empty_broker_stats())
+    |> assign(:account_info, empty_account_info())
     |> assign(:wallet_balance_eth, nil)
     |> assign(:block_number, nil)
     |> assign(:vault_form, to_form(%{"vault_address" => ""}, as: :vault))
@@ -604,6 +607,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
       end
 
     {:noreply, assign(socket, :pnl_stats, stats)}
+  end
+
+  # Async Alpaca account-summary load — same pattern as :load_broker_stats
+  # so mount stays fast and the margin-headroom card hydrates after
+  # connect. Skipped silently if no Alpaca credentials are wired.
+  def handle_info(:load_account_info, socket) do
+    info =
+      case socket.assigns[:organization] do
+        %{id: org_id} -> safe_account_info(org_id, socket.assigns[:account_info])
+        _ -> socket.assigns[:account_info] || empty_account_info()
+      end
+
+    {:noreply, assign(socket, :account_info, info)}
   end
 
   # Async edge scorer loading. Wrapped in try/rescue so a scorer raise
@@ -1111,6 +1127,56 @@ defmodule KiteAgentHubWeb.DashboardLive do
     }
   end
 
+  defp empty_account_info do
+    %{
+      equity: nil,
+      buying_power: nil,
+      regt_buying_power: nil,
+      daytrading_buying_power: nil,
+      non_marginable_buying_power: nil,
+      multiplier: nil,
+      shorting_enabled: nil,
+      status: nil
+    }
+  end
+
+  # Comma-separated, no decimals for whole-dollar account-summary values.
+  # Returns "—" for nil so the card never shows "$" alone.
+  defp format_money(nil), do: "—"
+
+  defp format_money(value) when is_number(value) do
+    value
+    |> Float.round(0)
+    |> trunc()
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
+
+  defp format_money(_), do: "—"
+
+  # Alpaca returns multiplier as 1.0/2.0/4.0. Render compact: "1×".
+  defp format_multiplier(nil), do: "—"
+  defp format_multiplier(m) when is_number(m), do: "#{trunc(m)}×"
+  defp format_multiplier(_), do: "—"
+
+  # Mirror of safe_broker_stats/2 for the margin-headroom card.
+  # Wraps BrokerStats.account_info/1 in try/rescue so a broker API
+  # blip never kills the LV.
+  defp safe_account_info(org_id, fallback) do
+    KiteAgentHub.Trading.BrokerStats.account_info(org_id)
+  rescue
+    e ->
+      require Logger
+
+      Logger.warning(
+        "DashboardLive: BrokerStats.account_info failed — #{Exception.message(e)}, using fallback"
+      )
+
+      fallback || empty_account_info()
+  end
+
   # PR #103: helpers for the on-chain attestations summary card.
   # Both safely no-op when there's no selected agent (e.g. fresh org
   # with no agents yet) so the dashboard never crashes on first load.
@@ -1604,6 +1670,58 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Fetching
                       </p>
                     <% end %>
+                  </div>
+                </div>
+
+                <%!-- Alpaca Account Margin / Buying Power.
+                     Renders only when the account loaded (equity is not nil).
+                     Surfaces the fields the agent needs to size shorts and
+                     margin trades correctly: equity, buying power tiers,
+                     account multiplier, and whether shorting is enabled. --%>
+                <div :if={@account_info && @account_info.equity} class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-5">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                      Alpaca Account
+                    </p>
+                    <span class={[
+                      "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-widest",
+                      @account_info.shorting_enabled && "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                      !@account_info.shorting_enabled && "border-white/10 bg-white/[0.02] text-gray-500"
+                    ]}>
+                      {if @account_info.shorting_enabled, do: "✓ Shorting", else: "Cash Only"}
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <div>
+                      <p class="text-[9px] text-gray-600 uppercase tracking-widest font-bold mb-1">Equity</p>
+                      <p class="text-base font-black text-white tracking-tight font-mono">
+                        ${format_money(@account_info.equity)}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-600 uppercase tracking-widest font-bold mb-1">Buying Power</p>
+                      <p class="text-base font-black text-white tracking-tight font-mono">
+                        ${format_money(@account_info.buying_power)}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-600 uppercase tracking-widest font-bold mb-1">Reg-T BP</p>
+                      <p class="text-base font-black text-gray-300 tracking-tight font-mono">
+                        ${format_money(@account_info.regt_buying_power)}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-600 uppercase tracking-widest font-bold mb-1">Day-Trade BP</p>
+                      <p class="text-base font-black text-gray-300 tracking-tight font-mono">
+                        ${format_money(@account_info.daytrading_buying_power)}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-[9px] text-gray-600 uppercase tracking-widest font-bold mb-1">Multiplier</p>
+                      <p class="text-base font-black text-gray-300 tracking-tight font-mono">
+                        {format_multiplier(@account_info.multiplier)}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
