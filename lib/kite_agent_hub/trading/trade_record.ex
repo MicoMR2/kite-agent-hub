@@ -16,7 +16,12 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     field :market, :string
     field :side, :string
     field :action, :string
-    field :contracts, :integer
+    # `:decimal` (was `:integer` until 2026-05-01) so the schema can
+    # represent fractional contract sizes for crypto + future fractional
+    # equity orders. The previous integer field silently truncated
+    # 0.001 BTC to 0, which then failed validate_number(greater_than: 0)
+    # and dropped the trade with no row inserted.
+    field :contracts, :decimal
     field :fill_price, :decimal
     field :notional_usd, :decimal
     field :status, :string, default: "open"

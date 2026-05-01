@@ -64,7 +64,8 @@ Rules:
 - Use `side: "long"` or `side: "short"` for the directional view.
 - Use `action: "buy"` to open and `action: "sell"` to close.
 - Always start new positions with `buy`.
-- `contracts` means whole crypto units or equity shares.
+- `contracts` is the position size in units (equity shares, crypto coins, option contracts). **Crypto is fractionable** — use `0.001` for one-thousandth of a BTC. Options must be whole numbers.
+- `notional` is an alternative to `contracts`: a USD dollar amount for fractional / dollar-based equity orders or crypto. If you set `notional`, omit `contracts`. The broker computes the actual fill size at execution price. Do not use `notional` for options.
 - `fill_price` is a reference price; KAH submits the market order.
 - Include a concise `reason` surfaced on the dashboard.
 - Optional Alpaca controls include `order_type`, `limit_price`, `stop_price`, `trail_price`, `trail_percent`, `order_class`, `take_profit`, `take_profit_limit_price`, `stop_loss`, `stop_loss_stop_price`, `stop_loss_limit_price`, and `client_order_id`.

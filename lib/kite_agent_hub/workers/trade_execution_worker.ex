@@ -83,14 +83,21 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     market = normalize_market(args["market"]) || "ETH-USDC"
     platform = detect_platform(market, args["provider"])
 
+    fill_price = Decimal.new(to_string(args["fill_price"]))
+
     trade_attrs = %{
       kite_agent_id: agent.id,
       market: market,
       side: args["side"],
       action: args["action"],
-      contracts: args["contracts"],
-      fill_price: Decimal.new(to_string(args["fill_price"])),
-      notional_usd: compute_notional(args),
+      # Either contracts (units) or notional (USD) is supplied. If only
+      # notional is given (dollar-based fractional / crypto orders),
+      # estimate contracts at submit time so the schema's required field
+      # is satisfied; the settlement worker can rewrite it once Alpaca
+      # reports the actual fill qty.
+      contracts: contracts_for_record(args, fill_price),
+      fill_price: fill_price,
+      notional_usd: notional_for_record(args, fill_price),
       status: "open",
       source: "oban",
       reason: args["reason"],
@@ -292,7 +299,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   @alpaca_order_fields ~w(
     order_type type time_in_force limit_price stop_price trail_price trail_percent
     extended_hours order_class take_profit take_profit_limit_price stop_loss
-    stop_loss_stop_price stop_loss_limit_price client_order_id
+    stop_loss_stop_price stop_loss_limit_price client_order_id notional
   )
 
   defp alpaca_order_opts(args), do: Map.take(args, @alpaca_order_fields)
@@ -430,11 +437,36 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     VaultABI.calldata_for_trade(trade)
   end
 
-  defp compute_notional(args) do
-    contracts = args["contracts"] || 0
-    price = Decimal.new(to_string(args["fill_price"] || "0"))
-    Decimal.mult(price, Decimal.new(to_string(contracts)))
+  # Pick the notional we'll store on the trade record. If the agent
+  # supplied `notional` directly (USD-based order), trust that. Otherwise
+  # derive from contracts * fill_price the way we always have.
+  defp notional_for_record(args, %Decimal{} = fill_price) do
+    case args["notional"] do
+      nil -> Decimal.mult(fill_price, decimal_or_zero(args["contracts"]))
+      notional -> Decimal.new(to_string(notional))
+    end
   end
+
+  # Mirror of notional_for_record/2: when only notional is supplied,
+  # estimate contracts from notional / fill_price so the schema's
+  # required :contracts field is populated. The settlement worker
+  # rewrites this on fill with the actual broker qty.
+  defp contracts_for_record(args, %Decimal{} = fill_price) do
+    case args["contracts"] do
+      nil ->
+        notional = Decimal.new(to_string(args["notional"] || "0"))
+
+        if Decimal.eq?(fill_price, 0),
+          do: nil,
+          else: Decimal.div(notional, fill_price)
+
+      contracts ->
+        contracts
+    end
+  end
+
+  defp decimal_or_zero(nil), do: Decimal.new(0)
+  defp decimal_or_zero(value), do: Decimal.new(to_string(value))
 
   # Coerce the agent's `contracts` field into a positive integer for
   # Alpaca's qty parameter. Accepts integers, floats (for fractional
