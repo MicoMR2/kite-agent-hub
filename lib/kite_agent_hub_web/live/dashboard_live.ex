@@ -520,13 +520,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
             }
         end
 
+      # Re-fetch the visible trades from the DB instead of stream_inserting
+      # the lone updated row. If the prior :trade_created broadcast was
+      # missed (e.g. socket disconnected during the longpoll-bounce loop),
+      # a bare stream_insert here would land the row at the END of the
+      # stream — invisible to anyone looking at the top. A reset keeps the
+      # stream canonically ordered by inserted_at desc and self-heals
+      # whenever any trade event lands.
+      trades = safe_list_trades(trade.kite_agent_id)
+
       {:noreply,
        socket
        |> schedule_stats_refresh()
        |> assign(:attestation_count, att_count)
        |> assign(:recent_attestations, recent_att)
        |> assign(:all_attestations, all_att)
-       |> stream_insert(:trades, trade)}
+       |> stream(:trades, trades, reset: true)}
     rescue
       e ->
         require Logger
@@ -537,6 +546,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         {:noreply, socket}
     end
+  end
+
+  defp safe_list_trades(agent_id) do
+    Trading.list_trades(agent_id, limit: 20)
+  rescue
+    _ -> []
   end
 
   # Debounced stats refresh: only fires once after the debounce window,
