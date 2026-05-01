@@ -85,7 +85,11 @@ const ChatInputClear = {
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
-  longPollFallbackMs: 2500,
+  // 10s gives WebSocket time to handshake on slower connections before
+  // falling back to longpoll. The previous 2.5s caused most clients to
+  // drop straight to longpoll, which combined with multi-machine
+  // routing produced a constant reconnect loop.
+  longPollFallbackMs: 10000,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard, LocalTime, ChatInputClear},
 })
