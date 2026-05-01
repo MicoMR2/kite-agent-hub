@@ -1165,7 +1165,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Top nav bar --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center justify-between">
-            <.link navigate={~p"/"} class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <.link navigate={~p"/dashboard"} class="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <.kah_logo class="w-8 h-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,197,94,0.35)]" />
               <div>
                 <span class="text-sm font-black text-white tracking-tight uppercase">
@@ -1371,7 +1371,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     class={[
                       "block rounded-xl p-4 transition-all border group",
                       @selected_agent && @selected_agent.id == agent.id &&
-                        "border-white/20 bg-white/[0.05] shadow-[0_0_15px_rgba(255,255,255,0.02)]",
+                        "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_20px_rgba(34,197,94,0.20)]",
                       (!@selected_agent || @selected_agent.id != agent.id) &&
                         "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
                     ]}
@@ -1386,7 +1386,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </span>
                         <span class={[
                           "text-sm font-bold truncate tracking-wide transition-colors",
-                          @selected_agent && @selected_agent.id == agent.id && "text-white",
+                          @selected_agent && @selected_agent.id == agent.id &&
+                            "text-emerald-700 dark:text-emerald-300",
                           (!@selected_agent || @selected_agent.id != agent.id) &&
                             "text-gray-400 group-hover:text-gray-200"
                         ]}>
