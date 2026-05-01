@@ -194,41 +194,39 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   defp maybe_execute_on_platform("alpaca", agent, args, _owner_user_id) do
     market = args["market"]
     symbol = Map.get(@alpaca_symbol_map, market, market)
-    side = normalize_alpaca_side(args["action"])
+    action = normalize_alpaca_side(args["action"])
+    intent_side = normalize_intent_side(args["side"])
 
-    # qty is the agent's intended share/unit count, passed through to
-    # Alpaca as-is. The previous formula was
-    #   max(1, div(trunc(notional), 100))
-    # which assumed every asset trades at ~$100/share — wildly wrong
-    # for SPY (~$520) and catastrophically wrong for crypto pairs like
-    # BTCUSD (~$60k) where it would have requested 600 BTC for what
-    # the agent thought was a $250 trade. PR #94: trust the agent's
-    # explicit `contracts` value and let Alpaca enforce position size
-    # limits server-side.
+    # PR #94: trust the agent's explicit `contracts` value and let
+    # Alpaca enforce position-size limits server-side.
     requested_qty = parse_qty(args["contracts"])
 
     case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
       {:ok, {key_id, secret, env}} ->
-        # PR #99: on a sell, clamp qty to whatever Alpaca shows we
-        # actually hold for this symbol. Crypto pairs (BTCUSD/ETHUSD/...)
-        # take a ~0.25% taker fee in the asset itself, so a `contracts: 1`
-        # buy lands as ~0.9975 actual position. Without this clamp,
-        # the matching sell hits Alpaca 403:
-        #   "insufficient balance for BTC (requested: 1, available: 0.9975)"
-        # which is exactly what we saw on Job 14949. The agent has no
-        # way to know about post-fee position size, so the worker has
-        # to reconcile against live state at submit time. Buys pass
-        # through unchanged.
-        case clamp_sell_qty(side, key_id, secret, env, symbol, requested_qty) do
+        # The historical clamp_sell_qty/6 only handled long opens/closes.
+        # clamp_qty_for_intent/7 fans out across the four (action × side)
+        # combinations so shorts can flow:
+        #   buy  + long  → open long, no clamp (existing behavior)
+        #   sell + long  → close long, clamp by long position size
+        #   sell + short → open short, ETB pre-flight, no clamp
+        #   buy  + short → close short, clamp by short position size
+        case clamp_qty_for_intent(action, intent_side, key_id, secret, env, symbol, requested_qty) do
           {:ok, qty} ->
-            do_place_order(key_id, secret, symbol, qty, side, env, alpaca_order_opts(args))
+            do_place_order(key_id, secret, symbol, qty, action, env, alpaca_order_opts(args))
 
           {:noop, reason} ->
             Logger.info(
-              "TradeExecutionWorker: Alpaca sell skipped — #{symbol} #{reason} (env=#{env})"
+              "TradeExecutionWorker: Alpaca #{action} skipped — #{symbol} #{reason} (env=#{env})"
             )
 
-            {:error, "no open position to sell: #{reason}"}
+            {:error, "trade rejected: #{reason}"}
+
+          {:error, reason} ->
+            Logger.warning(
+              "TradeExecutionWorker: Alpaca pre-flight rejected — #{symbol} #{reason} (env=#{env})"
+            )
+
+            {:error, reason}
         end
 
       {:error, reason} ->
@@ -257,40 +255,119 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     end
   end
 
-  # Buys pass through. Sells get clamped to the actual Alpaca position
-  # so we never request more than we hold (the post-fee crypto issue).
+  # Resolves the four (action × intent_side) cases for an Alpaca order.
   # Returns:
-  #   {:ok, qty}        — qty to submit (may be < requested for sells)
-  #   {:noop, reason}   — no position to sell, caller marks the trade failed
-  defp clamp_sell_qty("buy", _key_id, _secret, _env, _symbol, requested), do: {:ok, requested}
+  #   {:ok, qty}        — qty to submit (may differ from requested for closes)
+  #   {:noop, reason}   — caller marks the trade failed but doesn't log as error
+  #   {:error, reason}  — pre-flight check rejected (e.g. symbol not ETB)
 
-  defp clamp_sell_qty("sell", key_id, secret, env, symbol, requested) do
-    case AlpacaClient.positions(key_id, secret, env) do
-      {:ok, positions} ->
-        case Enum.find(positions, fn p -> p.symbol == symbol end) do
-          nil ->
-            {:noop, "no open position"}
+  # Open a long: existing behavior, no clamp.
+  defp clamp_qty_for_intent("buy", "long", _k, _s, _e, _sym, requested),
+    do: {:ok, requested}
 
-          %{qty: held} when is_number(held) and held > 0 ->
-            qty = min(requested, held)
-            {:ok, qty}
+  # Close a long: clamp to actual long-side position. Pre-fee crypto
+  # corrections live here.
+  defp clamp_qty_for_intent("sell", "long", k, s, e, sym, requested) do
+    case fetch_position_for(k, s, e, sym) do
+      {:ok, nil} ->
+        {:noop, "no open long position to sell"}
 
-          _ ->
-            {:noop, "position qty unparseable or zero"}
-        end
+      {:ok, %{side: "short"}} ->
+        {:noop, "have a short position — use side=\"short\" + action=\"buy\" to close"}
 
-      {:error, reason} ->
-        Logger.warning(
-          "TradeExecutionWorker: positions fetch failed for sell clamp — #{inspect(reason)}, falling back to requested qty"
-        )
+      {:ok, %{qty: held}} when is_number(held) and held > 0 ->
+        {:ok, min(requested, held)}
 
-        # If we can't reach Alpaca for positions, fall through with the
-        # requested qty — Alpaca will reject if it's wrong, same as
-        # before this PR. We don't want a transient positions outage to
-        # block every sell.
+      {:ok, _} ->
+        {:noop, "position qty unparseable or zero"}
+
+      :fetch_failed ->
+        # Transient broker outage — fall through with requested qty
+        # rather than block every order.
         {:ok, requested}
     end
   end
+
+  # Open a short: pre-flight the asset's `easy_to_borrow` flag so we
+  # fail fast with a clear reason instead of bouncing off Alpaca's
+  # generic "shorting not allowed" reject. Crypto symbols never qualify
+  # — Alpaca docs are explicit: no shorting on the crypto venue.
+  defp clamp_qty_for_intent("sell", "short", k, s, e, sym, requested) do
+    if crypto_symbol?(sym) do
+      {:error, "shorting not supported on Alpaca crypto venue"}
+    else
+      case AlpacaClient.asset(k, s, sym, e) do
+        {:ok, %{shortable: false}} ->
+          {:error, "#{sym} is not shortable on Alpaca"}
+
+        {:ok, %{easy_to_borrow: false}} ->
+          {:error, "#{sym} is hard-to-borrow; Alpaca only supports ETB shorts"}
+
+        {:ok, _} ->
+          # ETB or partial metadata — let the order through.
+          {:ok, requested}
+
+        {:error, reason} ->
+          Logger.warning(
+            "TradeExecutionWorker: asset lookup failed for short pre-flight — #{inspect(reason)}, falling through"
+          )
+
+          {:ok, requested}
+      end
+    end
+  end
+
+  # Close a short: clamp to actual short-side position size. Alpaca
+  # returns short qtys as negatives, normalize via abs/1.
+  defp clamp_qty_for_intent("buy", "short", k, s, e, sym, requested) do
+    case fetch_position_for(k, s, e, sym) do
+      {:ok, nil} ->
+        {:noop, "no open short position to cover"}
+
+      {:ok, %{side: "long"}} ->
+        {:noop, "have a long position — use side=\"long\" + action=\"sell\" to close"}
+
+      {:ok, %{qty: held}} when is_number(held) ->
+        {:ok, min(requested, abs(held))}
+
+      {:ok, _} ->
+        {:noop, "short position qty unparseable"}
+
+      :fetch_failed ->
+        {:ok, requested}
+    end
+  end
+
+  # Default fallthrough — preserves the historical behavior for callers
+  # that pass nil/unset side: treat as long.
+  defp clamp_qty_for_intent(action, _intent_side, k, s, e, sym, requested),
+    do: clamp_qty_for_intent(action, "long", k, s, e, sym, requested)
+
+  defp fetch_position_for(key_id, secret, env, symbol) do
+    case AlpacaClient.positions(key_id, secret, env) do
+      {:ok, positions} -> {:ok, Enum.find(positions, fn p -> p.symbol == symbol end)}
+      {:error, reason} ->
+        Logger.warning(
+          "TradeExecutionWorker: positions fetch failed — #{inspect(reason)}, falling through"
+        )
+
+        :fetch_failed
+    end
+  end
+
+  # Whitelist of crypto markets (canonical Alpaca symbols). Crypto cannot
+  # be shorted on Alpaca; pre-flight rejects.
+  defp crypto_symbol?(symbol) when symbol in ["BTCUSD", "ETHUSD", "SOLUSD"], do: true
+  defp crypto_symbol?(_), do: false
+
+  defp normalize_intent_side(side) when is_binary(side) do
+    case String.downcase(side) do
+      "short" -> "short"
+      _ -> "long"
+    end
+  end
+
+  defp normalize_intent_side(_), do: "long"
 
   defp normalize_alpaca_side("buy"), do: "buy"
   defp normalize_alpaca_side("sell"), do: "sell"
