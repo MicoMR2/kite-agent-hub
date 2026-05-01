@@ -304,6 +304,35 @@ html[data-theme="light"] .kah-theme-toggle {
   box-shadow: 0 18px 55px rgba(15,23,42,0.16);
 }
 
+/* Logo — the kite-tail stroke/fill is white on the dark canvas so the
+   downward arm of the kite reads against #0a0a0f. On the cream light
+   canvas white is invisible, so swap to a dark slate. The core dot
+   (the small punch in the middle of the green core) flips the other
+   way: dark in dark mode, cream in light mode. */
+.kah-logo-tail-stroke { stroke: #ffffff; }
+.kah-logo-tail-fill { fill: #ffffff; }
+.kah-logo-core-dot { fill: #0a0a0f; }
+
+html[data-theme="light"] .kah-logo-tail-stroke { stroke: #1f2937; }
+html[data-theme="light"] .kah-logo-tail-fill { fill: #1f2937; }
+html[data-theme="light"] .kah-logo-core-dot { fill: #f5efe3; }
+
+/* Chat user-message bubble — `text-stone-200` becomes unreadable on
+   cream light bg and `bg-stone-500/20` over-blends. Add explicit
+   light-mode mappings so the human bubble keeps its warm-grey
+   identity while actually having contrast. */
+html[data-theme="light"] [class~="text-stone-200"] {
+  color: var(--fg-1) !important;
+}
+
+html[data-theme="light"] [class~="bg-stone-500/20"] {
+  background-color: rgba(120, 113, 108, 0.18) !important;
+}
+
+html[data-theme="light"] [class~="border-stone-400/30"] {
+  border-color: rgba(120, 113, 108, 0.40) !important;
+}
+
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);

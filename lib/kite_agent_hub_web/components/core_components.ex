@@ -478,17 +478,17 @@ defmodule KiteAgentHubWeb.CoreComponents do
 
   def kah_logo(assigns) do
     ~H"""
-    <svg class={@class} viewBox="0 0 180 180" fill="none" aria-label="Kite Agent Hub">
+    <svg class={["kah-logo", @class]} viewBox="0 0 180 180" fill="none" aria-label="Kite Agent Hub">
       <circle cx="90" cy="90" r="36" fill="#22c55e" fill-opacity="0.12" />
       <line x1="24" y1="30" x2="90" y2="90" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" />
       <line x1="156" y1="30" x2="90" y2="90" stroke="#c084fc" stroke-width="3" stroke-linecap="round" />
-      <line x1="90" y1="168" x2="90" y2="90" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+      <line x1="90" y1="168" x2="90" y2="90" class="kah-logo-tail-stroke" stroke-width="3" stroke-linecap="round" />
       <circle cx="24" cy="30" r="9" fill="#60a5fa" />
       <circle cx="156" cy="30" r="9" fill="#c084fc" />
-      <circle cx="90" cy="168" r="9" fill="#ffffff" />
+      <circle cx="90" cy="168" r="9" class="kah-logo-tail-fill" />
       <circle cx="90" cy="90" r="22" stroke="#22c55e" stroke-opacity="0.35" stroke-width="1.5" />
       <circle cx="90" cy="90" r="13" fill="#22c55e" />
-      <circle cx="90" cy="90" r="4" fill="#0a0a0f" />
+      <circle cx="90" cy="90" r="4" class="kah-logo-core-dot" />
     </svg>
     """
   end

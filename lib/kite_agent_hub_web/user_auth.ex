@@ -289,8 +289,21 @@ defmodule KiteAgentHubWeb.UserAuth do
   end
 
   defp maybe_store_return_to(%{method: "GET"} = conn) do
-    put_session(conn, :user_return_to, current_path(conn))
+    path = current_path(conn)
+
+    if skip_return_to?(path) do
+      conn
+    else
+      put_session(conn, :user_return_to, path)
+    end
   end
 
   defp maybe_store_return_to(conn), do: conn
+
+  # /users/settings* lands logged-out users on the password/email form
+  # — not somewhere they meaningfully wanted to be. Skipping it makes
+  # signed_in_path/1 (dashboard for existing users, /onboard for new
+  # ones) the actual destination after login.
+  defp skip_return_to?("/users/settings" <> _), do: true
+  defp skip_return_to?(_), do: false
 end
