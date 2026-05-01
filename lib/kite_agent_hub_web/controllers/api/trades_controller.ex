@@ -400,6 +400,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
     side = params["side"]
     action = params["action"]
     contracts = params["contracts"]
+    notional = params["notional"]
     fill_price = params["fill_price"]
 
     cond do
@@ -415,8 +416,14 @@ defmodule KiteAgentHubWeb.API.TradesController do
       action not in ["buy", "sell"] ->
         {:error, "action must be buy or sell"}
 
-      is_nil(contracts) or contracts <= 0 ->
-        {:error, "contracts must be a positive integer"}
+      is_nil(contracts) and is_nil(notional) ->
+        {:error, "contracts (units) or notional (USD amount) is required"}
+
+      not is_nil(contracts) and contracts <= 0 ->
+        {:error, "contracts must be a positive number"}
+
+      not is_nil(notional) and notional <= 0 ->
+        {:error, "notional must be a positive number"}
 
       is_nil(fill_price) ->
         {:error, "fill_price is required"}
@@ -429,6 +436,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
            "side" => side,
            "action" => action,
            "contracts" => contracts,
+           "notional" => notional,
            "fill_price" => to_string(fill_price),
            "reason" => params["reason"]
          }
@@ -447,7 +455,12 @@ defmodule KiteAgentHubWeb.API.TradesController do
       market: trade.market,
       side: trade.side,
       action: trade.action,
-      contracts: trade.contracts,
+      # `contracts` is now :decimal in the schema (was :integer until
+      # 2026-05-01). Jason's default Decimal encoding is a string, but
+      # the agent prompt + MCP `get_trades` consumers expect a JSON
+      # number. Coerce: integer for whole sizes, float for fractional
+      # crypto, so JS callers always see a number.
+      contracts: contracts_to_json(trade.contracts),
       fill_price: trade.fill_price,
       notional_usd: trade.notional_usd,
       status: trade.status,
@@ -470,4 +483,12 @@ defmodule KiteAgentHubWeb.API.TradesController do
       inserted_at: trade.inserted_at
     }
   end
+
+  defp contracts_to_json(nil), do: nil
+
+  defp contracts_to_json(%Decimal{} = d) do
+    if Decimal.integer?(d), do: Decimal.to_integer(d), else: Decimal.to_float(d)
+  end
+
+  defp contracts_to_json(other), do: other
 end

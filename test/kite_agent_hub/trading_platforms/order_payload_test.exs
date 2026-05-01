@@ -64,6 +64,48 @@ defmodule KiteAgentHub.TradingPlatforms.OrderPayloadTest do
     assert body["qty"] == "1"
   end
 
+  test "Alpaca order_body sends notional and omits qty when notional is supplied" do
+    body =
+      AlpacaClient.order_body("AAPL", 0, "buy", %{
+        "order_type" => "market",
+        "notional" => "250.00"
+      })
+
+    assert body["notional"] == "250.00"
+    refute Map.has_key?(body, "qty")
+  end
+
+  test "Alpaca order_body falls back to qty when notional is nil" do
+    body =
+      AlpacaClient.order_body("AAPL", 5, "buy", %{
+        "order_type" => "market"
+      })
+
+    assert body["qty"] == "5"
+    refute Map.has_key?(body, "notional")
+  end
+
+  test "Alpaca options orders ignore notional even if supplied (Alpaca rejects it)" do
+    body =
+      AlpacaClient.order_body("AAPL260117C00100000", 1, "buy", %{
+        "order_type" => "market",
+        "notional" => "250.00"
+      })
+
+    assert body["qty"] == "1"
+    refute Map.has_key?(body, "notional")
+  end
+
+  test "Alpaca crypto fractional qty passes through unchanged" do
+    body =
+      AlpacaClient.order_body("BTCUSD", 0.001, "buy", %{
+        "order_type" => "market"
+      })
+
+    assert body["qty"] == "0.001"
+    assert body["time_in_force"] == "gtc"
+  end
+
   test "Kalshi order body supports reduce-only early exits" do
     {:ok, body} =
       KalshiClient.order_body("KXTEST-26JAN01-YES", "yes", 2, "0.56", %{

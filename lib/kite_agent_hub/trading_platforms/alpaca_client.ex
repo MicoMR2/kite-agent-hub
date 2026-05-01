@@ -375,13 +375,27 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     order_type = normalize_order_type(opts["order_type"] || opts["type"] || "market")
     options? = options_symbol?(symbol)
 
-    %{
+    # Alpaca docs: "entering a value for either parameter automatically
+    # nullifies the other." When the agent supplies notional (USD-based
+    # fractional / crypto orders), send notional and omit qty. Options
+    # never accept notional, so options always fall through to qty.
+    notional = if options?, do: nil, else: opts["notional"]
+
+    base = %{
       "symbol" => symbol,
-      "qty" => normalize_qty(qty, options?),
       "side" => side,
       "type" => order_type,
       "time_in_force" => normalize_time_in_force(opts["time_in_force"], symbol)
     }
+
+    base =
+      if notional do
+        Map.put(base, "notional", to_string(notional))
+      else
+        Map.put(base, "qty", normalize_qty(qty, options?))
+      end
+
+    base
     |> put_optional("limit_price", opts["limit_price"] || opts["price"])
     |> put_optional("stop_price", opts["stop_price"])
     |> put_optional("trail_price", opts["trail_price"])
