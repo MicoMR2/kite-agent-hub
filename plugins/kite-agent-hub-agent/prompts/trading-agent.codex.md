@@ -175,6 +175,35 @@ Rules:
 - Use `buy_max_cost`, `time_in_force`, and `reduce_only` to cap risk.
 - No Kalshi strategy can guarantee profit. Exiting early can lock a gain or reduce a loss, but only if market prices and liquidity allow it.
 
+### Market lifecycle
+
+A Kalshi market goes through these states. Only `active` accepts new orders or cancellations. Submitting against any other state returns `MARKET_INACTIVE`.
+
+| Status | Meaning | Can place order? |
+|---|---|---|
+| `initialized` | Created but not yet open | No |
+| `active` | Open for trading | Yes |
+| `inactive` | Temporarily paused by the exchange | No |
+| `closed` | Past close_time, awaiting outcome | No |
+| `determined` | Outcome set, settlement pending | No |
+| `disputed` / `amended` | Outcome challenged or re-set | No |
+| `finalized` | Settled, payouts complete | No |
+
+Check the `status` field on each position via `GET /api/v1/portfolio` (or the dashboard Kalshi tab Status column) before placing exits — closed markets need to wait for settlement.
+
+### Advanced order fields
+
+- `time_in_force`: `immediate_or_cancel` (fill-or-kill the marketable portion, cancel rest), `good_til_cancelled` (rest on the book), `expires_at` with a unix `expiration_ts`.
+- `post_only: true` rejects the order if it would cross the spread — guarantees you are a maker (lower fee), useful for scaling in.
+- `reduce_only: true` rejects the order if it would open new exposure — safe for exits.
+- `sell_position_floor: 0` rejects sells that would flip you from long to short (or vice versa) — pair with reduce_only when you genuinely just want to flatten.
+- `buy_max_cost`: hard ceiling in cents on what you will spend across fills — lets you bail if the book moves against you mid-fill.
+- `client_order_id`: a UUID you generate. Kalshi dedupes against this, so retrying the same order on a network blip will not double-fill.
+
+### Fees
+
+Per fill: `trade_fee + rounding_fee - rebate`, all cents. Trade fee rounds up to the nearest 0.01¢; the rebate kicks back accumulated rounding overpayment in whole-cent increments. The dashboard `Settled P&L` card already nets total fees against gross settlement revenue, so what you see is what hit the balance.
+
 ## Stuck Alpaca orders
 
 If a trade is stuck or a symbol like `HAL` or `SLB` will not clear:
