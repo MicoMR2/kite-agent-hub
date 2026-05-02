@@ -37,15 +37,28 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
 
   # Markets routed to Alpaca paper trading (crypto + equities)
-  @alpaca_markets ~w(ETH-USDC BTC-USDC SOL-USDC ETHUSD BTCUSD SOLUSD SPY QQQ AAPL TSLA)
+  # Alpaca's crypto venue accepts both legacy ("BTCUSD") and modern
+  # slash-format ("BTC/USD") symbols. Agents may send either; downstream
+  # `time_in_force_for/1` (in AlpacaClient) only knows the legacy form,
+  # so @alpaca_symbol_map normalizes everything to that.
+  @alpaca_markets ~w(
+    ETH-USDC BTC-USDC SOL-USDC
+    ETHUSD BTCUSD SOLUSD
+    BTC/USD ETH/USD SOL/USD
+    SPY QQQ AAPL TSLA
+  )
 
   alias KiteAgentHub.Trading.OccSymbol
 
-  # Alpaca symbol mapping from Kite market notation
+  # Normalize incoming market notation to the legacy Alpaca crypto
+  # symbol (no slash, no dash). Equity tickers fall through unchanged.
   @alpaca_symbol_map %{
     "ETH-USDC" => "ETHUSD",
     "BTC-USDC" => "BTCUSD",
-    "SOL-USDC" => "SOLUSD"
+    "SOL-USDC" => "SOLUSD",
+    "BTC/USD" => "BTCUSD",
+    "ETH/USD" => "ETHUSD",
+    "SOL/USD" => "SOLUSD"
   }
 
   @impl Oban.Worker

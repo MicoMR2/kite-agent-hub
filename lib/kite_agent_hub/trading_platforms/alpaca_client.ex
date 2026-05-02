@@ -465,7 +465,22 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   # order. Symbol list mirrors the @alpaca_markets canonical no-dash
   # crypto names — KAH-side dashed forms (BTC-USDC etc.) get mapped to
   # these via @alpaca_symbol_map before reaching place_order/6.
-  defp time_in_force_for(symbol) when symbol in ["BTCUSD", "ETHUSD", "SOLUSD"], do: "gtc"
+  # Alpaca's crypto venue rejects time_in_force=day. Recognize both the
+  # legacy ("BTCUSD") and modern slash ("BTC/USD") symbol forms — the
+  # worker normalizes to legacy upstream, but defensive matching here
+  # means a direct caller (or future API change) can't slip a "BTC/USD"
+  # past us with the wrong default.
+  defp time_in_force_for(symbol)
+       when symbol in [
+              "BTCUSD",
+              "ETHUSD",
+              "SOLUSD",
+              "BTC/USD",
+              "ETH/USD",
+              "SOL/USD"
+            ],
+       do: "gtc"
+
   defp time_in_force_for(_symbol), do: "day"
 
   defp normalize_time_in_force(nil, symbol), do: time_in_force_for(symbol)

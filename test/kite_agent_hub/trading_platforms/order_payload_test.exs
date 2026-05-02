@@ -106,6 +106,23 @@ defmodule KiteAgentHub.TradingPlatforms.OrderPayloadTest do
     assert body["time_in_force"] == "gtc"
   end
 
+  test "Alpaca slash-format crypto picks gtc time_in_force" do
+    # Without the slash-aware time_in_force_for/1 clause, "BTC/USD"
+    # would have fallen through to "day" and Alpaca's crypto venue
+    # would have rejected the order with code 42210000.
+    for sym <- ["BTC/USD", "ETH/USD", "SOL/USD"] do
+      body = AlpacaClient.order_body(sym, 0.001, "buy", %{"order_type" => "market"})
+      assert body["time_in_force"] == "gtc", "#{sym} got #{body["time_in_force"]}"
+      assert body["symbol"] == sym
+    end
+  end
+
+  test "TradeExecutionWorker routes slash-format crypto to Alpaca" do
+    assert TradeExecutionWorker.detect_platform("BTC/USD") == "alpaca"
+    assert TradeExecutionWorker.detect_platform("ETH/USD") == "alpaca"
+    assert TradeExecutionWorker.detect_platform("SOL/USD") == "alpaca"
+  end
+
   test "Kalshi order body supports reduce-only early exits" do
     {:ok, body} =
       KalshiClient.order_body("KXTEST-26JAN01-YES", "yes", 2, "0.56", %{
