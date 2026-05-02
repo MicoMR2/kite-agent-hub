@@ -1152,6 +1152,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp format_multiplier(m) when is_number(m), do: "#{trunc(m)}×"
   defp format_multiplier(_), do: "—"
 
+  # Render the held-for-orders quantity compactly. Whole numbers print
+  # as integers ("5 held"); fractional shows up to 4 decimals ("0.001 held").
+  defp format_held(qty) when is_number(qty) do
+    if qty == trunc(qty) do
+      "#{trunc(qty)}"
+    else
+      :erlang.float_to_binary(qty * 1.0, decimals: 4) |> String.trim_trailing("0")
+    end
+  end
+
+  defp format_held(_), do: "—"
+
   # PR #103: helpers for the on-chain attestations summary card.
   # Both safely no-op when there's no selected agent (e.g. fresh org
   # with no agents yet) so the dashboard never crashes on first load.
@@ -2546,7 +2558,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             <tr class="hover:bg-white/[0.02]">
                               <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">{p.symbol}</td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-gray-400">{p.side}</td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">{p.qty}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">
+                                {p.qty}
+                                <%!-- Surface qty locked in open orders.
+                                     Catches HAL-style stuck-order cases
+                                     where the position count looks fine
+                                     but a sell is hanging. --%>
+                                <span :if={(Map.get(p, :held_for_orders) || 0) > 0} class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border border-yellow-500/30 bg-yellow-500/10 text-yellow-400" title="Held for resting orders — agent has open buy/sell against this position">
+                                  {format_held(p.held_for_orders)} held
+                                </span>
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}</td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}</td>
                               <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>

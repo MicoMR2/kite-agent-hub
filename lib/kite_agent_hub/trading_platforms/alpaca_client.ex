@@ -658,9 +658,24 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   defp parse_account(err), do: err
 
   defp parse_position(p) do
+    qty = parse_float(p["qty"])
+    qty_available = parse_float(p["qty_available"])
+
+    held_for_orders =
+      cond do
+        is_number(qty) and is_number(qty_available) -> qty - qty_available
+        true -> 0.0
+      end
+
     %{
       symbol: p["symbol"],
-      qty: parse_float(p["qty"]),
+      qty: qty,
+      qty_available: qty_available,
+      # Derived: how much of the position is locked in resting open
+      # orders (sells waiting for fills, etc.). Used by the dashboard
+      # to flag stuck-order situations like the historical HAL case
+      # documented in feedback_kah_alpaca_discrepancy.
+      held_for_orders: held_for_orders,
       side: p["side"],
       avg_entry: parse_float(p["avg_entry_price"]),
       current_price: parse_float(p["current_price"]),
