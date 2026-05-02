@@ -59,7 +59,7 @@ Use this shape for `POST /trades`:
 
 Rules:
 
-- Crypto symbols: `BTCUSD`, `ETHUSD`, `SOLUSD`.
+- Crypto symbols: `BTCUSD`, `ETHUSD`, `SOLUSD` (legacy) or `BTC/USD`, `ETH/USD`, `SOL/USD` (modern Alpaca slash format). Both route the same way.
 - Equity symbols: `AAPL`, `SPY`, etc.
 - Use `side: "long"` or `side: "short"` for the directional view.
 - For longs: `action: "buy"` to open, `action: "sell"` to close.
