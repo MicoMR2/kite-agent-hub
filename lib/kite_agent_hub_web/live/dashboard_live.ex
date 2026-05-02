@@ -1832,9 +1832,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                         <%!-- Market info --%>
                         <div class="flex-1 min-w-0">
-                          <div class="flex items-center gap-2">
-                            <p class="text-base font-black text-white tracking-tight">
-                              {trade.market}
+                          <div class="flex items-center gap-2 min-w-0">
+                            <p
+                              class="text-base font-black text-white tracking-tight truncate"
+                              title={trade.market}
+                            >
+                              {truncate_market(trade.market)}
                             </p>
                             <span class={[
                               "text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-bold",
@@ -2070,8 +2073,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </span>
                         </div>
                         <div class="col-span-1 md:col-span-3 min-w-0">
-                          <p class="text-sm font-black text-white tracking-tight truncate">
-                            {att.market}
+                          <p
+                            class="text-sm font-black text-white tracking-tight truncate"
+                            title={att.market}
+                          >
+                            {truncate_market(att.market)}
                           </p>
                           <p class="text-[10px] text-gray-600 font-mono md:hidden">
                             {att.contracts}x @ ${att.fill_price}
@@ -2720,7 +2726,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <tbody class="divide-y divide-white/5">
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono">{p.title}</td>
+                              <td
+                                class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono max-w-[16rem] truncate"
+                                title={p.title}
+                              >
+                                {truncate_market(p.title, 32)}
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3">
                                 <% {label, badge_classes} = kalshi_status_badge(p.status) %>
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap", badge_classes]}>
@@ -2865,7 +2876,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <%= for pos <- @polymarket_positions do %>
                       <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                         <div class="min-w-0">
-                          <p class="text-sm font-bold text-white truncate">{pos.market_id}</p>
+                          <p class="text-sm font-bold text-white truncate" title={pos.market_id}>
+                            {truncate_market(pos.market_id, 40)}
+                          </p>
                           <p class="text-[10px] text-gray-500 uppercase tracking-widest">
                             {pos.outcome} · {pos.mode}
                           </p>

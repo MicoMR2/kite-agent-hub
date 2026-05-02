@@ -327,8 +327,11 @@ defmodule KiteAgentHubWeb.TradesLive do
                   <% else %>
                     <%= for trade <- @trades do %>
                       <tr class="hover:bg-white/[0.02] transition-colors group">
-                        <td class="px-3 py-3 sm:px-6 sm:py-4 font-black whitespace-nowrap text-white text-sm tracking-tight">
-                          {trade.market}
+                        <td
+                          class="px-3 py-3 sm:px-6 sm:py-4 font-black whitespace-nowrap text-white text-sm tracking-tight max-w-[14rem] truncate"
+                          title={trade.market}
+                        >
+                          {truncate_market(trade.market)}
                         </td>
                         <td class="hidden lg:table-cell px-3 py-3 sm:px-4 sm:py-4 whitespace-nowrap">
                           <span class={platform_pill_class(trade.platform)}>
