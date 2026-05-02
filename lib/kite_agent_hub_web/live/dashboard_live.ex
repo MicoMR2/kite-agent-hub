@@ -918,6 +918,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
          {key_id, pem, env} <- credentials,
          {:ok, balance} <- KalshiClient.balance(key_id, pem, env),
          {:ok, positions} <- KalshiClient.positions(key_id, pem, env) do
+      # Enrich each position with its market's lifecycle status + live
+      # top-of-book in one batched /markets?tickers=… call. Falls back
+      # to bare positions on lookup failure.
+      enriched_positions =
+        case KalshiClient.enrich_positions(key_id, pem, positions, env) do
+          {:ok, list} -> list
+          _ -> positions
+        end
+
       # Fetch fills and orders separately — don't fail the whole tab if these error
       fills = case KalshiClient.fills(key_id, pem, 50, env) do
         {:ok, f} -> f
@@ -934,16 +943,26 @@ defmodule KiteAgentHubWeb.DashboardLive do
         _ -> []
       end
 
-      portfolio_value = Enum.reduce(positions, 0.0, fn p, acc -> acc + p.value end)
-      total_settled_pnl = Enum.reduce(settlements, 0.0, fn s, acc -> acc + s.revenue end)
+      portfolio_value = Enum.reduce(enriched_positions, 0.0, fn p, acc -> acc + p.value end)
+      gross_settled_pnl = Enum.reduce(settlements, 0.0, fn s, acc -> acc + s.revenue end)
+      # Per Kalshi's fee-rounding model, settlement payouts are fee-free
+      # but the entry/exit fills carry a per-fill `fees_cents` charge.
+      # Net the total fees paid against gross settlement revenue so the
+      # "Settled P&L" card reflects what actually hit the balance.
+      total_fees_paid =
+        Enum.reduce(fills, 0.0, fn f, acc -> acc + (f.fees_cents || 0) / 100.0 end)
+
+      total_settled_pnl = gross_settled_pnl - total_fees_paid
 
       assign(socket, :kalshi_data, %{
         balance: balance,
-        positions: positions,
+        positions: enriched_positions,
         fills: fills,
         orders: orders,
         settlements: settlements,
         portfolio_value: portfolio_value,
+        gross_settled_pnl: gross_settled_pnl,
+        total_fees_paid: total_fees_paid,
         total_settled_pnl: total_settled_pnl
       })
     else
@@ -2672,7 +2691,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <table class="w-full text-sm">
                         <thead>
                           <tr class="border-b border-white/5">
-                            <%= for h <- ["Market", "Side", "Contracts", "Avg Price", "Current", "Value"] do %>
+                            <%= for h <- ["Market", "Status", "Side", "Contracts", "Avg", "Bid / Ask", "Value"] do %>
                               <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
                             <% end %>
                           </tr>
@@ -2681,12 +2700,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono">{p.title}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3">
+                                <% {label, badge_classes} = kalshi_status_badge(p.status) %>
+                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap", badge_classes]}>
+                                  {label}
+                                </span>
+                              </td>
                               <td class="px-4 py-3">
                                 <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", p.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{p.side}</span>
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">{p.contracts}</td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">{:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢</td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(p.current_price * 100, decimals: 0)}¢</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
+                                {kalshi_live_quote(p)}
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-white">${:erlang.float_to_binary(p.value, decimals: 2)}</td>
                             </tr>
                           <% end %>
@@ -3169,6 +3196,67 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_fill_sparkline(_, _, _), do: ""
+
+  # Maps Kalshi's market lifecycle status to a human label + Tailwind
+  # badge classes. The dashboard renders this on every position row so
+  # agents (and Mico) can tell at a glance which markets are still
+  # tradable vs awaiting payout. See
+  # https://docs.kalshi.com/getting_started/market_lifecycle for the
+  # full state machine.
+  defp kalshi_status_badge("active"),
+    do: {"Active", "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}
+
+  defp kalshi_status_badge("initialized"),
+    do: {"Unopened", "text-gray-400 border-white/10 bg-white/[0.02]"}
+
+  defp kalshi_status_badge("inactive"),
+    do: {"Paused", "text-yellow-400 border-yellow-500/20 bg-yellow-500/5"}
+
+  defp kalshi_status_badge("closed"),
+    do: {"Closed", "text-gray-400 border-white/15 bg-white/[0.03]"}
+
+  defp kalshi_status_badge("determined"),
+    do: {"Determined", "text-blue-400 border-blue-500/20 bg-blue-500/10"}
+
+  defp kalshi_status_badge("disputed"),
+    do: {"Disputed", "text-orange-400 border-orange-500/30 bg-orange-500/10"}
+
+  defp kalshi_status_badge("amended"),
+    do: {"Amended", "text-purple-400 border-purple-500/20 bg-purple-500/10"}
+
+  defp kalshi_status_badge("finalized"),
+    do: {"Settled", "text-gray-500 border-white/10 bg-white/[0.02]"}
+
+  defp kalshi_status_badge(_),
+    do: {"—", "text-gray-600 border-white/10 bg-white/[0.02]"}
+
+  # Kalshi orderbook responses are reciprocal between yes and no sides
+  # (yes_ask = 100 - no_bid). For the dashboard's "Bid / Ask" column we
+  # show whichever side the user actually holds: yes positions read
+  # the yes-side quote, no positions read the no-side quote. Falls back
+  # to the cached current_price when live levels aren't available
+  # (e.g. enrichment failed or market is closed).
+  defp kalshi_live_quote(%{
+         side: "yes",
+         live_yes_bid_cents: bid,
+         live_yes_ask_cents: ask
+       })
+       when is_integer(bid) and is_integer(ask),
+       do: "#{bid}¢ / #{ask}¢"
+
+  defp kalshi_live_quote(%{
+         side: "no",
+         live_no_bid_cents: bid,
+         live_no_ask_cents: ask
+       })
+       when is_integer(bid) and is_integer(ask),
+       do: "#{bid}¢ / #{ask}¢"
+
+  defp kalshi_live_quote(%{current_price: price}) when is_number(price) do
+    "#{:erlang.float_to_binary(price * 100, decimals: 0)}¢"
+  end
+
+  defp kalshi_live_quote(_), do: "—"
 
   # Map the UI range label to Alpaca's portfolio_history {period, timeframe} params.
   # Alpaca period syntax: <n>(D|W|M|A), e.g. "3D", "1W", "1M", "1A" (1 year).

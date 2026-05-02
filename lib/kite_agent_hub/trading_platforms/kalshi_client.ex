@@ -82,6 +82,95 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc """
+  Fetch a single market's full detail by ticker. Returns lifecycle
+  status, top-of-book yes/no bid/ask in cents, last_price, close_time,
+  and title — everything the dashboard needs to render a position row
+  with live context.
+
+  Returns `{:ok, parsed_market}` or `{:error, reason}`.
+  """
+  def market(key_id, pem, ticker, env \\ "paper") do
+    case get("/markets/#{ticker}", key_id, pem, env) do
+      {:ok, %{"market" => m}} when is_map(m) -> {:ok, parse_market(m)}
+      {:ok, _} -> {:error, "kalshi market response missing market key"}
+      err -> err
+    end
+  end
+
+  @doc """
+  Batch-fetch multiple markets by ticker in one round trip. Used to
+  enrich the positions table with lifecycle state + live spread
+  without N+1 calls.
+
+  Returns `{:ok, %{ticker => parsed_market}}`. Tickers absent from the
+  response are simply not in the map; callers handle the miss.
+  """
+  def markets_by_tickers(key_id, pem, tickers, env \\ "paper") when is_list(tickers) do
+    case tickers do
+      [] ->
+        {:ok, %{}}
+
+      _ ->
+        joined = tickers |> Enum.uniq() |> Enum.join(",")
+        path = "/markets?tickers=#{URI.encode(joined)}&limit=#{length(tickers) + 50}"
+
+        case get(path, key_id, pem, env) do
+          {:ok, %{"markets" => list}} when is_list(list) ->
+            map = Map.new(list, fn m -> {m["ticker"], parse_market(m)} end)
+            {:ok, map}
+
+          {:ok, _} ->
+            {:ok, %{}}
+
+          err ->
+            err
+        end
+    end
+  end
+
+  @doc """
+  Fetch a market's orderbook. Kalshi returns ascending arrays of
+  [price_cents, size] pairs per side; the strongest bid is the last
+  element. Returns `{:ok, %{yes_bid_cents, no_bid_cents, yes_ask_cents,
+  no_ask_cents, yes_levels, no_levels, spread_cents}}` where
+  best yes ask = 100 - best no bid (reciprocal binary).
+  """
+  def orderbook(key_id, pem, ticker, env \\ "paper") do
+    case get("/markets/#{ticker}/orderbook", key_id, pem, env) do
+      {:ok, %{"orderbook" => ob}} when is_map(ob) -> {:ok, parse_orderbook(ob)}
+      {:ok, _} -> {:error, "kalshi orderbook response missing orderbook key"}
+      err -> err
+    end
+  end
+
+  @doc """
+  Convenience: takes a list of `parse_position/1` maps and merges in
+  market lifecycle state + top-of-book bid/ask via a single
+  `markets_by_tickers` round trip. Dashboard-friendly. Positions whose
+  market lookup fails fall through with the original fields.
+  """
+  def enrich_positions(key_id, pem, positions, env \\ "paper") when is_list(positions) do
+    tickers = Enum.map(positions, & &1.market_id) |> Enum.reject(&is_nil/1)
+
+    case markets_by_tickers(key_id, pem, tickers, env) do
+      {:ok, by_ticker} ->
+        enriched =
+          Enum.map(positions, fn pos ->
+            case Map.get(by_ticker, pos.market_id) do
+              nil -> pos
+              market -> Map.merge(pos, market_overlay(pos, market))
+            end
+          end)
+
+        {:ok, enriched}
+
+      {:error, _} ->
+        # Lookup failed; return positions unenriched rather than blocking the tab.
+        {:ok, positions}
+    end
+  end
+
+  @doc """
   Place a limit order on Kalshi.
 
   ticker  — market ticker, e.g. "BTCZ-24DEC2031-B80000"
@@ -407,9 +496,97 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       avg_price: (p["average_price"] || 0) / 100.0,
       current_price: (p["last_price"] || 0) / 100.0,
       value: (p["position"] || 0) * (p["last_price"] || 0) / 100.0,
-      settled: p["settled"] || false
+      settled: p["settled"] || false,
+      # Lifecycle / live-quote fields are nil until enriched via
+      # `enrich_positions/4`. Dashboard renders them when present and
+      # falls back to the cached current_price otherwise.
+      status: nil,
+      close_time: nil,
+      live_yes_bid_cents: nil,
+      live_yes_ask_cents: nil,
+      live_no_bid_cents: nil,
+      live_no_ask_cents: nil
     }
   end
+
+  defp parse_market(m) do
+    %{
+      ticker: m["ticker"],
+      title: m["title"] || m["subtitle"] || m["ticker"],
+      status: m["status"],
+      close_time: m["close_time"],
+      open_time: m["open_time"],
+      last_price_cents: m["last_price"],
+      yes_bid_cents: m["yes_bid"],
+      yes_ask_cents: m["yes_ask"],
+      no_bid_cents: m["no_bid"],
+      no_ask_cents: m["no_ask"],
+      volume: m["volume"],
+      volume_24h: m["volume_24h"]
+    }
+  end
+
+  # Pull the fields a position row actually displays (state + the live
+  # bid/ask for the side the user holds) out of the full parsed market.
+  # Keeps the caller's merge surface narrow + intentional.
+  defp market_overlay(pos, market) do
+    %{
+      status: market.status,
+      close_time: market.close_time,
+      live_yes_bid_cents: market.yes_bid_cents,
+      live_yes_ask_cents: market.yes_ask_cents,
+      live_no_bid_cents: market.no_bid_cents,
+      live_no_ask_cents: market.no_ask_cents,
+      # Refresh current_price from live last when available — the cached
+      # value on the position can be minutes stale.
+      current_price:
+        case market.last_price_cents do
+          n when is_number(n) -> n / 100.0
+          _ -> pos.current_price
+        end
+    }
+  end
+
+  defp parse_orderbook(ob) do
+    yes_levels = level_pairs(ob["yes"])
+    no_levels = level_pairs(ob["no"])
+
+    yes_bid = top_level(yes_levels)
+    no_bid = top_level(no_levels)
+
+    yes_ask = if no_bid, do: 100 - no_bid, else: nil
+    no_ask = if yes_bid, do: 100 - yes_bid, else: nil
+
+    spread_cents =
+      if is_number(yes_bid) and is_number(yes_ask) and yes_ask >= yes_bid,
+        do: yes_ask - yes_bid,
+        else: nil
+
+    %{
+      yes_bid_cents: yes_bid,
+      no_bid_cents: no_bid,
+      yes_ask_cents: yes_ask,
+      no_ask_cents: no_ask,
+      spread_cents: spread_cents,
+      yes_levels: yes_levels,
+      no_levels: no_levels
+    }
+  end
+
+  # Kalshi orderbook arrays are [[price_cents, size], ...] sorted
+  # ascending by price. Top of book (best bid) is the last element.
+  defp level_pairs(nil), do: []
+  defp level_pairs(list) when is_list(list), do: list
+  defp level_pairs(_), do: []
+
+  defp top_level([_ | _] = list) do
+    case List.last(list) do
+      [price, _size] when is_integer(price) -> price
+      _ -> nil
+    end
+  end
+
+  defp top_level(_), do: nil
 
   defp parse_fill(f) do
     %{
@@ -419,6 +596,12 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       action: f["action"],
       count: f["count"] || 0,
       price: fill_price_cents(f) / 100.0,
+      # Kalshi fee model: trade_fee + rounding_fee - rebate (per
+      # /getting_started/fee_rounding). The aggregated cost lands in
+      # the `fees` field on the fill response in cents — capture it
+      # so settlement P&L can subtract real net fees instead of pretending
+      # they're zero.
+      fees_cents: f["fees"] || f["fee"] || 0,
       created_time: f["created_time"]
     }
   end
@@ -454,6 +637,10 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       ticker: s["ticker"],
       market_result: s["market_result"],
       revenue: (s["revenue"] || 0) / 100.0,
+      # Per Kalshi: settlement payouts are typically fee-free for binary
+      # outcomes, but expose a fee field anyway in case scalar markets
+      # ship with one. Caller can decide how to roll into net P&L.
+      fees: (s["fees"] || 0) / 100.0,
       settled_time: s["settled_time"]
     }
   end
