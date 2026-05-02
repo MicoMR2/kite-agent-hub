@@ -423,6 +423,68 @@ defmodule KiteAgentHub.Trading do
     end
   end
 
+  @doc """
+  Generic trade-row update with PubSub broadcast. Every worker that
+  mutates a trade outside of `create_trade/1`, `cancel_trade/2`, or
+  `settle_trade/2` should route through here so subscribers
+  (DashboardLive, TradesLive, agent runners) see the change in real
+  time instead of waiting for the next mount.
+
+  Any update that transitions the trade into a terminal status
+  (`failed` or `cancelled`) also fires CollectiveIntelligence outcome
+  recording, mirroring what cancel_trade/2 + settle_trade/2 already
+  do for their specific paths.
+
+  Settles flow through `settle_trade/2` instead — it has a specialized
+  changeset (status + realized_pnl only) and already records to KCI.
+  """
+  def update_trade(%TradeRecord{} = record, attrs) do
+    case record |> TradeRecord.changeset(attrs) |> Repo.update() do
+      {:ok, updated} = ok ->
+        _ = broadcast_trade_updated(record, updated)
+        ok
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Specialized update for the post-settlement attestation_tx_hash flip.
+  Goes through `TradeRecord.attestation_changeset/2` (which locks the
+  field on first write) and broadcasts so the dashboard's attestation
+  cards refresh as soon as the on-chain receipt lands.
+  """
+  def set_trade_attestation(%TradeRecord{} = record, tx_hash) when is_binary(tx_hash) do
+    case record |> TradeRecord.attestation_changeset(tx_hash) |> Repo.update() do
+      {:ok, updated} = ok ->
+        Phoenix.PubSub.broadcast(
+          @pubsub,
+          "agent:#{updated.kite_agent_id}",
+          {:trade_updated, updated}
+        )
+
+        ok
+
+      err ->
+        err
+    end
+  end
+
+  defp broadcast_trade_updated(prev_record, updated) do
+    Phoenix.PubSub.broadcast(
+      @pubsub,
+      "agent:#{updated.kite_agent_id}",
+      {:trade_updated, updated}
+    )
+
+    if updated.status in ~w(settled failed cancelled) and prev_record.status != updated.status do
+      _ = CollectiveIntelligence.record_trade_outcome(updated)
+    end
+
+    :ok
+  end
+
   def total_pnl(agent_id) do
     TradeRecord
     |> where(kite_agent_id: ^agent_id, status: "settled")

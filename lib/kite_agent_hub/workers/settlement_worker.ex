@@ -83,21 +83,14 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
         :ok
 
       {:ok, %{"status" => "0x0"}} ->
-        # Transaction reverted
+        # Transaction reverted. Trading.update_trade/2 broadcasts the
+        # status change + records to KCI; no need to do either inline.
         Logger.warning(
           "SettlementWorker: tx #{tx_hash} reverted, marking trade #{trade.id} failed"
         )
 
-        case trade
-             |> TradeRecord.changeset(%{status: "failed"})
-             |> Repo.update() do
-          {:ok, updated} ->
-            _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
-            :ok
-
-          _ ->
-            :ok
-        end
+        Trading.update_trade(trade, %{status: "failed"})
+        :ok
 
       {:ok, nil} ->
         # Not mined yet — snooze with exponential backoff
