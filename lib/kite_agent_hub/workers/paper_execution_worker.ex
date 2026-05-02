@@ -300,7 +300,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       }
       |> maybe_put_order_id(order_id)
 
-    with {:ok, updated} <- trade |> TradeRecord.changeset(update_attrs) |> Repo.update(),
+    with {:ok, updated} <- Trading.update_trade(trade, update_attrs),
          {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
       enqueue_attestation(settled)
       {:ok, settled}
@@ -315,9 +315,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   end
 
   defp mark_trade_failed(trade, reason) when is_binary(reason) do
-    trade
-    |> TradeRecord.changeset(%{status: "failed", reason: reason})
-    |> Repo.update()
+    Trading.update_trade(trade, %{status: "failed", reason: reason})
   end
 
   defp parse_fill_price(price) when is_binary(price) do
@@ -390,7 +388,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
           "PaperExecutionWorker job=#{job_id} provider=kalshi FILLED order=#{order.id}"
         )
 
-        with {:ok, updated} <- trade |> TradeRecord.changeset(update_attrs) |> Repo.update(),
+        with {:ok, updated} <- Trading.update_trade(trade, update_attrs),
              {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
           enqueue_attestation(settled)
           {:ok, settled}
@@ -416,7 +414,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
           "PaperExecutionWorker job=#{job_id} provider=kalshi order=#{order.id} status=#{status} — trade left open"
         )
 
-        trade |> TradeRecord.changeset(update_attrs) |> Repo.update()
+        Trading.update_trade(trade, update_attrs)
     end
   end
 

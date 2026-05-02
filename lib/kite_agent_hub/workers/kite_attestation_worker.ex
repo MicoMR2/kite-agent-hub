@@ -77,7 +77,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
 
   require Logger
 
-  alias KiteAgentHub.Repo
+  alias KiteAgentHub.{Repo, Trading}
   alias KiteAgentHub.Trading.{KiteAgent, TradeRecord}
   alias KiteAgentHub.Kite.{RPC, TxSigner}
 
@@ -212,9 +212,11 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   end
 
   defp persist_tx_hash(trade, tx_hash) do
-    trade
-    |> TradeRecord.attestation_changeset(tx_hash)
-    |> Repo.update()
+    # Specialized changeset path: attestation_tx_hash is lock-on-write.
+    # Trading.set_trade_attestation/2 broadcasts :trade_updated so the
+    # dashboard's attestation cards refresh as soon as the on-chain
+    # receipt lands.
+    Trading.set_trade_attestation(trade, tx_hash)
   end
 
   # Build, sign, and broadcast a NATIVE KITE value transfer from the

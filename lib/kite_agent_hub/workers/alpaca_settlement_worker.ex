@@ -151,34 +151,17 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
   end
 
   # Terminal failure states — flip to cancelled/failed and stop polling.
+  # Trading.update_trade/2 broadcasts :trade_updated and records the KCI
+  # outcome on the terminal-status transition; we no longer have to do
+  # either inline.
   defp handle_status(trade, status, _order) when status in ["canceled", "expired"] do
     Logger.info("AlpacaSettlementWorker: trade #{trade.id} #{status} — marking cancelled")
-
-    case trade
-         |> TradeRecord.changeset(%{status: "cancelled"})
-         |> Repo.update() do
-      {:ok, updated} ->
-        _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
-        {:ok, updated}
-
-      other ->
-        other
-    end
+    Trading.update_trade(trade, %{status: "cancelled"})
   end
 
   defp handle_status(trade, "rejected", _order) do
     Logger.warning("AlpacaSettlementWorker: trade #{trade.id} REJECTED — marking failed")
-
-    case trade
-         |> TradeRecord.changeset(%{status: "failed"})
-         |> Repo.update() do
-      {:ok, updated} ->
-        _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
-        {:ok, updated}
-
-      other ->
-        other
-    end
+    Trading.update_trade(trade, %{status: "failed"})
   end
 
   # done_for_day and replaced are non-terminal but rare — log a warning
@@ -208,8 +191,10 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
   defp maybe_update_fill(trade, attrs) when map_size(attrs) == 0, do: {:ok, trade}
 
   defp maybe_update_fill(trade, attrs) do
-    trade
-    |> TradeRecord.changeset(attrs)
-    |> Repo.update()
+    # Route through Trading.update_trade/2 so the dashboard sees the
+    # fill_price/contracts refresh before settle_trade fires its own
+    # broadcast. Two events are fine — the LV's :trade_updated handler
+    # is idempotent (full re-fetch).
+    Trading.update_trade(trade, attrs)
   end
 end

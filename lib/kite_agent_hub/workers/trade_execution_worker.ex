@@ -113,29 +113,21 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
         case maybe_execute_on_platform(platform, agent, args, owner_user_id) do
           {:ok, platform_order_id} ->
-            trade
-            |> KiteAgentHub.Trading.TradeRecord.changeset(%{platform_order_id: platform_order_id})
-            |> Repo.update()
+            # Broadcast on platform_order_id assignment so the dashboard
+            # picks up the broker confirmation, not just the next mount.
+            Trading.update_trade(trade, %{platform_order_id: platform_order_id})
 
           {:error, reason} ->
             # Alpaca rejected the order (insufficient qty, market closed,
             # invalid symbol, etc.). Flip the trade to "failed" with the
             # broker's error stashed in the reason field so the agent can
-            # see what went wrong on the next GET /trades. Don't try to
-            # write a non-string reason — Alpaca returns nested maps that
-            # would explode the string column.
-            case trade
-                 |> KiteAgentHub.Trading.TradeRecord.changeset(%{
-                   status: "failed",
-                   reason: format_failure_reason(reason)
-                 })
-                 |> Repo.update() do
-              {:ok, updated} ->
-                _ = KiteAgentHub.CollectiveIntelligence.record_trade_outcome(updated)
-
-              _ ->
-                :ok
-            end
+            # see what went wrong on the next GET /trades. Routing through
+            # Trading.update_trade/2 fires :trade_updated + the KCI
+            # outcome record so listeners stop showing this row as `open`.
+            Trading.update_trade(trade, %{
+              status: "failed",
+              reason: format_failure_reason(reason)
+            })
 
           :noop ->
             :ok
@@ -424,9 +416,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       {:ok, tx_hash} ->
         Logger.info("TradeExecutionWorker: trade #{trade.id} submitted, tx=#{tx_hash}")
 
-        trade
-        |> KiteAgentHub.Trading.TradeRecord.changeset(%{tx_hash: tx_hash})
-        |> Repo.update()
+        Trading.update_trade(trade, %{tx_hash: tx_hash})
 
         enqueue_settlement(trade.id, tx_hash, owner_user_id)
         :ok
