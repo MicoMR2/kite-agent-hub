@@ -543,4 +543,32 @@ defmodule KiteAgentHubWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  Truncate a market identifier to a fixed display length, appending an
+  ellipsis when shortened. Used for long Kalshi tickers (e.g.
+  `KXMVESPORTSMULTIGAMEEXTENDED-S2026D8806EC4BBA-B515607F861`) and
+  long Polymarket question slugs that would otherwise overflow tables
+  and trade-row cards. Callers should pair this with `title={market}`
+  so the full identifier is reachable on hover.
+
+  Default `max` is 24 chars — short enough to fit alongside other
+  columns on a typical dashboard width without wrapping.
+
+      iex> truncate_market("AAPL")
+      "AAPL"
+      iex> truncate_market("KXMVESPORTSMULTIGAMEEXTENDED-S2026D8806EC4BBA-B515607F861")
+      "KXMVESPORTSMULTIGAMEEX…"
+  """
+  def truncate_market(market, max \\ 24)
+  def truncate_market(nil, _max), do: ""
+
+  def truncate_market(market, max) when is_binary(market) and is_integer(max) and max > 1 do
+    if String.length(market) > max,
+      do: String.slice(market, 0, max - 1) <> "…",
+      else: market
+  end
+
+  def truncate_market(market, _max) when is_binary(market), do: market
+  def truncate_market(other, _max), do: to_string(other)
 end
