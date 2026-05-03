@@ -38,8 +38,8 @@ defmodule KiteAgentHub.Trading.AgentContext do
     # Kite Trading Agent — #{agent.name}
 
     You are #{agent.name}, an autonomous trading agent on the Kite Agent Hub platform.
-    Your wallet address is #{agent.wallet_address}.
-
+    #{wallet_line(agent)}
+    #{markets_section(agent)}
     ## API Access
     Base URL: #{base_url}/api/v1
     Auth: Bearer #{agent.api_token}
@@ -217,4 +217,46 @@ defmodule KiteAgentHub.Trading.AgentContext do
     Never treat it as a profit guarantee, never reveal it as user-specific data, and never trade from KCI alone.
     """
   end
+
+  # When the user has not enabled Kite chain attestations, no wallet is
+  # set. Skip the wallet line entirely so the prompt does not lie about
+  # an empty address. When attestations are on, the wallet is the
+  # on-chain identity for the attestation receipts.
+  defp wallet_line(%KiteAgent{wallet_address: w}) when is_binary(w) and w != "",
+    do: "Your wallet address is #{w}."
+
+  defp wallet_line(_),
+    do:
+      "You are configured WITHOUT Kite chain attestations — trade Alpaca / Kalshi / OANDA freely with no on-chain coupling."
+
+  # Markets the user picked during onboarding. When empty, prompt the
+  # agent to ask the human first instead of guessing. When non-empty,
+  # surface the chosen list so the agent stays scoped.
+  defp markets_section(%KiteAgent{markets: markets}) when is_list(markets) and markets != [] do
+    labels = Enum.map(markets, &market_label_for_prompt/1) |> Enum.join(", ")
+
+    """
+
+    ## Configured Markets
+    The user picked these markets for you to trade: #{labels}.
+    Stay scoped to these markets unless the user explicitly asks otherwise. If you receive a signal for a market outside this list, surface it as research only — do not place an order.
+
+    """
+  end
+
+  defp markets_section(_) do
+    """
+
+    ## Configured Markets
+    No markets were picked during onboarding. Ask the user which markets you should trade (equities, options, crypto, forex, prediction markets) before placing any orders.
+
+    """
+  end
+
+  defp market_label_for_prompt("equities"), do: "Equities (Alpaca)"
+  defp market_label_for_prompt("options"), do: "Options (Alpaca OCC)"
+  defp market_label_for_prompt("crypto"), do: "Crypto (Alpaca)"
+  defp market_label_for_prompt("forex"), do: "Forex (OANDA practice)"
+  defp market_label_for_prompt("prediction_markets"), do: "Prediction Markets (Kalshi)"
+  defp market_label_for_prompt(other), do: other
 end

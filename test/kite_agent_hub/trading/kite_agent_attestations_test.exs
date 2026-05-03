@@ -72,6 +72,59 @@ defmodule KiteAgentHub.Trading.KiteAgentAttestationsTest do
     end
   end
 
+  describe "changeset/2 — markets whitelist" do
+    test "accepts the documented market values" do
+      cs =
+        KiteAgent.changeset(%KiteAgent{}, %{
+          "name" => "Multi-market",
+          "agent_type" => "trading",
+          "organization_id" => @org_id,
+          "markets" => ["equities", "forex", "prediction_markets"]
+        })
+
+      assert cs.valid?
+      assert get_field(cs, :markets) == ["equities", "forex", "prediction_markets"]
+    end
+
+    test "rejects markets outside the whitelist" do
+      cs =
+        KiteAgent.changeset(%KiteAgent{}, %{
+          "name" => "Bogus",
+          "agent_type" => "trading",
+          "organization_id" => @org_id,
+          "markets" => ["equities", "lotto"]
+        })
+
+      refute cs.valid?
+      assert {"contains an invalid market", _} = cs.errors[:markets]
+    end
+
+    test "rejects duplicate market entries" do
+      cs =
+        KiteAgent.changeset(%KiteAgent{}, %{
+          "name" => "Dupe",
+          "agent_type" => "trading",
+          "organization_id" => @org_id,
+          "markets" => ["forex", "forex"]
+        })
+
+      refute cs.valid?
+      assert {"contains duplicates", _} = cs.errors[:markets]
+    end
+
+    test "empty markets list is valid (agent context will prompt the user)" do
+      cs =
+        KiteAgent.changeset(%KiteAgent{}, %{
+          "name" => "Open",
+          "agent_type" => "trading",
+          "organization_id" => @org_id,
+          "markets" => []
+        })
+
+      assert cs.valid?
+    end
+  end
+
   describe "profile_changeset/2 — flipping attestations on later" do
     test "rejects flipping attestations ON without a wallet" do
       agent = %KiteAgent{name: "Existing", agent_type: "trading", attestations_enabled: false}
