@@ -101,13 +101,57 @@ Use OANDA only from Trade Agent. Forex requires the paper-provider payload, not 
 
 Rules:
 
-- Forex symbols use OANDA instruments such as `EUR_USD`, `GBP_USD`, and `USD_JPY`.
+- Forex symbols use OANDA instruments such as `EUR_USD`, `GBP_USD`, and `USD_JPY`. Always underscore-separated, never `EUR/USD` or `EURUSD`.
 - `provider` is required. If you send `EUR_USD` without `provider: "oanda_practice"`, the API rejects it.
 - `side: "buy"` sends positive OANDA units. `side: "sell"` sends negative OANDA units.
 - `units` must be a positive integer before KAH applies buy or sell direction.
-- Current OANDA execution is practice mode only.
+- Current OANDA execution is practice mode only. The trades endpoint actively rejects `provider: "oanda_live"` even when live credentials are configured.
 - Optional OANDA controls include `order_type`, `price`, `time_in_force`, `position_fill`, `take_profit_price`, `stop_loss_price`, `trailing_stop_distance`, and `client_order_id`.
 - Use `position_fill: "reduce_only"` when closing or shrinking an existing forex position.
+
+### Pre-trade readiness
+
+Before submitting forex, call `GET /api/v1/forex/portfolio?env=practice&instruments=EUR_USD,GBP_USD`. The response now carries:
+
+- `can_submit_trades` — true only when practice credentials are configured.
+- `trade_provider` — `"oanda_practice"` or null. If null, do not submit; surface the error to the human instead of retrying.
+- `pricing` — current bid/ask quotes for the requested instruments. Use these to size, not memorized prices, since spreads widen during news and Sun-evening reopen.
+- `instruments` — full instrument list with `pip_location`, `display_precision`, `minimum_trade_size`, `margin_rate`. Use these for correct unit sizing.
+- `account` — balance / NAV / unrealized_pl / margin_used. Sizing should use NAV, not balance, because unrealized P&L moves the real risk surface.
+
+### Pip and unit mechanics
+
+- Most OANDA pairs quote with `pip_location: -4` (one pip = 0.0001). JPY-quoted pairs (`USD_JPY`, `EUR_JPY`) use `pip_location: -2` (one pip = 0.01).
+- A 1-pip move on 10,000 units of `EUR_USD` is roughly $1 USD profit or loss. On `USD_JPY` it is roughly $0.10 per 10,000 units (depending on USDJPY rate).
+- `minimum_trade_size` is usually 1 unit on practice but enforce it from the instrument metadata, not assumption.
+- Spreads on majors (`EUR_USD`, `USD_JPY`, `GBP_USD`) typically run 0.6 to 2 pips. Crosses (`AUD_NZD`, `EUR_GBP`) and exotics (`USD_TRY`, `USD_ZAR`) can run 5 to 50+ pips. Always check live spread before entering.
+
+### Forex sessions and gaps
+
+Forex trades 24 hours, 5 days a week. The market closes Friday 17:00 New York time and reopens Sunday 17:00 New York time. Practice fills will not occur on weekends. Avoid placing market orders in the first hour after weekend reopen (Sunday 17:00 to 18:00 NY) because spreads are wide and slippage is high.
+
+Major news (US NFP, FOMC, ECB rate decisions) creates the same wide-spread risk during the actual release window even mid-week.
+
+### Closing positions vs closing trades
+
+OANDA distinguishes:
+
+- **Position** — aggregate net exposure for an instrument (e.g. `EUR_USD: long 5000 units`). Close a position with `provider: "oanda_practice"` and a counter-direction trade, OR via the dashboard ForEx tab Close button.
+- **Trade** — an individual fill with its own `tradeID`, fill price, and any TP/SL/TS attached. One position can be made of many trades.
+
+For agent purposes you almost always want to act on positions (the simpler aggregate view). The `/forex/portfolio` `positions` array gives the aggregate; `openTrades` (when surfaced) gives per-fill detail.
+
+### OANDA error sanitization
+
+Failed practice orders return `{:error, {:http, status, %{"errorCode": ..., "errorMessage": ...}}}`. The most common rejects:
+
+| `errorCode` | Cause | Fix |
+|---|---|---|
+| `MARKET_HALTED` | Market closed (weekend, news halt) | Wait for the session to reopen |
+| `INSUFFICIENT_MARGIN` | Order would breach margin requirements | Reduce `units` or close other exposure first |
+| `INVALID_INSTRUMENT` | Symbol not on the account list | Check the instrument exists in `/forex/portfolio` `instruments` |
+| `UNITS_LIMIT_EXCEEDED` | Above account `maximumOrderUnits` | Split into smaller orders |
+| `TAKE_PROFIT_ON_FILL_LOSS` | TP price wrong side of entry for the direction | Re-derive TP from current bid/ask + intended pip target |
 
 ## Alpaca options payload
 

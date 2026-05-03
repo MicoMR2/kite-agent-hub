@@ -34,6 +34,14 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
   def list_open_positions(token, account_id, env \\ :practice),
     do: get("/accounts/#{account_id}/openPositions", token, env)
 
+  @doc """
+  GET /v3/accounts/{id}/openTrades — list of open trades. Distinct from
+  positions: positions are aggregate by instrument, trades are the
+  individual fills with their own price/TP/SL state and tradeID.
+  """
+  def list_open_trades(token, account_id, env \\ :practice),
+    do: get("/accounts/#{account_id}/openTrades", token, env)
+
   @doc "GET /v3/accounts/{id}/pricing?instruments=EUR_USD,GBP_USD — live bid/ask."
   def pricing(token, account_id, instruments, env \\ :practice) when is_list(instruments) do
     query = URI.encode_query(%{"instruments" => Enum.join(instruments, ",")})
@@ -103,6 +111,121 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
         {:error, reason}
     end
   end
+
+  @doc """
+  PUT /v3/accounts/{id}/positions/{instrument}/close — close all (or a
+  decimal subset) of the open position for an instrument on the
+  PRACTICE endpoint only. Mirrors the safety boundary of
+  `place_practice_order` — live trading is intentionally not exposed
+  through this client.
+
+  Body fields supported (all optional):
+    * `long_units`  — "ALL" | "NONE" | decimal string
+    * `short_units` — "ALL" | "NONE" | decimal string
+
+  When neither is supplied, defaults to closing both sides entirely
+  (`longUnits: "ALL", shortUnits: "ALL"`).
+  """
+  def close_practice_position(token, account_id, instrument, opts \\ %{})
+      when is_binary(token) and is_binary(account_id) and is_binary(instrument) do
+    if valid_instrument?(instrument) do
+      body = close_position_body(opts)
+      path = "/accounts/#{account_id}/positions/#{instrument}/close"
+
+      case Req.put(@base_practice <> path,
+             json: body,
+             headers: [
+               {"authorization", "Bearer " <> token},
+               {"accept", "application/json"}
+             ],
+             receive_timeout: @timeout
+           ) do
+        {:ok, %Req.Response{status: status, body: body}} when status in 200..201 ->
+          {:ok, body}
+
+        {:ok, %Req.Response{status: status, body: body}} ->
+          Logger.warning("OANDA practice close_position #{status} on #{path}")
+          {:error, {:http, status, sanitize_error_body(body)}}
+
+        {:error, reason} ->
+          Logger.warning("OANDA practice close_position transport error: #{inspect(reason)}")
+          {:error, reason}
+      end
+    else
+      {:error, :invalid_instrument}
+    end
+  end
+
+  @doc false
+  def close_position_body(opts) do
+    opts = normalize_opts(opts)
+    long = normalize_close_units(opts["long_units"] || opts["longUnits"])
+    short = normalize_close_units(opts["short_units"] || opts["shortUnits"])
+
+    case {long, short} do
+      {nil, nil} -> %{"longUnits" => "ALL", "shortUnits" => "ALL"}
+      {l, nil} -> %{"longUnits" => l}
+      {nil, s} -> %{"shortUnits" => s}
+      {l, s} -> %{"longUnits" => l, "shortUnits" => s}
+    end
+  end
+
+  @doc """
+  PUT /v3/accounts/{id}/trades/{tradeSpecifier}/close — close a specific
+  open trade by ID, optionally partially. Practice endpoint only. The
+  `units` opt accepts "ALL" (default) or a positive decimal string up
+  to the trade's open units.
+  """
+  def close_practice_trade(token, account_id, trade_id, opts \\ %{})
+      when is_binary(token) and is_binary(account_id) and is_binary(trade_id) do
+    units = normalize_close_units(normalize_opts(opts)["units"]) || "ALL"
+    body = %{"units" => units}
+    path = "/accounts/#{account_id}/trades/#{trade_id}/close"
+
+    case Req.put(@base_practice <> path,
+           json: body,
+           headers: [
+             {"authorization", "Bearer " <> token},
+             {"accept", "application/json"}
+           ],
+           receive_timeout: @timeout
+         ) do
+      {:ok, %Req.Response{status: status, body: body}} when status in 200..201 ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.warning("OANDA practice close_trade #{status} on #{path}")
+        {:error, {:http, status, sanitize_error_body(body)}}
+
+      {:error, reason} ->
+        Logger.warning("OANDA practice close_trade transport error: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  # ALL / NONE / positive decimal string passthrough. Anything else
+  # collapses to nil so close_position_body can fall back to the
+  # default ALL/ALL pair.
+  defp normalize_close_units(nil), do: nil
+  defp normalize_close_units(""), do: nil
+
+  defp normalize_close_units(value) when is_binary(value) do
+    upper = value |> String.trim() |> String.upcase()
+
+    cond do
+      upper in ["ALL", "NONE"] -> upper
+      Regex.match?(~r/^\d+(\.\d+)?$/, value) -> value
+      true -> nil
+    end
+  end
+
+  defp normalize_close_units(value) when is_integer(value) and value > 0,
+    do: Integer.to_string(value)
+
+  defp normalize_close_units(value) when is_float(value) and value > 0,
+    do: Float.to_string(value)
+
+  defp normalize_close_units(_), do: nil
 
   # Strip OANDA error payloads down to a non-PII shape that's safe to
   # surface to agents and bubble up to the dashboard. The full body

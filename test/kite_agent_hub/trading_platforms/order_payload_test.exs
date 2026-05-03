@@ -162,4 +162,38 @@ defmodule KiteAgentHub.TradingPlatforms.OrderPayloadTest do
     assert order["trailingStopLossOnFill"]["distance"] == "0.0050"
     assert order["clientExtensions"]["id"] == "agent-exit-1"
   end
+
+  test "OANDA close-position body defaults to ALL/ALL when no opts supplied" do
+    assert OandaClient.close_position_body(%{}) ==
+             %{"longUnits" => "ALL", "shortUnits" => "ALL"}
+  end
+
+  test "OANDA close-position body honors a single side and omits the other" do
+    long_only = OandaClient.close_position_body(%{"long_units" => "ALL"})
+    assert long_only == %{"longUnits" => "ALL"}
+
+    short_only = OandaClient.close_position_body(%{"short_units" => "100"})
+    assert short_only == %{"shortUnits" => "100"}
+  end
+
+  test "OANDA close-position body normalizes ALL/NONE casing and accepts decimals" do
+    body =
+      OandaClient.close_position_body(%{
+        "longUnits" => "  all  ",
+        "shortUnits" => "0.5"
+      })
+
+    assert body == %{"longUnits" => "ALL", "shortUnits" => "0.5"}
+  end
+
+  test "OANDA close-position body silently drops malformed unit strings" do
+    body =
+      OandaClient.close_position_body(%{
+        "long_units" => "not-a-number",
+        "short_units" => ""
+      })
+
+    # Both inputs collapse to nil, so the body falls back to default ALL/ALL
+    assert body == %{"longUnits" => "ALL", "shortUnits" => "ALL"}
+  end
 end
