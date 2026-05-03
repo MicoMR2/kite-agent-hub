@@ -861,14 +861,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_action_flash, nil)}
   end
 
-  # Quick Trade — submit a market order to OANDA practice for the
-  # selected agent. Practice-only by design: live orders go through
-  # the agent API with explicit guardrails (provider="oanda_live" is
-  # rejected at the trades controller). This UI is for human-driven
-  # smoke tests and same-org agents to use during dev.
+  # Quick Trade — enqueues a PaperExecutionWorker job for the selected
+  # agent so the order goes through the same pipeline as agent-API
+  # submissions: TradeRecord row created up-front, OANDA call routed
+  # via the worker, fill+settlement handled by the worker, attestation
+  # enqueued (when the agent has it on). Every dashboard trade lands
+  # in the trades stream and on /trades exactly like agent trades —
+  # NO TRADE GOES UNTRACKED.
   def handle_event("forex_quick_trade", params, socket) do
-    require Logger
-
     agent = socket.assigns[:selected_agent]
     org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
     symbol = socket.assigns[:forex_symbol] || "EUR_USD"
@@ -879,6 +879,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
       is_nil(agent) ->
         {:noreply, assign(socket, :forex_action_flash, {:error, "Select an agent first."})}
 
+      agent.agent_type != "trading" ->
+        {:noreply,
+         assign(
+           socket,
+           :forex_action_flash,
+           {:error, "Selected agent is not a trading agent."}
+         )}
+
       is_nil(org_id) ->
         {:noreply, assign(socket, :forex_action_flash, {:error, "No workspace."})}
 
@@ -887,36 +895,30 @@ defmodule KiteAgentHubWeb.DashboardLive do
          assign(socket, :forex_action_flash, {:error, "Units must be a positive integer."})}
 
       true ->
-        signed = if side == "sell", do: -raw_units, else: raw_units
+        args = %{
+          "agent_id" => agent.id,
+          "organization_id" => org_id,
+          "provider" => "oanda_practice",
+          "symbol" => symbol,
+          "side" => side,
+          "units" => raw_units,
+          "mode" => "paper",
+          "client_order_id" => "kah-quicktrade-#{Ecto.UUID.generate()}"
+        }
 
-        case Oanda.place_practice_order(agent, org_id, symbol, signed) do
-          {:ok, _body} ->
-            send(self(), :load_forex)
-
-            {:noreply,
-             socket
-             |> assign(
-               :forex_action_flash,
-               {:ok, "#{String.upcase(side)} #{raw_units} #{symbol} submitted."}
-             )
-             |> assign(:forex_quick_trade_units, Integer.to_string(raw_units))}
-
-          {:error, reason} ->
-            Logger.warning("forex_quick_trade error: #{inspect(reason)}")
-
-            {:noreply,
-             assign(
-               socket,
-               :forex_action_flash,
-               {:error, "OANDA rejected: #{format_oanda_error(reason)}"}
-             )}
-        end
+        enqueue_paper_trade(args, socket, "#{String.upcase(side)} #{raw_units} #{symbol}",
+          on_success_units: raw_units
+        )
     end
   end
 
-  # Close an open position by instrument. Defaults to ALL/ALL —
-  # closing both sides if the instrument has both long and short
-  # exposure (rare for retail forex but supported by OANDA).
+  # Close a position by submitting a counter-direction reduce_only
+  # trade through the same worker — keeps the close on the trades
+  # stream and on /trades. Sizing is pulled from the cached forex
+  # positions list. Falls back to OANDAs /positions/{}/close endpoint
+  # only when we have no cached row to size from (rare; happens if
+  # the tab has not loaded yet) — in that case we surface that no
+  # KAH trade row was created.
   def handle_event("forex_close_position", %{"instrument" => instrument}, socket) do
     require Logger
 
@@ -927,6 +929,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
       is_nil(agent) ->
         {:noreply, assign(socket, :forex_action_flash, {:error, "Select an agent first."})}
 
+      agent.agent_type != "trading" ->
+        {:noreply,
+         assign(
+           socket,
+           :forex_action_flash,
+           {:error, "Selected agent is not a trading agent."}
+         )}
+
       is_nil(org_id) ->
         {:noreply, assign(socket, :forex_action_flash, {:error, "No workspace."})}
 
@@ -935,20 +945,48 @@ defmodule KiteAgentHubWeb.DashboardLive do
         {:noreply, assign(socket, :forex_action_flash, {:error, "Invalid instrument."})}
 
       true ->
-        case Oanda.close_practice_position(agent, org_id, instrument) do
-          {:ok, _body} ->
-            send(self(), :load_forex)
-            {:noreply, assign(socket, :forex_action_flash, {:ok, "Closed #{instrument}."})}
+        case position_for_close(socket.assigns[:forex_positions], instrument) do
+          {:ok, side, units} ->
+            args = %{
+              "agent_id" => agent.id,
+              "organization_id" => org_id,
+              "provider" => "oanda_practice",
+              "symbol" => instrument,
+              "side" => side,
+              "units" => units,
+              "mode" => "paper",
+              "position_fill" => "reduce_only",
+              "client_order_id" => "kah-quickclose-#{Ecto.UUID.generate()}"
+            }
 
-          {:error, reason} ->
-            Logger.warning("forex_close_position error: #{inspect(reason)}")
+            enqueue_paper_trade(
+              args,
+              socket,
+              "Close #{instrument} (#{units}u counter-#{side})"
+            )
 
-            {:noreply,
-             assign(
-               socket,
-               :forex_action_flash,
-               {:error, "OANDA rejected close: #{format_oanda_error(reason)}"}
-             )}
+          {:error, :not_found} ->
+            case Oanda.close_practice_position(agent, org_id, instrument) do
+              {:ok, _body} ->
+                send(self(), :load_forex)
+
+                {:noreply,
+                 assign(
+                   socket,
+                   :forex_action_flash,
+                   {:ok, "Closed #{instrument} (no KAH trade row — refresh the tab next time)"}
+                 )}
+
+              {:error, reason} ->
+                Logger.warning("forex_close_position fallback error: #{inspect(reason)}")
+
+                {:noreply,
+                 assign(
+                   socket,
+                   :forex_action_flash,
+                   {:error, "OANDA rejected close: #{format_oanda_error(reason)}"}
+                 )}
+            end
         end
     end
   end
@@ -956,6 +994,89 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_event("forex_quick_trade_units", %{"units" => units}, socket) do
     {:noreply, assign(socket, :forex_quick_trade_units, units)}
   end
+
+  # ── Paper trade enqueue + close-side resolution ────────────────────
+
+  # Insert the Oban job and emit a success/error flash. Pulled out so
+  # both Quick Trade and Close share the same enqueue + UX path.
+  defp enqueue_paper_trade(args, socket, action_label, opts \\ []) do
+    require Logger
+
+    case args |> KiteAgentHub.Workers.PaperExecutionWorker.new() |> Oban.insert() do
+      {:ok, job} ->
+        # Reload the tab so any open position changes show. The trades
+        # stream picks up the new TradeRecord via the existing
+        # :trade_created PubSub broadcast — no manual stream_insert
+        # needed.
+        send(self(), :load_forex)
+
+        socket =
+          socket
+          |> assign(
+            :forex_action_flash,
+            {:ok, "#{action_label} queued (job ##{job.id}). Watch the Trades tab for fill."}
+          )
+
+        socket =
+          case Keyword.get(opts, :on_success_units) do
+            n when is_integer(n) -> assign(socket, :forex_quick_trade_units, Integer.to_string(n))
+            _ -> socket
+          end
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.warning("enqueue_paper_trade Oban insert failed: #{inspect(reason)}")
+
+        {:noreply,
+         assign(
+           socket,
+           :forex_action_flash,
+           {:error, "Failed to enqueue trade: #{inspect(reason)}"}
+         )}
+    end
+  end
+
+  # Pull side+units for a counter-trade close from the cached forex
+  # positions list. Returns {:ok, "sell"|"buy", units} for the side
+  # that flattens net exposure, or {:error, :not_found} if we have no
+  # row to size from.
+  defp position_for_close(positions, instrument) when is_list(positions) do
+    Enum.find_value(positions, {:error, :not_found}, fn pos ->
+      if Oanda.field(pos, "instrument", nil) == instrument do
+        long = position_units_for(pos, "long")
+        short = position_units_for(pos, "short")
+
+        cond do
+          long > 0 -> {:ok, "sell", long}
+          short > 0 -> {:ok, "buy", short}
+          true -> nil
+        end
+      end
+    end)
+  end
+
+  defp position_for_close(_positions, _instrument), do: {:error, :not_found}
+
+  # OANDA encodes side units as positive (long) or negative (short)
+  # strings on each side map. We always return a positive integer
+  # since side is already known from which key we pulled from.
+  defp position_units_for(%{"long" => %{"units" => u}}, "long") when is_binary(u),
+    do: parse_int_from_string(u) |> abs()
+
+  defp position_units_for(%{"short" => %{"units" => u}}, "short") when is_binary(u),
+    do: parse_int_from_string(u) |> abs()
+
+  defp position_units_for(_, _), do: 0
+
+  defp parse_int_from_string(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> 0
+    end
+  end
+
+  defp parse_int_from_string(_), do: 0
 
   defp parse_positive_int(nil), do: nil
   defp parse_positive_int(""), do: nil
@@ -3015,7 +3136,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(
-                                  abs(p.unrealized_pl || 0.0), decimals: 2)}
+                                  abs(p.unrealized_pl || 0.0),
+                                  decimals: 2
+                                )}
                               </td>
                             </tr>
                           <% end %>
@@ -3366,7 +3489,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(
-                                  abs(s.revenue), decimals: 2)}
+                                  abs(s.revenue),
+                                  decimals: 2
+                                )}
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if s.settled_time do %>
@@ -3682,9 +3807,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Buy
                     </button>
                     <p class="text-[10px] text-gray-600 mt-2 basis-full">
-                      Agents submit forex via
-                      <span class="font-mono text-gray-400">POST /api/v1/trades</span>
-                      with <span class="font-mono text-gray-400">provider: "oanda_practice"</span>. This form mirrors that for human-driven smoke tests.
+                      Routes through the same PaperExecutionWorker as the agent API — every dashboard trade creates a TradeRecord and lands on the Trades tab.
                     </p>
                   </form>
                 </div>
