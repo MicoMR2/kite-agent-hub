@@ -151,6 +151,8 @@ defmodule KiteAgentHubWeb.API.AgentsController do
       organization_id: agent.organization_id,
       tags: agent.tags,
       bio: agent.bio,
+      markets: agent.markets,
+      attestations_enabled: agent.attestations_enabled,
       inserted_at: agent.inserted_at,
       updated_at: agent.updated_at
     }

@@ -19,6 +19,8 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
        form: form,
        agent_type: "trading",
        attestations_enabled: false,
+       selected_markets: [],
+       available_markets: KiteAgent.markets(),
        step: :configure
      )}
   end
@@ -45,14 +47,36 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
         do: params,
         else: Map.put(params, "wallet_address", "")
 
+    # Markets come through as either a single string (one box checked)
+    # or a list (multiple). Normalize to a sorted unique list so the
+    # changeset validator gets a clean shape.
+    selected_markets = normalize_markets(params["markets"])
+    params = Map.put(params, "markets", selected_markets)
+
     form = build_form(params, socket.assigns.organization)
 
     {:noreply,
      assign(socket,
        form: form,
        agent_type: agent_type,
-       attestations_enabled: attestations_on?
+       attestations_enabled: attestations_on?,
+       selected_markets: selected_markets
      )}
+  end
+
+  def handle_event("toggle_market", %{"market" => market}, socket) do
+    selected =
+      if market in socket.assigns.selected_markets do
+        socket.assigns.selected_markets -- [market]
+      else
+        Enum.uniq(socket.assigns.selected_markets ++ [market])
+      end
+
+    prior = current_form_params(socket)
+    params = Map.put(prior, "markets", selected)
+    form = build_form(params, socket.assigns.organization)
+
+    {:noreply, assign(socket, selected_markets: selected, form: form)}
   end
 
   def handle_event("review", %{"kite_agent" => params}, socket) do
@@ -134,9 +158,33 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
       "name" => Phoenix.HTML.Form.input_value(form, :name) || "",
       "wallet_address" => Phoenix.HTML.Form.input_value(form, :wallet_address) || "",
       "attestations_enabled" =>
-        Phoenix.HTML.Form.input_value(form, :attestations_enabled) || false
+        Phoenix.HTML.Form.input_value(form, :attestations_enabled) || false,
+      "markets" => socket.assigns[:selected_markets] || []
     }
   end
+
+  defp normalize_markets(nil), do: []
+  defp normalize_markets(""), do: []
+  defp normalize_markets(value) when is_binary(value), do: [value]
+
+  defp normalize_markets(list) when is_list(list),
+    do: list |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort()
+
+  defp normalize_markets(_), do: []
+
+  defp market_label("equities"), do: "Equities"
+  defp market_label("options"), do: "Options"
+  defp market_label("crypto"), do: "Crypto"
+  defp market_label("forex"), do: "Forex (OANDA practice)"
+  defp market_label("prediction_markets"), do: "Prediction Markets (Kalshi)"
+  defp market_label(other), do: String.capitalize(other)
+
+  defp market_hint("equities"), do: "Stocks via Alpaca paper or live"
+  defp market_hint("options"), do: "OCC contracts via Alpaca options"
+  defp market_hint("crypto"), do: "BTC/ETH/SOL via Alpaca crypto"
+  defp market_hint("forex"), do: "FX pairs via OANDA practice account"
+  defp market_hint("prediction_markets"), do: "Event contracts via Kalshi"
+  defp market_hint(_), do: ""
 
   defp initial_status("trading"), do: "pending"
   defp initial_status(_), do: "active"
@@ -302,6 +350,64 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                     <input type="hidden" name={@form[:agent_type].name} value={@agent_type} />
                   </div>
 
+                  <%!-- Markets selector — trading agents only. The agent
+                       prompt surfaces these so the LLM knows which
+                       brokers / asset classes to focus on. --%>
+                  <%= if @agent_type == "trading" do %>
+                    <div>
+                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                        Markets
+                        <span class="text-gray-600 normal-case tracking-normal">
+                          (pick one or more)
+                        </span>
+                      </label>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <%= for market <- @available_markets do %>
+                          <% checked? = market in @selected_markets %>
+                          <button
+                            type="button"
+                            phx-click="toggle_market"
+                            phx-value-market={market}
+                            class={[
+                              "relative flex flex-col items-start gap-1 cursor-pointer rounded-xl border p-3 transition-all text-left w-full",
+                              if(checked?,
+                                do:
+                                  "border-emerald-500/40 bg-emerald-500/[0.06] shadow-[0_0_15px_rgba(34,197,94,0.05)]",
+                                else:
+                                  "border-white/5 bg-white/[0.01] hover:border-white/20 hover:bg-white/[0.04]"
+                              )
+                            ]}
+                          >
+                            <%= if checked? do %>
+                              <span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_6px_#22c55e]">
+                              </span>
+                            <% end %>
+                            <span class={[
+                              "text-xs font-bold",
+                              if(checked?, do: "text-white", else: "text-gray-400")
+                            ]}>
+                              {market_label(market)}
+                            </span>
+                            <span class="text-[10px] text-gray-600 leading-snug">
+                              {market_hint(market)}
+                            </span>
+                          </button>
+                          <%!-- Carry the selected list as hidden inputs so
+                               a regular form submit (no JS) still POSTs them. --%>
+                          <%= if checked? do %>
+                            <input type="hidden" name="kite_agent[markets][]" value={market} />
+                          <% end %>
+                        <% end %>
+                      </div>
+                      <p :if={@selected_markets == []} class="text-[11px] text-gray-600 mt-2">
+                        Pick at least one market — your agent will only get knowledge for the markets you select.
+                      </p>
+                      <%= for {msg, _} <- @form[:markets].errors do %>
+                        <p class="text-xs text-red-400 mt-1">{msg}</p>
+                      <% end %>
+                    </div>
+                  <% end %>
+
                   <%!-- Agent Name --%>
                   <div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
@@ -457,6 +563,22 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                     {Phoenix.HTML.Form.input_value(@form, :name)}
                   </span>
                 </div>
+
+                <%= if @agent_type == "trading" and @selected_markets != [] do %>
+                  <div class="flex items-start justify-between py-3 border-b border-white/5 gap-3">
+                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest pt-1">
+                      Markets
+                    </span>
+                    <div class="flex flex-wrap gap-1.5 justify-end">
+                      <span
+                        :for={m <- @selected_markets}
+                        class="text-[10px] font-bold uppercase tracking-widest bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 text-emerald-300"
+                      >
+                        {market_label(m)}
+                      </span>
+                    </div>
+                  </div>
+                <% end %>
 
                 <%= if @agent_type == "trading" do %>
                   <div class="flex items-center justify-between py-3 border-b border-white/5">

@@ -9,6 +9,12 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   @agent_types ~w(trading research conversational)
   @llm_providers ~w(anthropic openai)
 
+  # Whitelist of markets an agent can be configured to trade. Surfaced
+  # in onboarding as the multi-select. Each value maps to the broker /
+  # data source used in trading-agent.codex.md.
+  @markets ~w(equities options crypto forex prediction_markets)
+  def markets, do: @markets
+
   schema "kite_agents" do
     field :name, :string
     field :agent_type, :string, default: "trading"
@@ -19,6 +25,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :api_token, :string
     field :tags, {:array, :string}, default: []
     field :bio, :string
+    field :markets, {:array, :string}, default: []
 
     # Trading without Kite chain attestations is the default. When this
     # is true, the agent must have a wallet_address (validated below)
@@ -53,6 +60,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :status,
       :organization_id,
       :attestations_enabled,
+      :markets,
       :llm_provider,
       :llm_model,
       :llm_endpoint_url
@@ -64,6 +72,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_wallet_for_trading()
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
+    |> validate_markets()
     |> maybe_generate_api_token()
     |> unique_constraint(:wallet_address)
     |> unique_constraint(:api_token)
@@ -96,12 +105,14 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :bio,
       :wallet_address,
       :vault_address,
-      :attestations_enabled
+      :attestations_enabled,
+      :markets
     ])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
     |> validate_length(:bio, max: 2000)
     |> validate_tags()
+    |> validate_markets()
     |> validate_wallet_for_trading()
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
@@ -119,6 +130,24 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     agent
     |> cast(%{status: "archived"}, [:status])
     |> validate_inclusion(:status, @statuses)
+  end
+
+  defp validate_markets(changeset) do
+    validate_change(changeset, :markets, fn _, markets ->
+      cond do
+        not is_list(markets) ->
+          [{:markets, "must be a list of strings"}]
+
+        Enum.any?(markets, fn m -> m not in @markets end) ->
+          [{:markets, "contains an invalid market"}]
+
+        length(Enum.uniq(markets)) != length(markets) ->
+          [{:markets, "contains duplicates"}]
+
+        true ->
+          []
+      end
+    end)
   end
 
   defp validate_tags(changeset) do
