@@ -40,10 +40,15 @@ defmodule KiteAgentHubWeb.AgentsLive do
 
   def handle_event("save", %{"id" => id} = params, socket) do
     agent = Enum.find(socket.assigns.agents, &(&1.id == id))
+
+    attestations_enabled? = params["attestations_enabled"] in ["true", "on", true]
+
     attrs = %{
       "name" => params["name"],
       "bio" => params["bio"],
-      "tags" => parse_tags(params["tags"])
+      "tags" => parse_tags(params["tags"]),
+      "wallet_address" => params["wallet_address"],
+      "attestations_enabled" => attestations_enabled?
     }
 
     case Repo.with_user(socket.assigns.current_scope.user.id, fn ->
@@ -197,7 +202,10 @@ defmodule KiteAgentHubWeb.AgentsLive do
             </div>
           <% end %>
 
-          <div :for={agent <- @agents} class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+          <div
+            :for={agent <- @agents}
+            class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6"
+          >
             <%= if @editing_id == agent.id do %>
               <form phx-submit="save" class="space-y-4">
                 <input type="hidden" name="id" value={agent.id} />
@@ -212,12 +220,18 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     value={agent.name}
                     class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
                   />
-                  <p :if={err = get_in(@form_errors, [:name, Access.at(0)])} class="text-xs text-red-400 mt-1">{err}</p>
+                  <p
+                    :if={err = get_in(@form_errors, [:name, Access.at(0)])}
+                    class="text-xs text-red-400 mt-1"
+                  >
+                    {err}
+                  </p>
                 </div>
 
                 <div>
                   <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
-                    Tags <span class="text-gray-600 normal-case tracking-normal">(comma-separated)</span>
+                    Tags
+                    <span class="text-gray-600 normal-case tracking-normal">(comma-separated)</span>
                   </label>
                   <input
                     type="text"
@@ -226,7 +240,12 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     placeholder="momentum, equities"
                     class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
                   />
-                  <p :if={err = get_in(@form_errors, [:tags, Access.at(0)])} class="text-xs text-red-400 mt-1">{err}</p>
+                  <p
+                    :if={err = get_in(@form_errors, [:tags, Access.at(0)])}
+                    class="text-xs text-red-400 mt-1"
+                  >
+                    {err}
+                  </p>
                 </div>
 
                 <div>
@@ -238,7 +257,53 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     rows="3"
                     class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 resize-none"
                   >{agent.bio}</textarea>
-                  <p :if={err = get_in(@form_errors, [:bio, Access.at(0)])} class="text-xs text-red-400 mt-1">{err}</p>
+                  <p
+                    :if={err = get_in(@form_errors, [:bio, Access.at(0)])}
+                    class="text-xs text-red-400 mt-1"
+                  >
+                    {err}
+                  </p>
+                </div>
+
+                <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                  <label class="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="attestations_enabled"
+                      value="true"
+                      checked={agent.attestations_enabled}
+                      class="mt-1 w-4 h-4 rounded border-white/20 bg-black/40"
+                    />
+                    <div class="flex-1">
+                      <p class="text-sm font-bold text-white">Enable Kite chain attestations</p>
+                      <p class="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                        Off by default. When on, every settled trade is recorded on-chain via your wallet. Requires a valid wallet address below.
+                      </p>
+                    </div>
+                  </label>
+
+                  <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                      Wallet Address
+                      <span class="text-gray-600 normal-case tracking-normal">
+                        (optional unless attestations are on)
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      name="wallet_address"
+                      value={agent.wallet_address}
+                      placeholder="0x..."
+                      spellcheck="false"
+                      class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
+                    />
+                    <p
+                      :if={err = get_in(@form_errors, [:wallet_address, Access.at(0)])}
+                      class="text-xs text-red-400 mt-1"
+                    >
+                      {err}
+                    </p>
+                  </div>
                 </div>
 
                 <div class="flex items-center gap-3">
@@ -320,7 +385,9 @@ defmodule KiteAgentHubWeb.AgentsLive do
 
                 <div class="grid grid-cols-2 gap-3 pt-3 border-t border-white/5 text-[11px]">
                   <div>
-                    <span class="block text-[10px] font-bold text-gray-600 uppercase tracking-widest">Wallet</span>
+                    <span class="block text-[10px] font-bold text-gray-600 uppercase tracking-widest">
+                      Wallet
+                    </span>
                     <span class={[
                       "font-mono truncate block",
                       agent.wallet_address && "text-gray-400",
@@ -338,14 +405,19 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     </span>
                   </div>
                   <div>
-                    <span class="block text-[10px] font-bold text-gray-600 uppercase tracking-widest">Vault</span>
+                    <span class="block text-[10px] font-bold text-gray-600 uppercase tracking-widest">
+                      Vault
+                    </span>
                     <span class="font-mono truncate block text-gray-400">
                       {agent.vault_address || "—"}
                     </span>
                   </div>
                 </div>
 
-                <div :if={@confirm_archive_id == agent.id} class="mt-4 p-4 rounded-xl border border-red-500/30 bg-red-500/5 space-y-2">
+                <div
+                  :if={@confirm_archive_id == agent.id}
+                  class="mt-4 p-4 rounded-xl border border-red-500/30 bg-red-500/5 space-y-2"
+                >
                   <p class="text-xs text-red-300">
                     Archive <strong>{agent.name}</strong>? This stops the runner and auto-cancels every open trade on the broker book. Status flips to <strong>archived</strong>. The agent's history and attestations are preserved.
                   </p>

@@ -20,6 +20,13 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :tags, {:array, :string}, default: []
     field :bio, :string
 
+    # Trading without Kite chain attestations is the default. When this
+    # is true, the agent must have a wallet_address (validated below)
+    # AND the post-settlement attestation worker will submit an on-chain
+    # transfer for every settled trade. When false (default), the agent
+    # can trade Alpaca/Kalshi/OANDA freely with no Kite-chain coupling.
+    field :attestations_enabled, :boolean, default: false
+
     # BYO-model fields. Null means "inherit from org default". The
     # field validation below guards the provider string; SSRF
     # validation for llm_endpoint_url lives with the provider
@@ -45,6 +52,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :chain_id,
       :status,
       :organization_id,
+      :attestations_enabled,
       :llm_provider,
       :llm_model,
       :llm_endpoint_url
@@ -70,18 +78,34 @@ defmodule KiteAgentHub.Trading.KiteAgent do
 
   @doc """
   Profile update — the whitelist PATCH /agents/:id exposes. Explicitly
-  does NOT accept api_token, wallet_address, organization_id, or
-  status: API key rotation is server-driven, the wallet is
-  provisioned once, orgs can't be reassigned via this endpoint, and
-  status moves through its own lifecycle (activate / pause / archive).
+  does NOT accept api_token, organization_id, or status: API key
+  rotation is server-driven, orgs can't be reassigned via this
+  endpoint, and status moves through its own lifecycle.
+
+  DOES accept `wallet_address`, `vault_address`, and
+  `attestations_enabled` so users can flip Kite-chain attestations
+  on/off for an existing agent and supply a wallet at the same time.
+  Validation enforces the on-chain pair: enabling attestations
+  requires a valid wallet_address.
   """
   def profile_changeset(agent, attrs) do
     agent
-    |> cast(attrs, [:name, :tags, :bio])
+    |> cast(attrs, [
+      :name,
+      :tags,
+      :bio,
+      :wallet_address,
+      :vault_address,
+      :attestations_enabled
+    ])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
     |> validate_length(:bio, max: 2000)
     |> validate_tags()
+    |> validate_wallet_for_trading()
+    |> validate_evm_address(:wallet_address)
+    |> validate_evm_address(:vault_address)
+    |> unique_constraint(:wallet_address)
   end
 
   @doc "Rotate the api_token to a new server-generated value."
@@ -115,18 +139,25 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     end)
   end
 
+  # Wallet is required only when attestations are explicitly enabled.
+  # This lets users (and their agents) trade Alpaca/Kalshi/OANDA
+  # without any Kite-chain coupling, and opt-in later by flipping the
+  # toggle and supplying a wallet in the same form submit.
   defp validate_wallet_for_trading(changeset) do
-    agent_type = get_field(changeset, :agent_type) || "trading"
+    attestations_on? = get_field(changeset, :attestations_enabled) == true
 
-    if agent_type == "trading" do
-      validate_required(changeset, [:wallet_address])
-    else
-      # Normalize empty string to nil so the unique constraint doesn't fire
-      # and validate_evm_address doesn't reject a blank value
+    changeset =
       case get_change(changeset, :wallet_address) do
         "" -> put_change(changeset, :wallet_address, nil)
         _ -> changeset
       end
+
+    if attestations_on? do
+      validate_required(changeset, [:wallet_address],
+        message: "is required when attestations are enabled"
+      )
+    else
+      changeset
     end
   end
 
