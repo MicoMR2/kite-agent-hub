@@ -125,14 +125,22 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
         {:snooze, 30}
 
       %TradeRecord{} = trade ->
-        # Explicit guard before signing (Phorari lock msg 6438, CyberSec
-        # pre-build msg 6430): only trading agents with a configured
-        # wallet attest on-chain. Research / conversational agents (and
-        # trading agents whose wallet column is still null) skip cleanly
-        # with :ok — attempting a transfer with no wallet would either
-        # crash or send to the zero address, both strictly worse than
-        # a no-op.
+        # Two-step gate before signing:
+        #   1. attestations_enabled must be true on the agent (opt-in).
+        #      Default for new agents is false so users can trade
+        #      Alpaca/Kalshi/OANDA without any Kite-chain coupling.
+        #   2. Trading-type agent with a non-empty wallet_address —
+        #      attempting a transfer with no wallet would either crash
+        #      or send to the zero address, both strictly worse than
+        #      a clean no-op.
         case agent_for(trade) do
+          %KiteAgent{attestations_enabled: false} = agent ->
+            Logger.info(
+              "KiteAttestationWorker: trade #{trade.id} skipped — agent #{agent.id} has attestations_enabled=false"
+            )
+
+            :ok
+
           %KiteAgent{agent_type: "trading", wallet_address: wallet}
           when is_binary(wallet) and wallet != "" ->
             Logger.info("KiteAttestationWorker: trade #{trade.id} starting attestation")
@@ -146,9 +154,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
             :ok
 
           nil ->
-            Logger.warning(
-              "KiteAttestationWorker: trade #{trade.id} skipped — agent not found"
-            )
+            Logger.warning("KiteAttestationWorker: trade #{trade.id} skipped — agent not found")
 
             :ok
         end
