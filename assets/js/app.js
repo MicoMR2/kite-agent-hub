@@ -83,6 +83,45 @@ const ChatInputClear = {
   }
 }
 
+// QuickTradeForm — intercepts the Quick Trade form submit to honor the
+// "do not ask me again" preference stored in localStorage. When the
+// flag is set, the form posts directly to forex_quick_trade (skipping
+// the confirmation modal). When the flag is unset, the form posts to
+// forex_quick_trade_review which opens the modal.
+//
+// The form template uses phx-submit="forex_quick_trade_review" by
+// default; this hook flips that submit target client-side based on
+// localStorage so a stale page-render does not show the modal to a
+// user who already opted out.
+const QuickTradeForm = {
+  mounted() {
+    this.update()
+  },
+  updated() {
+    this.update()
+  },
+  update() {
+    const skip = localStorage.getItem("kah_skip_quick_trade_confirm") === "true"
+    this.el.setAttribute("phx-submit", skip ? "forex_quick_trade" : "forex_quick_trade_review")
+  }
+}
+
+// QuickTradeConfirm — when the modal Confirm button is clicked, persist
+// the "do not ask me again" checkbox state to localStorage BEFORE the
+// LiveView event fires. The actual order placement still goes through
+// LiveView (forex_quick_trade_confirm); this hook just side-effects
+// localStorage so future submits skip the modal.
+const QuickTradeConfirm = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      const cb = document.getElementById("kah-skip-confirm-checkbox")
+      if (cb && cb.checked) {
+        localStorage.setItem("kah_skip_quick_trade_confirm", "true")
+      }
+    })
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   // 10s gives WebSocket time to handshake on slower connections before
@@ -91,7 +130,15 @@ const liveSocket = new LiveSocket("/live", Socket, {
   // routing produced a constant reconnect loop.
   longPollFallbackMs: 10000,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollBottom, CopyToClipboard, LocalTime, ChatInputClear},
+  hooks: {
+    ...colocatedHooks,
+    ScrollBottom,
+    CopyToClipboard,
+    LocalTime,
+    ChatInputClear,
+    QuickTradeForm,
+    QuickTradeConfirm
+  },
 })
 
 // Show progress bar on live navigation and form submits
