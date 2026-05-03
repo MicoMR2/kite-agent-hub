@@ -147,6 +147,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_open_trades, [])
       |> assign(:forex_quick_trade_units, "1000")
       |> assign(:forex_action_flash, nil)
+      |> assign(:forex_pending_trade, nil)
       |> assign(:stats_refresh_timer, nil)
       |> assign(:chat_messages, chat_messages)
       |> stream(:trades, trades)
@@ -861,6 +862,72 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_action_flash, nil)}
   end
 
+  # Stage a Quick Trade for review — opens the confirmation modal
+  # with the parsed side/units/symbol. The actual order does NOT
+  # submit until the user clicks Confirm. The QuickTradeForm JS hook
+  # routes around this handler entirely when the user has previously
+  # checked "do not ask me again", so review-clicks only happen for
+  # users who want the safety net.
+  def handle_event("forex_quick_trade_review", params, socket) do
+    agent = socket.assigns[:selected_agent]
+    org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
+    symbol = socket.assigns[:forex_symbol] || "EUR_USD"
+    side = params["side"] || "buy"
+    raw_units = parse_positive_int(params["units"] || socket.assigns[:forex_quick_trade_units])
+
+    cond do
+      is_nil(agent) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "Select an agent first."})}
+
+      agent.agent_type != "trading" ->
+        {:noreply,
+         assign(
+           socket,
+           :forex_action_flash,
+           {:error, "Selected agent is not a trading agent."}
+         )}
+
+      is_nil(org_id) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "No workspace."})}
+
+      raw_units in [nil, 0] ->
+        {:noreply,
+         assign(socket, :forex_action_flash, {:error, "Units must be a positive integer."})}
+
+      true ->
+        {:noreply,
+         assign(socket, :forex_pending_trade, %{
+           side: side,
+           symbol: symbol,
+           units: raw_units
+         })}
+    end
+  end
+
+  # Confirm fires the actual trade by reusing the existing
+  # forex_quick_trade flow, then clears the modal. The pending
+  # struct carried side/symbol/units, so we synthesize the params the
+  # main handler expects.
+  def handle_event("forex_quick_trade_confirm", _params, socket) do
+    case socket.assigns[:forex_pending_trade] do
+      %{side: side, units: units} ->
+        socket = assign(socket, :forex_pending_trade, nil)
+
+        handle_event(
+          "forex_quick_trade",
+          %{"side" => side, "units" => Integer.to_string(units)},
+          socket
+        )
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("forex_quick_trade_cancel", _params, socket) do
+    {:noreply, assign(socket, :forex_pending_trade, nil)}
+  end
+
   # Quick Trade — enqueues a PaperExecutionWorker job for the selected
   # agent so the order goes through the same pipeline as agent-API
   # submissions: TradeRecord row created up-front, OANDA call routed
@@ -868,6 +935,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # enqueued (when the agent has it on). Every dashboard trade lands
   # in the trades stream and on /trades exactly like agent trades —
   # NO TRADE GOES UNTRACKED.
+  #
+  # The QuickTradeForm JS hook can route to this handler directly
+  # (skipping the modal) when the user has set the "do not ask me
+  # again" preference in localStorage.
   def handle_event("forex_quick_trade", params, socket) do
     agent = socket.assigns[:selected_agent]
     org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
@@ -1168,6 +1239,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
        do: pl
 
   defp position_unrealized_pl(_), do: "0"
+
+  # Estimated USD notional for the pending trade modal. Uses the live
+  # ASK for buys and BID for sells from the cached pricing payload.
+  # Returns nil when we cannot derive a quote so the template hides
+  # the row entirely instead of printing a misleading number.
+  defp estimated_notional(%{side: side, units: units}, %{} = pricing) do
+    quote =
+      case side do
+        "buy" -> best_ask(pricing)
+        _ -> best_bid(pricing)
+      end
+
+    with q when is_binary(q) <- quote,
+         {price, _} <- Float.parse(q) do
+      "$" <> :erlang.float_to_binary(price * units, decimals: 2)
+    else
+      _ -> nil
+    end
+  end
+
+  defp estimated_notional(_pending, _pricing), do: nil
 
   # Async Kalshi data loading. Wrapped — the with-chain internally uses
   # {:ok, _} / {:error, _} but a raised exception from PEM decode or
@@ -3674,15 +3766,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               </div>
 
-              <%!-- Action flash (quick-trade success/error). Cleared on
-                 next forex_symbol change or any successful action. --%>
+              <%!-- Action flash (quick-trade success/error). Solid backgrounds
+                 with white text so the message is readable on both
+                 dark and light themes. Cleared on next forex_symbol
+                 change or any successful action. --%>
               <%= case @forex_action_flash do %>
                 <% {:ok, msg} -> %>
-                  <div class="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-xs text-emerald-200 font-mono">
+                  <div class="mb-4 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-3 text-xs text-white font-mono shadow-md">
                     {msg}
                   </div>
                 <% {:error, msg} -> %>
-                  <div class="mb-4 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-4 py-3 text-xs text-red-200 font-mono">
+                  <div class="mb-4 rounded-xl border border-red-700 bg-red-600 px-4 py-3 text-xs text-white font-mono shadow-md">
                     {msg}
                   </div>
                 <% _ -> %>
@@ -3765,7 +3859,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <% end %>
 
               <%!-- Quick Trade — practice-only ticket. Hidden when no
-                 trading agent is selected or OANDA is not wired up. --%>
+                 trading agent is selected or OANDA is not wired up.
+                 Buy/Sell open a confirmation modal first; the actual
+                 forex_quick_trade event only fires from the modal
+                 confirm button so a misclick can not place an order. --%>
               <%= if forex_agent_can_trade and @forex_provider == :oanda and @forex_oanda_env == :practice do %>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
                   <div class="flex items-center justify-between mb-4">
@@ -3776,7 +3873,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Practice — submits a market order
                     </span>
                   </div>
-                  <form phx-submit="forex_quick_trade" class="flex flex-wrap items-end gap-3">
+                  <form
+                    id="forex-quick-trade-form"
+                    phx-hook="QuickTradeForm"
+                    phx-submit="forex_quick_trade_review"
+                    class="flex flex-wrap items-end gap-3"
+                  >
                     <div class="flex flex-col gap-1">
                       <label class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
                         Units
@@ -3787,14 +3889,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         min="1"
                         step="1"
                         value={@forex_quick_trade_units}
-                        class="w-32 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
+                        class="w-32 bg-black/40 border border-white/20 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 font-mono"
                       />
                     </div>
                     <button
                       type="submit"
                       name="side"
                       value="sell"
-                      class="px-5 py-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-200 text-xs font-black uppercase tracking-widest hover:bg-red-500/25 transition-colors"
+                      class="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 border border-red-700 text-white text-xs font-black uppercase tracking-widest transition-colors shadow-md"
                     >
                       Sell
                     </button>
@@ -3802,7 +3904,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       type="submit"
                       name="side"
                       value="buy"
-                      class="px-5 py-2 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-200 text-xs font-black uppercase tracking-widest hover:bg-blue-500/25 transition-colors"
+                      class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-black uppercase tracking-widest transition-colors shadow-md"
                     >
                       Buy
                     </button>
@@ -3810,6 +3912,104 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Routes through the same PaperExecutionWorker as the agent API — every dashboard trade creates a TradeRecord and lands on the Trades tab.
                     </p>
                   </form>
+                </div>
+              <% end %>
+
+              <%!-- Trade confirmation modal. Opens via forex_quick_trade_review
+                 event; user must explicitly click "Confirm" to actually
+                 enqueue the order. Estimated USD cost is computed from
+                 the current ASK (buy) or BID (sell) on the live quote
+                 we already have in @forex_pricing. --%>
+              <%= if @forex_pending_trade do %>
+                <% pt = @forex_pending_trade
+                est = estimated_notional(pt, @forex_pricing) %>
+                <div
+                  class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+                  phx-click="forex_quick_trade_cancel"
+                >
+                  <div
+                    class="relative w-full max-w-md mx-4 rounded-2xl border border-white/20 bg-[#0a0a0f] shadow-2xl overflow-hidden"
+                    phx-click-away="forex_quick_trade_cancel"
+                  >
+                    <div class="px-6 py-4 border-b border-white/10">
+                      <h2 class="text-sm font-black text-white uppercase tracking-widest">
+                        Confirm trade
+                      </h2>
+                      <p class="text-[11px] text-gray-500 mt-0.5">
+                        Practice account — no real money. Still, double-check.
+                      </p>
+                    </div>
+
+                    <div class="px-6 py-5 space-y-3 text-sm">
+                      <div class="flex items-center justify-between border-b border-white/5 py-2">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                          Side
+                        </span>
+                        <span class={[
+                          "text-xs font-black px-2.5 py-1 rounded-md uppercase tracking-widest text-white",
+                          if(pt.side == "buy", do: "bg-blue-600", else: "bg-red-600")
+                        ]}>
+                          {pt.side}
+                        </span>
+                      </div>
+                      <div class="flex items-center justify-between border-b border-white/5 py-2">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                          Instrument
+                        </span>
+                        <span class="text-sm font-mono text-white">{pt.symbol}</span>
+                      </div>
+                      <div class="flex items-center justify-between border-b border-white/5 py-2">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                          Units
+                        </span>
+                        <span class="text-sm font-mono text-white">{pt.units}</span>
+                      </div>
+                      <%= if est do %>
+                        <div class="flex items-center justify-between border-b border-white/5 py-2">
+                          <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                            Est. notional
+                          </span>
+                          <span class="text-sm font-mono text-white">{est}</span>
+                        </div>
+                      <% end %>
+                    </div>
+
+                    <div class="px-6 py-3 border-t border-white/10">
+                      <label class="flex items-center gap-2 text-[11px] text-gray-400 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          id="kah-skip-confirm-checkbox"
+                          class="h-3.5 w-3.5 rounded border-white/30 bg-black/40"
+                        />
+                        <span>Do not ask me again on this device</span>
+                      </label>
+                    </div>
+
+                    <div class="px-6 py-4 bg-white/[0.03] border-t border-white/10 flex items-center gap-3">
+                      <button
+                        type="button"
+                        phx-click="forex_quick_trade_cancel"
+                        class="flex-1 py-2.5 rounded-xl border border-white/20 text-gray-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-widest transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        id="kah-quick-trade-confirm-btn"
+                        phx-hook="QuickTradeConfirm"
+                        phx-click="forex_quick_trade_confirm"
+                        class={[
+                          "flex-[2] py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-widest transition-colors shadow-md",
+                          if(pt.side == "buy",
+                            do: "bg-blue-600 hover:bg-blue-500 border border-blue-700",
+                            else: "bg-red-600 hover:bg-red-500 border border-red-700"
+                          )
+                        ]}
+                      >
+                        Confirm {String.upcase(pt.side)} {pt.units} {pt.symbol}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               <% end %>
 
@@ -3847,7 +4047,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 phx-click="forex_close_position"
                                 phx-value-instrument={inst}
                                 data-confirm={"Close all open #{inst} on OANDA practice?"}
-                                class="px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+                                class="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 text-[10px] font-bold uppercase tracking-widest text-white transition-colors shadow-sm"
                               >
                                 Close
                               </button>

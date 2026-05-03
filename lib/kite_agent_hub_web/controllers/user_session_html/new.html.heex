@@ -23,8 +23,9 @@
         </p>
       </div>
 
-      <%!-- Card --%>
-      <div class="rounded-2xl bg-gray-900/60 border border-white/[0.12] p-8">
+      <%!-- Card — solid background (was /60) so the form does not
+           blend into the QuorumBackground decoration in either theme. --%>
+      <div class="rounded-2xl bg-gray-900/95 border border-white/20 p-8 shadow-2xl shadow-black/40">
         <.form :let={f} for={@form} as={:user} id="login_form_password" action={~p"/users/log-in"}>
           <div class="space-y-5">
             <div>
