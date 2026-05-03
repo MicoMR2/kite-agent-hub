@@ -56,6 +56,20 @@ defmodule KiteAgentHub.Oanda do
     end)
   end
 
+  @doc """
+  List open trades for the given env. Trades are individual fills with
+  their own price / TP / SL state, distinct from aggregated positions.
+  Returns `[]` on any failure.
+  """
+  def list_open_trades(org_id, env \\ :practice) do
+    with_token(org_id, env, fn token, account_id ->
+      case OandaClient.list_open_trades(token, account_id, env) do
+        {:ok, %{"trades" => trades}} when is_list(trades) -> trades
+        _ -> []
+      end
+    end)
+  end
+
   @doc "List instruments for the given env. Returns [] on any failure."
   def list_instruments(org_id, env \\ :practice) do
     with_token(org_id, env, fn token, account_id ->
@@ -186,6 +200,54 @@ defmodule KiteAgentHub.Oanda do
     do: {:error, :not_a_trading_agent}
 
   def place_practice_order(_agent, _org, _inst, _u, _opts), do: {:error, :invalid_agent}
+
+  @doc """
+  Close all (or part of) the open practice position for an instrument.
+  `opts` can include `long_units` / `short_units` ("ALL" | "NONE" |
+  decimal string). Default closes both sides entirely.
+
+  Trading-agent gate same as `place_practice_order/5`.
+  """
+  def close_practice_position(agent, org_id, instrument, opts \\ %{})
+
+  def close_practice_position(%{agent_type: "trading"}, org_id, instrument, opts)
+      when is_binary(instrument) do
+    with_credential(org_id, :practice, fn token, account_id ->
+      OandaClient.close_practice_position(token, account_id, instrument, opts)
+    end)
+  rescue
+    e ->
+      Logger.error("Oanda.close_practice_position crashed: #{inspect(e)}")
+      {:error, :exception}
+  end
+
+  def close_practice_position(%{agent_type: _}, _org, _inst, _opts),
+    do: {:error, :not_a_trading_agent}
+
+  def close_practice_position(_agent, _org, _inst, _opts), do: {:error, :invalid_agent}
+
+  @doc """
+  Close (or partially close) a specific open practice trade by ID. The
+  optional `units` opt accepts "ALL" (default) or a positive decimal
+  string up to the trade's open units.
+  """
+  def close_practice_trade(agent, org_id, trade_id, opts \\ %{})
+
+  def close_practice_trade(%{agent_type: "trading"}, org_id, trade_id, opts)
+      when is_binary(trade_id) do
+    with_credential(org_id, :practice, fn token, account_id ->
+      OandaClient.close_practice_trade(token, account_id, trade_id, opts)
+    end)
+  rescue
+    e ->
+      Logger.error("Oanda.close_practice_trade crashed: #{inspect(e)}")
+      {:error, :exception}
+  end
+
+  def close_practice_trade(%{agent_type: _}, _org, _id, _opts),
+    do: {:error, :not_a_trading_agent}
+
+  def close_practice_trade(_agent, _org, _id, _opts), do: {:error, :invalid_agent}
 
   # Like with_token/3 but propagates {:error, _} instead of collapsing
   # to []. Used by mutating paths (place_practice_order) where callers

@@ -13,7 +13,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       do_mount(socket)
     rescue
       e ->
-        Logger.error("DashboardLive mount CRASHED: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}")
+        Logger.error(
+          "DashboardLive mount CRASHED: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}"
+        )
+
         {:ok, assign_minimal_socket(socket)}
     catch
       kind, reason ->
@@ -140,6 +143,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_account, nil)
       |> assign(:forex_candles, [])
       |> assign(:forex_symbol, "EUR_USD")
+      |> assign(:forex_pricing, nil)
+      |> assign(:forex_open_trades, [])
+      |> assign(:forex_quick_trade_units, "1000")
+      |> assign(:forex_action_flash, nil)
       |> assign(:stats_refresh_timer, nil)
       |> assign(:chat_messages, chat_messages)
       |> stream(:trades, trades)
@@ -230,7 +237,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
          |> assign(:pnl_stats, stats)
          |> assign(:attestation_count, attestation_count(agent))
          |> assign(:recent_attestations, recent_attestations(agent))
-         |> assign(:all_attestations, if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: []))
+         |> assign(
+           :all_attestations,
+           if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: [])
+         )
          |> assign(:wallet_balance_eth, nil)
          |> assign(:block_number, nil)
          |> stream(:trades, trades, reset: true)}
@@ -265,17 +275,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab_atom = case tab do
-      "overview"     -> :overview
-      "attestations" -> :attestations
-      "wallet"       -> :wallet
-      "edge_scorer"  -> :edge_scorer
-      "alpaca"       -> :alpaca
-      "kalshi"       -> :kalshi
-      "polymarket"   -> :polymarket
-      "forex"        -> :forex
-      _              -> :overview
-    end
+    tab_atom =
+      case tab do
+        "overview" -> :overview
+        "attestations" -> :attestations
+        "wallet" -> :wallet
+        "edge_scorer" -> :edge_scorer
+        "alpaca" -> :alpaca
+        "kalshi" -> :kalshi
+        "polymarket" -> :polymarket
+        "forex" -> :forex
+        _ -> :overview
+      end
 
     socket =
       case tab_atom do
@@ -446,7 +457,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
     if agent do
       try do
         context = KiteAgentHub.Trading.AgentContext.generate(agent)
-        {:noreply, socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+
+        {:noreply,
+         socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
       rescue
         e ->
           Logger.warning("DashboardLive show_agent_context crashed: #{inspect(e)}")
@@ -509,7 +522,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
             recent_attestations(agent),
             if(active_tab == :attestations,
               do: all_attestations(agent),
-              else: socket.assigns[:all_attestations] || [])
+              else: socket.assigns[:all_attestations] || []
+            )
           }
         rescue
           _ ->
@@ -771,42 +785,47 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   # Async ForEx tab loader. Prefers OANDA live when configured, then
-  # OANDA practice. Also pulls balance + candles for
-  # the selected symbol so the tab header and chart can render. All
-  # errors swallow so a transient API outage cannot crash the LV.
+  # OANDA practice. Pulls balance + candles + live bid/ask + open
+  # trades for the selected symbol so the tab can render every UI
+  # surface (chart, quote pill, positions, open trades) without a
+  # second round trip. All errors swallow so a transient API outage
+  # cannot crash the LV (feedback_kah_lv_rescue).
   def handle_info(:load_forex, socket) do
     require Logger
 
     symbol = socket.assigns[:forex_symbol] || "EUR_USD"
 
-    {positions, instruments, provider, oanda_env, account, candles} =
+    {positions, instruments, provider, oanda_env, account, candles, pricing, open_trades} =
       case socket.assigns[:organization] do
         %{id: org_id} ->
           try do
             case Oanda.active_env(org_id) do
               :live ->
-                {Oanda.list_positions(org_id, :live),
-                 Oanda.list_instruments(org_id, :live), :oanda, :live,
-                 Oanda.account_summary(org_id, :live),
-                 Oanda.candles(org_id, symbol, "M5", 120, :live)}
+                {Oanda.list_positions(org_id, :live), Oanda.list_instruments(org_id, :live),
+                 :oanda, :live, Oanda.account_summary(org_id, :live),
+                 Oanda.candles(org_id, symbol, "M5", 120, :live),
+                 first_price(Oanda.pricing(org_id, [symbol], :live)),
+                 Oanda.list_open_trades(org_id, :live)}
 
               :practice ->
                 {Oanda.list_positions(org_id, :practice),
                  Oanda.list_instruments(org_id, :practice), :oanda, :practice,
                  Oanda.account_summary(org_id, :practice),
-                 Oanda.candles(org_id, symbol, "M5", 120, :practice)}
+                 Oanda.candles(org_id, symbol, "M5", 120, :practice),
+                 first_price(Oanda.pricing(org_id, [symbol], :practice)),
+                 Oanda.list_open_trades(org_id, :practice)}
 
               _ ->
-                {[], [], :none, nil, nil, []}
+                {[], [], :none, nil, nil, [], nil, []}
             end
           rescue
             e ->
               Logger.error("DashboardLive :load_forex crashed: #{inspect(e)}")
-              {[], [], :none, nil, nil, []}
+              {[], [], :none, nil, nil, [], nil, []}
           end
 
         _ ->
-          {[], [], :none, nil, nil, []}
+          {[], [], :none, nil, nil, [], nil, []}
       end
 
     {:noreply,
@@ -817,8 +836,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_oanda_env, oanda_env)
      |> assign(:forex_account, account)
      |> assign(:forex_candles, candles)
+     |> assign(:forex_pricing, pricing)
+     |> assign(:forex_open_trades, open_trades)
      |> assign(:forex_loading, false)}
   end
+
+  defp first_price([%{} = price | _]), do: price
+  defp first_price(_), do: nil
 
   # Symbol change: re-queue a load with the new symbol so the chart
   # refreshes against the correct instrument's candles.
@@ -833,8 +857,196 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply,
      socket
      |> assign(:forex_symbol, safe)
-     |> assign(:forex_loading, true)}
+     |> assign(:forex_loading, true)
+     |> assign(:forex_action_flash, nil)}
   end
+
+  # Quick Trade — submit a market order to OANDA practice for the
+  # selected agent. Practice-only by design: live orders go through
+  # the agent API with explicit guardrails (provider="oanda_live" is
+  # rejected at the trades controller). This UI is for human-driven
+  # smoke tests and same-org agents to use during dev.
+  def handle_event("forex_quick_trade", params, socket) do
+    require Logger
+
+    agent = socket.assigns[:selected_agent]
+    org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
+    symbol = socket.assigns[:forex_symbol] || "EUR_USD"
+    side = params["side"] || "buy"
+    raw_units = parse_positive_int(params["units"] || socket.assigns[:forex_quick_trade_units])
+
+    cond do
+      is_nil(agent) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "Select an agent first."})}
+
+      is_nil(org_id) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "No workspace."})}
+
+      raw_units in [nil, 0] ->
+        {:noreply,
+         assign(socket, :forex_action_flash, {:error, "Units must be a positive integer."})}
+
+      true ->
+        signed = if side == "sell", do: -raw_units, else: raw_units
+
+        case Oanda.place_practice_order(agent, org_id, symbol, signed) do
+          {:ok, _body} ->
+            send(self(), :load_forex)
+
+            {:noreply,
+             socket
+             |> assign(
+               :forex_action_flash,
+               {:ok, "#{String.upcase(side)} #{raw_units} #{symbol} submitted."}
+             )
+             |> assign(:forex_quick_trade_units, Integer.to_string(raw_units))}
+
+          {:error, reason} ->
+            Logger.warning("forex_quick_trade error: #{inspect(reason)}")
+
+            {:noreply,
+             assign(
+               socket,
+               :forex_action_flash,
+               {:error, "OANDA rejected: #{format_oanda_error(reason)}"}
+             )}
+        end
+    end
+  end
+
+  # Close an open position by instrument. Defaults to ALL/ALL —
+  # closing both sides if the instrument has both long and short
+  # exposure (rare for retail forex but supported by OANDA).
+  def handle_event("forex_close_position", %{"instrument" => instrument}, socket) do
+    require Logger
+
+    agent = socket.assigns[:selected_agent]
+    org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
+
+    cond do
+      is_nil(agent) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "Select an agent first."})}
+
+      is_nil(org_id) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "No workspace."})}
+
+      not is_binary(instrument) or
+          not Regex.match?(~r/^[A-Z]{2,8}_[A-Z]{2,8}$/, instrument) ->
+        {:noreply, assign(socket, :forex_action_flash, {:error, "Invalid instrument."})}
+
+      true ->
+        case Oanda.close_practice_position(agent, org_id, instrument) do
+          {:ok, _body} ->
+            send(self(), :load_forex)
+            {:noreply, assign(socket, :forex_action_flash, {:ok, "Closed #{instrument}."})}
+
+          {:error, reason} ->
+            Logger.warning("forex_close_position error: #{inspect(reason)}")
+
+            {:noreply,
+             assign(
+               socket,
+               :forex_action_flash,
+               {:error, "OANDA rejected close: #{format_oanda_error(reason)}"}
+             )}
+        end
+    end
+  end
+
+  def handle_event("forex_quick_trade_units", %{"units" => units}, socket) do
+    {:noreply, assign(socket, :forex_quick_trade_units, units)}
+  end
+
+  defp parse_positive_int(nil), do: nil
+  defp parse_positive_int(""), do: nil
+
+  defp parse_positive_int(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {n, _} when n > 0 -> n
+      _ -> nil
+    end
+  end
+
+  defp parse_positive_int(value) when is_integer(value) and value > 0, do: value
+  defp parse_positive_int(_), do: nil
+
+  defp format_oanda_error({:http, status, %{"errorMessage" => msg}}),
+    do: "#{status} — #{msg}"
+
+  defp format_oanda_error({:http, status, _}), do: "HTTP #{status}"
+  defp format_oanda_error(:not_configured), do: "OANDA practice not configured"
+  defp format_oanda_error(:not_a_trading_agent), do: "agent type is not 'trading'"
+  defp format_oanda_error(:missing_account_id), do: "OANDA account ID missing in credentials"
+  defp format_oanda_error(other), do: inspect(other)
+
+  # ── Forex template helpers (kept here so the OANDA tab markup
+  #    stays terse). Each one tolerates the loose shapes OANDA's
+  #    pricing/positions payloads can take. ───────────────────────
+
+  defp best_bid(%{} = price) do
+    case Map.get(price, "bids") do
+      [%{"price" => p} | _] when is_binary(p) -> p
+      _ -> Oanda.field(price, "closeoutBid", nil)
+    end
+  end
+
+  defp best_bid(_), do: nil
+
+  defp best_ask(%{} = price) do
+    case Map.get(price, "asks") do
+      [%{"price" => p} | _] when is_binary(p) -> p
+      _ -> Oanda.field(price, "closeoutAsk", nil)
+    end
+  end
+
+  defp best_ask(_), do: nil
+
+  # Spread in pips at OANDA's displayPrecision-5 default. Falls back
+  # to the raw decimal difference when either side parses cleanly,
+  # otherwise nil so the template can show "—".
+  defp quote_spread(%{} = price) do
+    with bid when is_binary(bid) <- best_bid(price),
+         ask when is_binary(ask) <- best_ask(price),
+         {b, _} <- Float.parse(bid),
+         {a, _} <- Float.parse(ask) do
+      diff = a - b
+      if diff > 0, do: :erlang.float_to_binary(diff, decimals: 5), else: nil
+    else
+      _ -> nil
+    end
+  end
+
+  defp quote_spread(_), do: nil
+
+  # OANDA position rows are %{"long" => %{units, ...}, "short" => %{...}}.
+  # Pick whichever side has non-zero units.
+  defp position_side(%{"long" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
+    do: "long"
+
+  defp position_side(%{"short" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
+    do: "short"
+
+  defp position_side(pos), do: Oanda.field(pos, "side", "—")
+
+  defp position_units(%{"long" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
+    do: u
+
+  defp position_units(%{"short" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
+    do: u
+
+  defp position_units(pos), do: Oanda.field(pos, "units", "—")
+
+  defp position_unrealized_pl(%{"unrealizedPL" => pl}) when is_binary(pl), do: pl
+
+  defp position_unrealized_pl(%{"long" => %{"unrealizedPL" => pl}})
+       when is_binary(pl) and pl != "0",
+       do: pl
+
+  defp position_unrealized_pl(%{"short" => %{"unrealizedPL" => pl}})
+       when is_binary(pl) and pl != "0",
+       do: pl
+
+  defp position_unrealized_pl(_), do: "0"
 
   # Async Kalshi data loading. Wrapped — the with-chain internally uses
   # {:ok, _} / {:error, _} but a raised exception from PEM decode or
@@ -860,31 +1072,39 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     case credentials_module().fetch_secret_with_env(org.id, :alpaca) do
       {:ok, {key_id, secret, env}} ->
-        Logger.info("DashboardLive: Alpaca credentials found, period=#{period}, env=#{env}, key_prefix=#{String.slice(key_id || "", 0..3)}")
+        Logger.info(
+          "DashboardLive: Alpaca credentials found, period=#{period}, env=#{env}, key_prefix=#{String.slice(key_id || "", 0..3)}"
+        )
 
         {api_period, api_timeframe} = alpaca_period_to_api(period)
 
         account_result = AlpacaClient.account(key_id, secret, env)
         positions_result = AlpacaClient.positions(key_id, secret, env)
-        history_result = AlpacaClient.portfolio_history(key_id, secret, api_period, api_timeframe, env)
+
+        history_result =
+          AlpacaClient.portfolio_history(key_id, secret, api_period, api_timeframe, env)
+
         orders_result = AlpacaClient.orders(key_id, secret, 20, env)
 
         case account_result do
           {:ok, account} ->
-            positions = case positions_result do
-              {:ok, p} -> p
-              _ -> []
-            end
+            positions =
+              case positions_result do
+                {:ok, p} -> p
+                _ -> []
+              end
 
-            history = case history_result do
-              {:ok, h} -> h
-              _ -> []
-            end
+            history =
+              case history_result do
+                {:ok, h} -> h
+                _ -> []
+              end
 
-            orders = case orders_result do
-              {:ok, o} -> o
-              _ -> []
-            end
+            orders =
+              case orders_result do
+                {:ok, o} -> o
+                _ -> []
+              end
 
             socket
             |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
@@ -928,20 +1148,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
         end
 
       # Fetch fills and orders separately — don't fail the whole tab if these error
-      fills = case KalshiClient.fills(key_id, pem, 50, env) do
-        {:ok, f} -> f
-        _ -> []
-      end
+      fills =
+        case KalshiClient.fills(key_id, pem, 50, env) do
+          {:ok, f} -> f
+          _ -> []
+        end
 
-      orders = case KalshiClient.orders(key_id, pem, 20, env) do
-        {:ok, o} -> o
-        _ -> []
-      end
+      orders =
+        case KalshiClient.orders(key_id, pem, 20, env) do
+          {:ok, o} -> o
+          _ -> []
+        end
 
-      settlements = case KalshiClient.settlements(key_id, pem, 20, env) do
-        {:ok, s} -> s
-        _ -> []
-      end
+      settlements =
+        case KalshiClient.settlements(key_id, pem, 20, env) do
+          {:ok, s} -> s
+          _ -> []
+        end
 
       portfolio_value = Enum.reduce(enriched_positions, 0.0, fn p, acc -> acc + p.value end)
       gross_settled_pnl = Enum.reduce(settlements, 0.0, fn s, acc -> acc + s.revenue end)
@@ -966,10 +1189,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
         total_settled_pnl: total_settled_pnl
       })
     else
-      nil -> assign(socket, :kalshi_data, :error)
-      {:error, :not_configured} -> assign(socket, :kalshi_data, :not_configured)
-      {:error, :unauthorized} -> assign(socket, :kalshi_data, :unauthorized)
-      {:error, "kalshi 401:" <> _} -> assign(socket, :kalshi_data, :unauthorized)
+      nil ->
+        assign(socket, :kalshi_data, :error)
+
+      {:error, :not_configured} ->
+        assign(socket, :kalshi_data, :not_configured)
+
+      {:error, :unauthorized} ->
+        assign(socket, :kalshi_data, :unauthorized)
+
+      {:error, "kalshi 401:" <> _} ->
+        assign(socket, :kalshi_data, :unauthorized)
 
       {:error, reason} ->
         require Logger
@@ -1052,7 +1282,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp agent_type_tint("trading"), do: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
   defp agent_type_tint("research"), do: "bg-blue-500/10 border-blue-500/20 text-blue-400"
-  defp agent_type_tint("conversational"), do: "bg-purple-500/10 border-purple-500/20 text-purple-400"
+
+  defp agent_type_tint("conversational"),
+    do: "bg-purple-500/10 border-purple-500/20 text-purple-400"
+
   defp agent_type_tint(_), do: "bg-white/5 border-white/10 text-gray-400"
 
   defp replace_agent(agents, updated) do
@@ -1168,6 +1401,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Both safely no-op when there's no selected agent (e.g. fresh org
   # with no agents yet) so the dashboard never crashes on first load.
   defp attestation_count(nil), do: 0
+
   defp attestation_count(%{id: id}) do
     try do
       Trading.count_attestations(id)
@@ -1181,6 +1415,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Wrapped in try/rescue so a transient DB failure cannot crash the
   # LiveView — matches the PR #165 fetch_chain_data rescue pattern.
   defp all_attestations(nil), do: []
+
   defp all_attestations(%{id: id}) do
     try do
       Trading.list_recent_attestations_with_display_pnl(id, 100)
@@ -1190,6 +1425,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp recent_attestations(nil), do: []
+
   defp recent_attestations(%{id: id}) do
     try do
       Trading.list_recent_attestations(id, 5)
@@ -1233,7 +1469,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <%!-- Top nav bar --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md sticky top-0 z-10 px-4 sm:px-6 lg:px-8 py-3">
           <div class="w-full flex items-center justify-between">
-            <.link navigate={~p"/dashboard"} class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <.link
+              navigate={~p"/dashboard"}
+              class="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            >
               <.kah_logo class="w-8 h-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,197,94,0.35)]" />
               <div>
                 <span class="text-sm font-black text-white tracking-tight uppercase">
@@ -1309,7 +1548,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <div class="flex items-center gap-3 px-3 py-3 min-h-[44px]">
                 <span class="w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse shrink-0">
                 </span>
-                <span class="text-xs font-mono text-gray-300 tracking-wider">BLOCK {@block_number}</span>
+                <span class="text-xs font-mono text-gray-300 tracking-wider">
+                  BLOCK {@block_number}
+                </span>
               </div>
             <% end %>
             <%= if @selected_agent do %>
@@ -1340,7 +1581,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
         </div>
         <%!-- Tab navigation --%>
         <div class="border-b border-white/10 bg-[#0a0a0f]/60 backdrop-blur-sm px-4 sm:px-6 lg:px-8">
-          <nav class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" id="dashboard-tabs">
+          <nav
+            class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            id="dashboard-tabs"
+          >
             <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}] do %>
               <button
                 id={"tab-#{tab_key}"}
@@ -1422,495 +1666,523 @@ defmodule KiteAgentHubWeb.DashboardLive do
         <% else %>
           <%!-- ═══════════════ MAIN DASHBOARD ═══════════════ --%>
           <%= if @active_tab == :overview do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
-            <%!-- ── Sidebar: Agent List ── --%>
-            <div class="w-full md:w-48 lg:w-72 shrink-0 space-y-4">
-              <div class="flex items-center justify-between px-2">
-                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Agents</h2>
-                <span class="text-xs text-gray-600 font-mono tracking-wider">
-                  {length(@agents)} total
-                </span>
-              </div>
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
+              <%!-- ── Sidebar: Agent List ── --%>
+              <div class="w-full md:w-48 lg:w-72 shrink-0 space-y-4">
+                <div class="flex items-center justify-between px-2">
+                  <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Agents</h2>
+                  <span class="text-xs text-gray-600 font-mono tracking-wider">
+                    {length(@agents)} total
+                  </span>
+                </div>
 
-              <div class="space-y-2">
-                <%= for agent <- @agents do %>
-                  <.link
-                    patch={~p"/dashboard?agent_id=#{agent.id}"}
-                    class={[
-                      "block rounded-xl p-4 transition-all border group",
-                      @selected_agent && @selected_agent.id == agent.id &&
-                        "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_20px_rgba(34,197,94,0.20)]",
-                      (!@selected_agent || @selected_agent.id != agent.id) &&
-                        "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
-                    ]}
-                  >
-                    <div class="flex items-start justify-between gap-2 mb-2">
-                      <div class="flex items-center gap-3 min-w-0">
+                <div class="space-y-2">
+                  <%= for agent <- @agents do %>
+                    <.link
+                      patch={~p"/dashboard?agent_id=#{agent.id}"}
+                      class={[
+                        "block rounded-xl p-4 transition-all border group",
+                        @selected_agent && @selected_agent.id == agent.id &&
+                          "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_20px_rgba(34,197,94,0.20)]",
+                        (!@selected_agent || @selected_agent.id != agent.id) &&
+                          "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.03]"
+                      ]}
+                    >
+                      <div class="flex items-start justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-3 min-w-0">
+                          <span class={[
+                            "w-8 h-8 rounded-[10px] border flex items-center justify-center shrink-0 text-[11px] font-black tracking-wide",
+                            agent_type_tint(agent.agent_type)
+                          ]}>
+                            {agent_initials(agent.name)}
+                          </span>
+                          <span class={[
+                            "text-sm font-bold truncate tracking-wide transition-colors",
+                            @selected_agent && @selected_agent.id == agent.id &&
+                              "text-emerald-700 dark:text-emerald-300",
+                            (!@selected_agent || @selected_agent.id != agent.id) &&
+                              "text-gray-400 group-hover:text-gray-200"
+                          ]}>
+                            {agent.name}
+                          </span>
+                        </div>
                         <span class={[
-                          "w-8 h-8 rounded-[10px] border flex items-center justify-center shrink-0 text-[11px] font-black tracking-wide",
-                          agent_type_tint(agent.agent_type)
+                          "w-2 h-2 rounded-full shrink-0 mt-1",
+                          agent.status == "active" && "bg-[#22c55e] shadow-[0_0_8px_#22c55e]",
+                          agent.status == "paused" && "bg-yellow-400",
+                          agent.status == "pending" && "bg-gray-500",
+                          agent.status == "error" && "bg-[#ef4444]"
                         ]}>
-                          {agent_initials(agent.name)}
-                        </span>
-                        <span class={[
-                          "text-sm font-bold truncate tracking-wide transition-colors",
-                          @selected_agent && @selected_agent.id == agent.id &&
-                            "text-emerald-700 dark:text-emerald-300",
-                          (!@selected_agent || @selected_agent.id != agent.id) &&
-                            "text-gray-400 group-hover:text-gray-200"
-                        ]}>
-                          {agent.name}
                         </span>
                       </div>
-                      <span class={[
-                        "w-2 h-2 rounded-full shrink-0 mt-1",
-                        agent.status == "active" && "bg-[#22c55e] shadow-[0_0_8px_#22c55e]",
-                        agent.status == "paused" && "bg-yellow-400",
-                        agent.status == "pending" && "bg-gray-500",
-                        agent.status == "error" && "bg-[#ef4444]"
-                      ]}>
-                      </span>
-                    </div>
-                    <p class="text-xs text-gray-600 font-mono truncate mb-3">
-                      {String.slice(agent.wallet_address || "", 0, 12)}…
-                    </p>
-                    <div class="flex items-center gap-2">
-                      <span class={[
-                        "text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-bold",
-                        agent.status == "active" &&
-                          "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
-                        agent.status == "paused" &&
-                          "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
-                        agent.status == "pending" && "bg-gray-500/10 border-gray-500/20 text-gray-400",
-                        agent.status == "error" &&
-                          "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
-                      ]}>
-                        {agent.status}
-                      </span>
-                      <%= if agent.agent_type do %>
+                      <p class="text-xs text-gray-600 font-mono truncate mb-3">
+                        {String.slice(agent.wallet_address || "", 0, 12)}…
+                      </p>
+                      <div class="flex items-center gap-2">
                         <span class={[
-                          "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
-                          case agent.agent_type do
-                            "trading" -> "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                            "research" -> "bg-blue-500/10 border-blue-500/20 text-blue-400"
-                            _ -> "bg-purple-500/10 border-purple-500/20 text-purple-400"
-                          end
-                        ]}>
-                          {agent.agent_type}
-                        </span>
-                      <% end %>
-                    </div>
-                  </.link>
-                <% end %>
-              </div>
-
-              <.link
-                navigate={~p"/agents/new"}
-                class="flex items-center justify-center gap-2 w-full rounded-xl py-4 border border-dashed border-white/10 bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/20 text-gray-500 hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
-              >
-                <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
-              </.link>
-            </div>
-
-            <%!-- ── Main Panel ── --%>
-            <div class="flex-1 space-y-6 min-w-0">
-              <%= if @selected_agent do %>
-                <%!-- Agent header --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
-                  <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div>
-                      <div class="flex items-center gap-4 mb-2">
-                        <h2 class="text-2xl font-black text-white tracking-tight">
-                          {@selected_agent.name}
-                        </h2>
-                        <span class={[
-                          "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] uppercase tracking-widest font-bold",
-                          @selected_agent.status == "active" &&
+                          "text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-bold",
+                          agent.status == "active" &&
                             "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
-                          @selected_agent.status == "paused" &&
+                          agent.status == "paused" &&
                             "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
-                          @selected_agent.status == "pending" &&
+                          agent.status == "pending" &&
                             "bg-gray-500/10 border-gray-500/20 text-gray-400",
-                          @selected_agent.status == "error" &&
+                          agent.status == "error" &&
                             "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
                         ]}>
-                          <span class={[
-                            "w-1.5 h-1.5 rounded-full",
-                            @selected_agent.status == "active" &&
-                              "bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse",
-                            @selected_agent.status == "paused" && "bg-yellow-400",
-                            @selected_agent.status == "pending" && "bg-gray-400 animate-pulse",
-                            @selected_agent.status == "error" && "bg-[#ef4444]"
-                          ]}>
-                          </span>
-                          {@selected_agent.status}
+                          {agent.status}
                         </span>
-                      </div>
-                      <p class="text-xs font-mono text-gray-500 select-all">
-                        {@selected_agent.wallet_address}
-                      </p>
-                    </div>
-                    <div class="flex items-center gap-3 shrink-0">
-                      <%= if @selected_agent.status == "active" do %>
-                        <button
-                          phx-click="pause_agent"
-                          class="px-4 py-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-xs font-bold uppercase tracking-widest transition-all"
-                        >
-                          Pause
-                        </button>
-                      <% end %>
-                      <%= if @selected_agent.status == "paused" do %>
-                        <button
-                          phx-click="resume_agent"
-                          class="px-4 py-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs font-bold uppercase tracking-widest transition-all"
-                        >
-                          Resume
-                        </button>
-                      <% end %>
-                    </div>
-                  </div>
-                </div>
-
-                <%!-- Stats row --%>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                  <%!-- Realized P&L --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 relative overflow-hidden group">
-                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
-                      Realized P&L
-                    </p>
-                    <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                      <p class={[
-                        "text-2xl sm:text-3xl font-black tracking-tight break-all transition-all duration-300",
-                        Decimal.gt?(@pnl_stats.total_pnl, 0) &&
-                          "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
-                        Decimal.lt?(@pnl_stats.total_pnl, 0) &&
-                          "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
-                        Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
-                      ]}>
-                        {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(@pnl_stats.total_pnl, 4)}
-                      </p>
-                      <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
-                        {@pnl_stats.trade_count} Settled Trades
-                      </p>
-                    <% else %>
-                      <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">
-                        $0.00
-                      </p>
-                      <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
-                        No Trades
-                      </p>
-                    <% end %>
-                  </div>
-
-                  <%!-- Win Rate --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
-                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
-                      Win Rate
-                    </p>
-                    <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                      <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
-                        {win_rate(@pnl_stats.win_count, @pnl_stats.trade_count)}
-                      </p>
-                      <p class="text-[10px] text-gray-400 mt-2 font-mono tracking-widest">
-                        <span class="text-[#22c55e]">{@pnl_stats.win_count}W</span>
-                        <span class="mx-1 text-gray-700">/</span>
-                        <span class="text-[#ef4444]">{@pnl_stats.loss_count}L</span>
-                      </p>
-                    <% else %>
-                      <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">—</p>
-                      <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
-                        No Data
-                      </p>
-                    <% end %>
-                  </div>
-
-                  <%!-- Open Positions --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
-                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
-                      Open Positions
-                    </p>
-                    <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
-                      {if @pnl_stats, do: @pnl_stats.open_count, else: 0}
-                    </p>
-                  </div>
-
-                  <%!-- Wallet Balance — hidden for non-trading agents or
-                       trading agents without a wallet configured.
-                       Otherwise the card sits on "…" forever because there
-                       is no wallet to query. --%>
-                  <div :if={wallet_capable?(@selected_agent)} class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
-                    <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
-                      Wallet Balance
-                    </p>
-                    <%= if @wallet_balance_eth do %>
-                      <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
-                        {@wallet_balance_eth}
-                      </p>
-                      <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
-                        ETH (Testnet)
-                      </p>
-                    <% else %>
-                      <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight animate-pulse">
-                        …
-                      </p>
-                      <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
-                        Fetching
-                      </p>
-                    <% end %>
-                  </div>
-                </div>
-
-                <%!-- PR #103: Kite Chain Attestations summary banner.
-                     This is the demo's headline proof: every settled trade
-                     produces a verifiable on-chain receipt. Judges scrolling
-                     the dashboard see this card before the trade list. --%>
-                <div class="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/[0.06] to-emerald-500/[0.02] backdrop-blur-md p-6">
-                  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div class="flex items-start gap-4">
-                      <div class="h-8 w-8 rounded-full bg-emerald-500/[0.18] flex items-center justify-center shrink-0 text-emerald-400 text-base font-black shadow-[0_0_10px_rgba(34,197,94,0.3)]">
-                        ✓
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">
-                          Kite Chain Attestations
-                        </p>
-                        <p class="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                          {@attestation_count} <span class="text-base font-mono text-gray-500">on-chain receipts</span>
-                        </p>
-                        <div class="text-[11px] text-gray-400 mt-1 font-mono space-y-0.5">
-                          <p>Per-trade fee: {per_trade_fee_kite()} KITE</p>
-                          <p class="text-gray-500">~Est. gas per tx: {est_gas_kite()} KITE</p>
-                          <p>Total attestation fees paid: {format_attestation_fee(@attestation_count)} KITE</p>
-                        </div>
-                      </div>
-                    </div>
-                    <%= if @selected_agent && @selected_agent.wallet_address do %>
-                      <a
-                        href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                      >
-                        View All on Kitescan →
-                      </a>
-                    <% end %>
-                  </div>
-
-                  <%= if @recent_attestations != [] do %>
-                    <div class="mt-4 pt-4 border-t border-emerald-500/10 space-y-2">
-                      <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                        Latest receipts
-                      </p>
-                      <%= for tx <- @recent_attestations do %>
-                        <a
-                          href={"https://testnet.kitescan.ai/tx/" <> tx.attestation_tx_hash}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="flex items-center justify-between gap-2 text-[11px] font-mono text-gray-400 hover:text-emerald-300 transition-colors"
-                        >
-                          <span class="truncate">
-                            {tx.market} {tx.action}
+                        <%= if agent.agent_type do %>
+                          <span class={[
+                            "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
+                            case agent.agent_type do
+                              "trading" -> "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                              "research" -> "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                              _ -> "bg-purple-500/10 border-purple-500/20 text-purple-400"
+                            end
+                          ]}>
+                            {agent.agent_type}
                           </span>
-                          <span class="text-emerald-500/70 truncate">
-                            {String.slice(tx.attestation_tx_hash, 0, 10)}…{String.slice(tx.attestation_tx_hash, -6, 6)}
-                          </span>
-                        </a>
-                      <% end %>
-                    </div>
+                        <% end %>
+                      </div>
+                    </.link>
                   <% end %>
                 </div>
 
-                <%!-- Vault address strip --%>
-                <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-white/5 bg-white/[0.01] px-6 py-4">
-                  <span class="text-[10px] text-gray-600 font-bold uppercase tracking-widest">
-                    Vault
-                  </span>
-                  <div class="flex items-baseline gap-2 min-w-0">
-                    <span class="text-sm font-mono text-gray-400 truncate select-all">
-                      {if @selected_agent.vault_address,
-                        do: String.slice(@selected_agent.vault_address, 0, 18) <> "…",
-                        else: "Not deployed"}
-                    </span>
-                  </div>
-                </div>
+                <.link
+                  navigate={~p"/agents/new"}
+                  class="flex items-center justify-center gap-2 w-full rounded-xl py-4 border border-dashed border-white/10 bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/20 text-gray-500 hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
+                >
+                  <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
+                </.link>
+              </div>
 
-                <%!-- Vault Activation Banner (trading agents only) --%>
-                <%= if @selected_agent.status == "pending" and (@selected_agent.agent_type == "trading" or is_nil(@selected_agent.agent_type)) do %>
-                  <div class="rounded-2xl border border-gray-600/30 bg-gray-600/5 p-6 backdrop-blur-md">
-                    <div class="flex flex-col md:flex-row items-start md:items-center gap-6">
-                      <div class="h-12 w-12 rounded-xl border border-gray-500/30 bg-gray-500/10 flex items-center justify-center shrink-0">
-                        <.icon name="hero-command-line" class="w-6 h-6 text-gray-300" />
-                      </div>
-                      <div class="flex-1 min-w-0 space-y-3">
-                        <div>
-                          <h3 class="text-base font-bold text-white tracking-tight">
-                            Vault not deployed
-                          </h3>
-                          <p class="text-[11px] text-gray-400 tracking-wide mt-1">
-                            Deploy the vault contract, then paste the address below to go live.
-                          </p>
+              <%!-- ── Main Panel ── --%>
+              <div class="flex-1 space-y-6 min-w-0">
+                <%= if @selected_agent do %>
+                  <%!-- Agent header --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div>
+                        <div class="flex items-center gap-4 mb-2">
+                          <h2 class="text-2xl font-black text-white tracking-tight">
+                            {@selected_agent.name}
+                          </h2>
+                          <span class={[
+                            "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] uppercase tracking-widest font-bold",
+                            @selected_agent.status == "active" &&
+                              "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
+                            @selected_agent.status == "paused" &&
+                              "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+                            @selected_agent.status == "pending" &&
+                              "bg-gray-500/10 border-gray-500/20 text-gray-400",
+                            @selected_agent.status == "error" &&
+                              "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
+                          ]}>
+                            <span class={[
+                              "w-1.5 h-1.5 rounded-full",
+                              @selected_agent.status == "active" &&
+                                "bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse",
+                              @selected_agent.status == "paused" && "bg-yellow-400",
+                              @selected_agent.status == "pending" && "bg-gray-400 animate-pulse",
+                              @selected_agent.status == "error" && "bg-[#ef4444]"
+                            ]}>
+                            </span>
+                            {@selected_agent.status}
+                          </span>
                         </div>
-                        <.form
-                          for={@vault_form}
-                          phx-submit="activate_vault"
-                          class="flex flex-col sm:flex-row gap-3"
-                        >
-                          <input
-                            type="text"
-                            name="vault[vault_address]"
-                            placeholder="0x vault contract address"
-                            class="flex-1 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-white font-mono text-sm placeholder-gray-600 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/30 transition-all shadow-inner"
-                          />
-                          <button
-                            type="submit"
-                            phx-disable-with="Activating…"
-                            class="px-8 py-3 rounded-xl border border-white/10 bg-white text-black font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                          >
-                            Activate Vault
-                          </button>
-                        </.form>
+                        <p class="text-xs font-mono text-gray-500 select-all">
+                          {@selected_agent.wallet_address}
+                        </p>
                       </div>
-                    </div>
-                  </div>
-                <% end %>
-
-                <%!-- Live Trade Feed --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-hidden">
-                  <div class="flex items-center justify-between px-6 py-5 border-b border-white/10">
-                    <h3 class="text-sm font-black text-white uppercase tracking-widest">
-                      Live Trade Feed
-                    </h3>
-                    <div class="flex items-center gap-4">
-                      <.link
-                        navigate={~p"/trades"}
-                        class="text-[10px] text-gray-500 hover:text-white uppercase tracking-widest font-bold transition-colors"
-                      >
-                        View all ↗
-                      </.link>
-                      <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#22c55e]/10 border border-[#22c55e]/20">
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
-                        </span>
-                        <span class="text-[10px] font-bold text-[#22c55e] uppercase tracking-widest">
-                          Live
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div id="trades" phx-update="stream" class="divide-y divide-white/5">
-                    <div id="trades-empty-state" class="hidden only:flex flex-col items-center justify-center py-20 px-4 text-center">
-                      <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center mb-4">
-                        <.icon name="hero-chart-bar" class="w-6 h-6 text-gray-600" />
-                      </div>
-                      <p class="text-sm font-bold text-gray-400">No trades yet</p>
-                      <p class="text-xs text-gray-600 mt-2 font-mono">
+                      <div class="flex items-center gap-3 shrink-0">
                         <%= if @selected_agent.status == "active" do %>
-                          Agent is scanning for signals
-                        <% else %>
-                          Deploy vault to initialize trading
+                          <button
+                            phx-click="pause_agent"
+                            class="px-4 py-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-xs font-bold uppercase tracking-widest transition-all"
+                          >
+                            Pause
+                          </button>
                         <% end %>
+                        <%= if @selected_agent.status == "paused" do %>
+                          <button
+                            phx-click="resume_agent"
+                            class="px-4 py-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs font-bold uppercase tracking-widest transition-all"
+                          >
+                            Resume
+                          </button>
+                        <% end %>
+                      </div>
+                    </div>
+                  </div>
+
+                  <%!-- Stats row --%>
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                    <%!-- Realized P&L --%>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 relative overflow-hidden group">
+                      <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
+                        Realized P&L
+                      </p>
+                      <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
+                        <p class={[
+                          "text-2xl sm:text-3xl font-black tracking-tight break-all transition-all duration-300",
+                          Decimal.gt?(@pnl_stats.total_pnl, 0) &&
+                            "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
+                          Decimal.lt?(@pnl_stats.total_pnl, 0) &&
+                            "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
+                          Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
+                        ]}>
+                          {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(
+                            @pnl_stats.total_pnl,
+                            4
+                          )}
+                        </p>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
+                          {@pnl_stats.trade_count} Settled Trades
+                        </p>
+                      <% else %>
+                        <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">
+                          $0.00
+                        </p>
+                        <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
+                          No Trades
+                        </p>
+                      <% end %>
+                    </div>
+
+                    <%!-- Win Rate --%>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                      <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
+                        Win Rate
+                      </p>
+                      <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
+                        <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
+                          {win_rate(@pnl_stats.win_count, @pnl_stats.trade_count)}
+                        </p>
+                        <p class="text-[10px] text-gray-400 mt-2 font-mono tracking-widest">
+                          <span class="text-[#22c55e]">{@pnl_stats.win_count}W</span>
+                          <span class="mx-1 text-gray-700">/</span>
+                          <span class="text-[#ef4444]">{@pnl_stats.loss_count}L</span>
+                        </p>
+                      <% else %>
+                        <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">—</p>
+                        <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
+                          No Data
+                        </p>
+                      <% end %>
+                    </div>
+
+                    <%!-- Open Positions --%>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
+                      <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
+                        Open Positions
+                      </p>
+                      <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
+                        {if @pnl_stats, do: @pnl_stats.open_count, else: 0}
                       </p>
                     </div>
 
-                    <%= for {id, trade} <- @streams.trades do %>
-                      <div
-                        id={id}
-                        class="flex flex-col sm:flex-row sm:items-center gap-4 px-6 py-4 hover:bg-white/[0.02] transition-colors group"
-                      >
-                        <%!-- Action indicator --%>
-                        <div class="shrink-0 flex sm:block items-center justify-between w-full sm:w-16">
-                          <span class={[
-                            "w-full inline-flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest",
-                            trade.action == "buy" &&
-                              "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e] group-hover:bg-[#22c55e]/20",
-                            trade.action == "sell" &&
-                              "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444] group-hover:bg-[#ef4444]/20"
-                          ]}>
-                            {trade.action || "UNKN"}
-                          </span>
-                        </div>
+                    <%!-- Wallet Balance — hidden for non-trading agents or
+                       trading agents without a wallet configured.
+                       Otherwise the card sits on "…" forever because there
+                       is no wallet to query. --%>
+                    <div
+                      :if={wallet_capable?(@selected_agent)}
+                      class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6"
+                    >
+                      <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
+                        Wallet Balance
+                      </p>
+                      <%= if @wallet_balance_eth do %>
+                        <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
+                          {@wallet_balance_eth}
+                        </p>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
+                          ETH (Testnet)
+                        </p>
+                      <% else %>
+                        <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight animate-pulse">
+                          …
+                        </p>
+                        <p class="text-[10px] text-gray-600 mt-2 font-mono uppercase tracking-widest">
+                          Fetching
+                        </p>
+                      <% end %>
+                    </div>
+                  </div>
 
-                        <%!-- Market info --%>
-                        <div class="flex-1 min-w-0">
-                          <div class="flex items-center gap-2 min-w-0">
-                            <p
-                              class="text-base font-black text-white tracking-tight truncate"
-                              title={trade.market}
-                            >
-                              {truncate_market(trade.market)}
+                  <%!-- PR #103: Kite Chain Attestations summary banner.
+                     This is the demo's headline proof: every settled trade
+                     produces a verifiable on-chain receipt. Judges scrolling
+                     the dashboard see this card before the trade list. --%>
+                  <div class="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/[0.06] to-emerald-500/[0.02] backdrop-blur-md p-6">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div class="flex items-start gap-4">
+                        <div class="h-8 w-8 rounded-full bg-emerald-500/[0.18] flex items-center justify-center shrink-0 text-emerald-400 text-base font-black shadow-[0_0_10px_rgba(34,197,94,0.3)]">
+                          ✓
+                        </div>
+                        <div class="min-w-0">
+                          <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">
+                            Kite Chain Attestations
+                          </p>
+                          <p class="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                            {@attestation_count}
+                            <span class="text-base font-mono text-gray-500">on-chain receipts</span>
+                          </p>
+                          <div class="text-[11px] text-gray-400 mt-1 font-mono space-y-0.5">
+                            <p>Per-trade fee: {per_trade_fee_kite()} KITE</p>
+                            <p class="text-gray-500">~Est. gas per tx: {est_gas_kite()} KITE</p>
+                            <p>
+                              Total attestation fees paid: {format_attestation_fee(@attestation_count)} KITE
                             </p>
-                            <span class={[
-                              "text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-bold",
-                              trade.status == "open" &&
-                                "bg-blue-500/10 border-blue-500/20 text-blue-400",
-                              trade.status == "settled" &&
-                                "bg-gray-500/10 border-gray-500/20 text-gray-400",
-                              trade.status == "cancelled" &&
-                                "bg-yellow-500/10 border-yellow-500/20 text-yellow-500",
-                              trade.status == "failed" &&
-                                "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
-                            ]}>
-                              {trade.status}
-                            </span>
                           </div>
-                          <p class="text-[11px] text-gray-500 font-mono mt-0.5">
-                            {trade.contracts}x contracts
-                          </p>
                         </div>
+                      </div>
+                      <%= if @selected_agent && @selected_agent.wallet_address do %>
+                        <a
+                          href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                        >
+                          View All on Kitescan →
+                        </a>
+                      <% end %>
+                    </div>
 
-                        <%!-- Fill & PNL --%>
-                        <div class="flex sm:flex-col items-end justify-between sm:justify-center gap-2 sm:gap-1">
-                          <p class="text-sm font-mono font-bold text-gray-300">
-                            ${trade.fill_price}
-                          </p>
-                          <%= if trade.realized_pnl do %>
-                            <p class={[
-                              "text-sm font-bold font-mono",
-                              Decimal.gt?(trade.realized_pnl, 0) && "text-[#22c55e]",
-                              Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
-                              Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
-                            ]}>
-                              {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${Decimal.round(trade.realized_pnl, 4)}
-                            </p>
-                          <% end %>
-                          <%!-- PR #101: Kite chain attestation receipt. Every settled
-                               trade gets a tiny on-chain transfer to a treasury via
-                               KiteAttestationWorker; the resulting tx hash is the
-                               judges' "settles on Kite chain + attestation" proof. --%>
-                          <%= if trade.attestation_tx_hash do %>
-                            <a
-                              href={"https://testnet.kitescan.ai/tx/" <> trade.attestation_tx_hash}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              class="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono inline-flex items-center gap-1"
-                              title={"Kite chain attestation: " <> trade.attestation_tx_hash}
-                            >
-                              ✓ on-chain
-                            </a>
-                          <% end %>
-                        </div>
+                    <%= if @recent_attestations != [] do %>
+                      <div class="mt-4 pt-4 border-t border-emerald-500/10 space-y-2">
+                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                          Latest receipts
+                        </p>
+                        <%= for tx <- @recent_attestations do %>
+                          <a
+                            href={"https://testnet.kitescan.ai/tx/" <> tx.attestation_tx_hash}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="flex items-center justify-between gap-2 text-[11px] font-mono text-gray-400 hover:text-emerald-300 transition-colors"
+                          >
+                            <span class="truncate">
+                              {tx.market} {tx.action}
+                            </span>
+                            <span class="text-emerald-500/70 truncate">
+                              {String.slice(tx.attestation_tx_hash, 0, 10)}…{String.slice(
+                                tx.attestation_tx_hash,
+                                -6,
+                                6
+                              )}
+                            </span>
+                          </a>
+                        <% end %>
                       </div>
                     <% end %>
                   </div>
-                </div>
-              <% end %>
+
+                  <%!-- Vault address strip --%>
+                  <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-white/5 bg-white/[0.01] px-6 py-4">
+                    <span class="text-[10px] text-gray-600 font-bold uppercase tracking-widest">
+                      Vault
+                    </span>
+                    <div class="flex items-baseline gap-2 min-w-0">
+                      <span class="text-sm font-mono text-gray-400 truncate select-all">
+                        {if @selected_agent.vault_address,
+                          do: String.slice(@selected_agent.vault_address, 0, 18) <> "…",
+                          else: "Not deployed"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <%!-- Vault Activation Banner (trading agents only) --%>
+                  <%= if @selected_agent.status == "pending" and (@selected_agent.agent_type == "trading" or is_nil(@selected_agent.agent_type)) do %>
+                    <div class="rounded-2xl border border-gray-600/30 bg-gray-600/5 p-6 backdrop-blur-md">
+                      <div class="flex flex-col md:flex-row items-start md:items-center gap-6">
+                        <div class="h-12 w-12 rounded-xl border border-gray-500/30 bg-gray-500/10 flex items-center justify-center shrink-0">
+                          <.icon name="hero-command-line" class="w-6 h-6 text-gray-300" />
+                        </div>
+                        <div class="flex-1 min-w-0 space-y-3">
+                          <div>
+                            <h3 class="text-base font-bold text-white tracking-tight">
+                              Vault not deployed
+                            </h3>
+                            <p class="text-[11px] text-gray-400 tracking-wide mt-1">
+                              Deploy the vault contract, then paste the address below to go live.
+                            </p>
+                          </div>
+                          <.form
+                            for={@vault_form}
+                            phx-submit="activate_vault"
+                            class="flex flex-col sm:flex-row gap-3"
+                          >
+                            <input
+                              type="text"
+                              name="vault[vault_address]"
+                              placeholder="0x vault contract address"
+                              class="flex-1 rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-white font-mono text-sm placeholder-gray-600 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/30 transition-all shadow-inner"
+                            />
+                            <button
+                              type="submit"
+                              phx-disable-with="Activating…"
+                              class="px-8 py-3 rounded-xl border border-white/10 bg-white text-black font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                            >
+                              Activate Vault
+                            </button>
+                          </.form>
+                        </div>
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <%!-- Live Trade Feed --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-hidden">
+                    <div class="flex items-center justify-between px-6 py-5 border-b border-white/10">
+                      <h3 class="text-sm font-black text-white uppercase tracking-widest">
+                        Live Trade Feed
+                      </h3>
+                      <div class="flex items-center gap-4">
+                        <.link
+                          navigate={~p"/trades"}
+                          class="text-[10px] text-gray-500 hover:text-white uppercase tracking-widest font-bold transition-colors"
+                        >
+                          View all ↗
+                        </.link>
+                        <div class="flex items-center gap-2 px-2.5 py-1 rounded bg-[#22c55e]/10 border border-[#22c55e]/20">
+                          <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+                          </span>
+                          <span class="text-[10px] font-bold text-[#22c55e] uppercase tracking-widest">
+                            Live
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div id="trades" phx-update="stream" class="divide-y divide-white/5">
+                      <div
+                        id="trades-empty-state"
+                        class="hidden only:flex flex-col items-center justify-center py-20 px-4 text-center"
+                      >
+                        <div class="w-12 h-12 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-center mb-4">
+                          <.icon name="hero-chart-bar" class="w-6 h-6 text-gray-600" />
+                        </div>
+                        <p class="text-sm font-bold text-gray-400">No trades yet</p>
+                        <p class="text-xs text-gray-600 mt-2 font-mono">
+                          <%= if @selected_agent.status == "active" do %>
+                            Agent is scanning for signals
+                          <% else %>
+                            Deploy vault to initialize trading
+                          <% end %>
+                        </p>
+                      </div>
+
+                      <%= for {id, trade} <- @streams.trades do %>
+                        <div
+                          id={id}
+                          class="flex flex-col sm:flex-row sm:items-center gap-4 px-6 py-4 hover:bg-white/[0.02] transition-colors group"
+                        >
+                          <%!-- Action indicator --%>
+                          <div class="shrink-0 flex sm:block items-center justify-between w-full sm:w-16">
+                            <span class={[
+                              "w-full inline-flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest",
+                              trade.action == "buy" &&
+                                "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e] group-hover:bg-[#22c55e]/20",
+                              trade.action == "sell" &&
+                                "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444] group-hover:bg-[#ef4444]/20"
+                            ]}>
+                              {trade.action || "UNKN"}
+                            </span>
+                          </div>
+
+                          <%!-- Market info --%>
+                          <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <p
+                                class="text-base font-black text-white tracking-tight truncate"
+                                title={trade.market}
+                              >
+                                {truncate_market(trade.market)}
+                              </p>
+                              <span class={[
+                                "text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-widest font-bold",
+                                trade.status == "open" &&
+                                  "bg-blue-500/10 border-blue-500/20 text-blue-400",
+                                trade.status == "settled" &&
+                                  "bg-gray-500/10 border-gray-500/20 text-gray-400",
+                                trade.status == "cancelled" &&
+                                  "bg-yellow-500/10 border-yellow-500/20 text-yellow-500",
+                                trade.status == "failed" &&
+                                  "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
+                              ]}>
+                                {trade.status}
+                              </span>
+                            </div>
+                            <p class="text-[11px] text-gray-500 font-mono mt-0.5">
+                              {trade.contracts}x contracts
+                            </p>
+                          </div>
+
+                          <%!-- Fill & PNL --%>
+                          <div class="flex sm:flex-col items-end justify-between sm:justify-center gap-2 sm:gap-1">
+                            <p class="text-sm font-mono font-bold text-gray-300">
+                              ${trade.fill_price}
+                            </p>
+                            <%= if trade.realized_pnl do %>
+                              <p class={[
+                                "text-sm font-bold font-mono",
+                                Decimal.gt?(trade.realized_pnl, 0) && "text-[#22c55e]",
+                                Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
+                                Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
+                              ]}>
+                                {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${Decimal.round(
+                                  trade.realized_pnl,
+                                  4
+                                )}
+                              </p>
+                            <% end %>
+                            <%!-- PR #101: Kite chain attestation receipt. Every settled
+                               trade gets a tiny on-chain transfer to a treasury via
+                               KiteAttestationWorker; the resulting tx hash is the
+                               judges' "settles on Kite chain + attestation" proof. --%>
+                            <%= if trade.attestation_tx_hash do %>
+                              <a
+                                href={"https://testnet.kitescan.ai/tx/" <> trade.attestation_tx_hash}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono inline-flex items-center gap-1"
+                                title={"Kite chain attestation: " <> trade.attestation_tx_hash}
+                              >
+                                ✓ on-chain
+                              </a>
+                            <% end %>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
 
                 <%!-- Connect Your LLM (at bottom) — all secrets collapsed by default --%>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
                   <div>
-                    <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">How to Connect Your LLM</h3>
+                    <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">
+                      How to Connect Your LLM
+                    </h3>
                     <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
                       <li>Reveal your Agent Token and copy it (secret — do not share)</li>
                       <li>Pick a path: Claude Code or Codex Terminal</li>
-                      <li>For Codex, paste the command and enter the token only when Terminal asks; for other paths, reveal the matching block and keep the token private</li>
+                      <li>
+                        For Codex, paste the command and enter the token only when Terminal asks; for other paths, reveal the matching block and keep the token private
+                      </li>
                     </ol>
-                    <p class="text-[10px] text-gray-600 mt-2">Switching tabs collapses every revealed block automatically.</p>
+                    <p class="text-[10px] text-gray-600 mt-2">
+                      Switching tabs collapses every revealed block automatically.
+                    </p>
                   </div>
 
                   <%!-- Agent Token (masked by default) --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent Token · Secret</span>
+                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        Agent Token · Secret
+                      </span>
                       <button
                         phx-click="toggle_reveal"
                         phx-value-target="agent_token"
@@ -1921,9 +2193,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                     <code class="block bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono truncate">
                       <%= cond do %>
-                        <% is_nil(@selected_agent.api_token) -> %>Generating...
-                        <% @show_agent_token -> %>{@selected_agent.api_token}
-                        <% true -> %>{mask_token(@selected_agent.api_token)}
+                        <% is_nil(@selected_agent.api_token) -> %>
+                          Generating...
+                        <% @show_agent_token -> %>
+                          {@selected_agent.api_token}
+                        <% true -> %>
+                          {mask_token(@selected_agent.api_token)}
                       <% end %>
                     </code>
                   </div>
@@ -1931,7 +2206,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%!-- Option A — Claude Code / Terminal --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Option A — Claude Code / Terminal</span>
+                      <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+                        Option A — Claude Code / Terminal
+                      </span>
                       <div class="flex items-center gap-3">
                         <button
                           id={"copy-claude-code-#{@selected_agent.id}"}
@@ -1952,9 +2229,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                     <%= if @show_option_a do %>
                       <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
-                      <p class="text-[10px] text-gray-600 mt-1">Token is pre-filled — use only in a trusted local coding client, not public or shared chats.</p>
+                      <p class="text-[10px] text-gray-600 mt-1">
+                        Token is pre-filled — use only in a trusted local coding client, not public or shared chats.
+                      </p>
                     <% else %>
-                      <p class="text-[10px] text-gray-600">Paste-ready system prompt with your agent token embedded. Copy or reveal when ready.</p>
+                      <p class="text-[10px] text-gray-600">
+                        Paste-ready system prompt with your agent token embedded. Copy or reveal when ready.
+                      </p>
                     <% end %>
                   </div>
 
@@ -1963,7 +2244,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
                         Option B — Run with Codex Terminal
-                        <span class="ml-2 text-[9px] font-bold text-gray-500">{KiteAgentHubWeb.CodexPrompts.agent_type_label(@selected_agent)}</span>
+                        <span class="ml-2 text-[9px] font-bold text-gray-500">
+                          {KiteAgentHubWeb.CodexPrompts.agent_type_label(@selected_agent)}
+                        </span>
                       </span>
                       <div class="flex items-center gap-3">
                         <button
@@ -1989,413 +2272,509 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <span class="text-yellow-400">Requires Codex Terminal / Codex CLI.</span>
                         The command asks Terminal for your token privately before Codex starts; do not paste the token into Codex chat.
                         ChatGPT browser, desktop, or mobile chat cannot keep the agent online — they cannot run the long-poll loop locally.
-                        If <code class="text-gray-400">codex</code> is not recognized, install or open Codex Terminal and follow its OS-specific setup.
+                        If <code class="text-gray-400">codex</code>
+                        is not recognized, install or open Codex Terminal and follow its OS-specific setup.
                         <%= if KiteAgentHubWeb.CodexPrompts.can_trade?(@selected_agent) do %>
-                          <span class="text-yellow-400">Trade Agent — only Trade Agents can submit trades.</span>
+                          <span class="text-yellow-400">
+                            Trade Agent — only Trade Agents can submit trades.
+                          </span>
                         <% else %>
                           <span class="text-gray-500">Read-only — cannot submit trades.</span>
                         <% end %>
                       </p>
                     <% else %>
-                      <p class="text-[10px] text-gray-600">Self-contained shell command — hidden local token prompt + Codex launcher with the embedded prompt. Copy or reveal when ready.</p>
+                      <p class="text-[10px] text-gray-600">
+                        Self-contained shell command — hidden local token prompt + Codex launcher with the embedded prompt. Copy or reveal when ready.
+                      </p>
                     <% end %>
                   </div>
                 </div>
+              </div>
             </div>
-          </div>
           <% end %>
 
           <%!-- ═══════════════ ATTESTATIONS TAB ═══════════════ --%>
           <%= if @active_tab == :attestations do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">
-              Kite Chain Attestations
-            </h2>
-            <%= if @selected_agent do %>
-              <div class="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.04] to-emerald-500/[0.01] backdrop-blur-md overflow-hidden">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-5 border-b border-emerald-500/10">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div class="h-8 w-8 rounded-full bg-emerald-500/[0.18] flex items-center justify-center shrink-0 text-emerald-400 text-base font-black shadow-[0_0_10px_rgba(34,197,94,0.3)]">
-                      ✓
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
-                        On-Chain History
-                      </p>
-                      <p class="text-sm font-black text-white tracking-tight">
-                        {@attestation_count} <span class="text-xs font-mono text-gray-500">attested trades</span>
-                      </p>
-                    </div>
-                  </div>
-                  <%= if @selected_agent.wallet_address do %>
-                    <a
-                      href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                    >
-                      View on Kitescan →
-                    </a>
-                  <% end %>
-                </div>
-
-                <%= if @all_attestations == [] do %>
-                  <div class="px-6 py-20 text-center">
-                    <p class="text-sm font-bold text-gray-400">No attestations yet</p>
-                    <p class="text-xs text-gray-600 mt-2 font-mono">
-                      <%= if @selected_agent.status == "active" do %>
-                        Trades will appear here once they settle and sign to Kite chain
-                      <% else %>
-                        Activate this agent to begin writing trade attestations
-                      <% end %>
-                    </p>
-                  </div>
-                <% else %>
-                  <div class="divide-y divide-emerald-500/5">
-                    <div class="hidden md:grid md:grid-cols-12 gap-4 px-6 py-3 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                      <div class="col-span-1">Action</div>
-                      <div class="col-span-3">Market</div>
-                      <div class="col-span-3">Tx Hash</div>
-                      <div class="col-span-2">Time</div>
-                      <div class="col-span-2">PNL</div>
-                      <div class="col-span-1 text-right">Status</div>
-                    </div>
-                    <%= for att <- @all_attestations do %>
-                      <div class="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 px-6 py-4 hover:bg-emerald-500/[0.03] transition-colors items-center">
-                        <div class="col-span-1 md:col-span-1">
-                          <span class={[
-                            "inline-flex items-center justify-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest",
-                            att.action == "buy" && "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
-                            att.action == "sell" && "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]",
-                            att.action not in ["buy", "sell"] && "bg-gray-500/10 border-gray-500/20 text-gray-400"
-                          ]}>
-                            {att.action || "unkn"}
-                          </span>
-                        </div>
-                        <div class="col-span-1 md:col-span-3 min-w-0">
-                          <p
-                            class="text-sm font-black text-white tracking-tight truncate"
-                            title={att.market}
-                          >
-                            {truncate_market(att.market)}
-                          </p>
-                          <p class="text-[10px] text-gray-600 font-mono md:hidden">
-                            {att.contracts}x @ ${att.fill_price}
-                          </p>
-                        </div>
-                        <div class="col-span-2 md:col-span-3 min-w-0">
-                          <a
-                            href={"https://testnet.kitescan.ai/tx/" <> att.attestation_tx_hash}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors"
-                            title={att.attestation_tx_hash}
-                          >
-                            {String.slice(att.attestation_tx_hash, 0, 10)}…{String.slice(att.attestation_tx_hash, -6, 6)}
-                            <span class="text-emerald-500/60">↗</span>
-                          </a>
-                        </div>
-                        <div class="col-span-1 md:col-span-2">
-                          <p
-                            id={"attestation-time-#{att.id}"}
-                            phx-hook="LocalTime"
-                            data-iso={DateTime.to_iso8601(att.updated_at)}
-                            data-format="datetime"
-                            class="text-[11px] text-gray-400 font-mono"
-                          >
-                            {Calendar.strftime(att.updated_at, "%b %d %H:%M")}
-                          </p>
-                        </div>
-                        <div class="col-span-1 md:col-span-2">
-                          <%= if att.display_pnl do %>
-                            <p class={[
-                              "text-sm font-bold font-mono",
-                              Decimal.gt?(att.display_pnl, 0) && "text-[#22c55e]",
-                              Decimal.lt?(att.display_pnl, 0) && "text-[#ef4444]",
-                              Decimal.eq?(att.display_pnl, 0) && "text-gray-500"
-                            ]}>
-                              {if Decimal.gt?(att.display_pnl, 0), do: "+"}${Decimal.round(att.display_pnl, 4)}
-                            </p>
-                          <% else %>
-                            <p class="text-xs text-gray-600 font-mono">—</p>
-                          <% end %>
-                        </div>
-                        <div class="col-span-1 md:col-span-1 md:text-right">
-                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-                            ✓ {att.status}
-                          </span>
-                        </div>
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">
+                Kite Chain Attestations
+              </h2>
+              <%= if @selected_agent do %>
+                <div class="rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.04] to-emerald-500/[0.01] backdrop-blur-md overflow-hidden">
+                  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-5 border-b border-emerald-500/10">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <div class="h-8 w-8 rounded-full bg-emerald-500/[0.18] flex items-center justify-center shrink-0 text-emerald-400 text-base font-black shadow-[0_0_10px_rgba(34,197,94,0.3)]">
+                        ✓
                       </div>
+                      <div class="min-w-0">
+                        <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                          On-Chain History
+                        </p>
+                        <p class="text-sm font-black text-white tracking-tight">
+                          {@attestation_count}
+                          <span class="text-xs font-mono text-gray-500">attested trades</span>
+                        </p>
+                      </div>
+                    </div>
+                    <%= if @selected_agent.wallet_address do %>
+                      <a
+                        href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                      >
+                        View on Kitescan →
+                      </a>
                     <% end %>
                   </div>
-                <% end %>
-              </div>
-            <% else %>
-              <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-20 text-center">
-                <p class="text-sm font-bold text-gray-400">Select an agent to view attestations</p>
-                <p class="text-xs text-gray-600 mt-2 font-mono">
-                  Each settled trade writes a signed receipt to the Kite chain
-                </p>
-              </div>
-            <% end %>
-          </div>
+
+                  <%= if @all_attestations == [] do %>
+                    <div class="px-6 py-20 text-center">
+                      <p class="text-sm font-bold text-gray-400">No attestations yet</p>
+                      <p class="text-xs text-gray-600 mt-2 font-mono">
+                        <%= if @selected_agent.status == "active" do %>
+                          Trades will appear here once they settle and sign to Kite chain
+                        <% else %>
+                          Activate this agent to begin writing trade attestations
+                        <% end %>
+                      </p>
+                    </div>
+                  <% else %>
+                    <div class="divide-y divide-emerald-500/5">
+                      <div class="hidden md:grid md:grid-cols-12 gap-4 px-6 py-3 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                        <div class="col-span-1">Action</div>
+                        <div class="col-span-3">Market</div>
+                        <div class="col-span-3">Tx Hash</div>
+                        <div class="col-span-2">Time</div>
+                        <div class="col-span-2">PNL</div>
+                        <div class="col-span-1 text-right">Status</div>
+                      </div>
+                      <%= for att <- @all_attestations do %>
+                        <div class="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 px-6 py-4 hover:bg-emerald-500/[0.03] transition-colors items-center">
+                          <div class="col-span-1 md:col-span-1">
+                            <span class={[
+                              "inline-flex items-center justify-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest",
+                              att.action == "buy" &&
+                                "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
+                              att.action == "sell" &&
+                                "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]",
+                              att.action not in ["buy", "sell"] &&
+                                "bg-gray-500/10 border-gray-500/20 text-gray-400"
+                            ]}>
+                              {att.action || "unkn"}
+                            </span>
+                          </div>
+                          <div class="col-span-1 md:col-span-3 min-w-0">
+                            <p
+                              class="text-sm font-black text-white tracking-tight truncate"
+                              title={att.market}
+                            >
+                              {truncate_market(att.market)}
+                            </p>
+                            <p class="text-[10px] text-gray-600 font-mono md:hidden">
+                              {att.contracts}x @ ${att.fill_price}
+                            </p>
+                          </div>
+                          <div class="col-span-2 md:col-span-3 min-w-0">
+                            <a
+                              href={"https://testnet.kitescan.ai/tx/" <> att.attestation_tx_hash}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors"
+                              title={att.attestation_tx_hash}
+                            >
+                              {String.slice(att.attestation_tx_hash, 0, 10)}…{String.slice(
+                                att.attestation_tx_hash,
+                                -6,
+                                6
+                              )}
+                              <span class="text-emerald-500/60">↗</span>
+                            </a>
+                          </div>
+                          <div class="col-span-1 md:col-span-2">
+                            <p
+                              id={"attestation-time-#{att.id}"}
+                              phx-hook="LocalTime"
+                              data-iso={DateTime.to_iso8601(att.updated_at)}
+                              data-format="datetime"
+                              class="text-[11px] text-gray-400 font-mono"
+                            >
+                              {Calendar.strftime(att.updated_at, "%b %d %H:%M")}
+                            </p>
+                          </div>
+                          <div class="col-span-1 md:col-span-2">
+                            <%= if att.display_pnl do %>
+                              <p class={[
+                                "text-sm font-bold font-mono",
+                                Decimal.gt?(att.display_pnl, 0) && "text-[#22c55e]",
+                                Decimal.lt?(att.display_pnl, 0) && "text-[#ef4444]",
+                                Decimal.eq?(att.display_pnl, 0) && "text-gray-500"
+                              ]}>
+                                {if Decimal.gt?(att.display_pnl, 0), do: "+"}${Decimal.round(
+                                  att.display_pnl,
+                                  4
+                                )}
+                              </p>
+                            <% else %>
+                              <p class="text-xs text-gray-600 font-mono">—</p>
+                            <% end %>
+                          </div>
+                          <div class="col-span-1 md:col-span-1 md:text-right">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                              ✓ {att.status}
+                            </span>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% else %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-20 text-center">
+                  <p class="text-sm font-bold text-gray-400">Select an agent to view attestations</p>
+                  <p class="text-xs text-gray-600 mt-2 font-mono">
+                    Each settled trade writes a signed receipt to the Kite chain
+                  </p>
+                </div>
+              <% end %>
+            </div>
           <% end %>
 
           <%!-- ═══════════════ KITE WALLET TAB ═══════════════ --%>
           <%= if @active_tab == :wallet do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">Kite Wallet</h2>
-            <%= if @selected_agent do %>
-              <div class="space-y-4">
-                <%!-- Wallet address --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">Wallet Address</p>
-                  <p class="font-mono text-sm text-white break-all">{@selected_agent.wallet_address || "—"}</p>
-                  <%= if @selected_agent.wallet_address do %>
-                    <a
-                      href={"https://testnet.kitescan.ai/address/#{@selected_agent.wallet_address}"}
-                      target="_blank"
-                      class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
-                    >
-                      View on Kitescan ↗
-                    </a>
-                  <% end %>
-                </div>
-                <%!-- Vault address --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">Vault Address</p>
-                  <p class="font-mono text-sm text-white break-all">
-                    {if @selected_agent.vault_address, do: @selected_agent.vault_address, else: "Not set — paste vault address above"}
-                  </p>
-                  <%= if @selected_agent.vault_address do %>
-                    <a
-                      href={"https://testnet.kitescan.ai/address/#{@selected_agent.vault_address}"}
-                      target="_blank"
-                      class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
-                    >
-                      View vault on Kitescan ↗
-                    </a>
-                  <% end %>
-                </div>
-                <%!-- Balance --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">KITE Balance</p>
-                  <p class="text-3xl font-black text-white">
-                    {if @wallet_balance_eth, do: "#{@wallet_balance_eth} KITE", else: "—"}
-                  </p>
-                </div>
-                <%!-- Token balances (ERC-20: USDT, etc.) --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">Token Balances</p>
-                  <%= cond do %>
-                    <% @wallet_tokens == :loading -> %>
-                      <div class="flex items-center gap-3 text-gray-500 py-4">
-                        <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-                        <span class="text-xs">Loading token balances...</span>
-                      </div>
-                    <% is_list(@wallet_tokens) && @wallet_tokens != [] -> %>
-                      <div class="space-y-3">
-                        <%= for token <- @wallet_tokens do %>
-                          <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                            <div class="min-w-0">
-                              <p class="text-sm font-bold text-white">{token.symbol}</p>
-                              <p class="text-[10px] text-gray-500 truncate">{token.token}</p>
-                            </div>
-                            <p class="text-sm font-mono text-white tabular-nums">
-                              {format_token_balance(token.balance, token.decimals)}
-                            </p>
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">
+                Kite Wallet
+              </h2>
+              <%= if @selected_agent do %>
+                <div class="space-y-4">
+                  <%!-- Wallet address --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">
+                      Wallet Address
+                    </p>
+                    <p class="font-mono text-sm text-white break-all">
+                      {@selected_agent.wallet_address || "—"}
+                    </p>
+                    <%= if @selected_agent.wallet_address do %>
+                      <a
+                        href={"https://testnet.kitescan.ai/address/#{@selected_agent.wallet_address}"}
+                        target="_blank"
+                        class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
+                      >
+                        View on Kitescan ↗
+                      </a>
+                    <% end %>
+                  </div>
+                  <%!-- Vault address --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">
+                      Vault Address
+                    </p>
+                    <p class="font-mono text-sm text-white break-all">
+                      {if @selected_agent.vault_address,
+                        do: @selected_agent.vault_address,
+                        else: "Not set — paste vault address above"}
+                    </p>
+                    <%= if @selected_agent.vault_address do %>
+                      <a
+                        href={"https://testnet.kitescan.ai/address/#{@selected_agent.vault_address}"}
+                        target="_blank"
+                        class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
+                      >
+                        View vault on Kitescan ↗
+                      </a>
+                    <% end %>
+                  </div>
+                  <%!-- Balance --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">
+                      KITE Balance
+                    </p>
+                    <p class="text-3xl font-black text-white">
+                      {if @wallet_balance_eth, do: "#{@wallet_balance_eth} KITE", else: "—"}
+                    </p>
+                  </div>
+                  <%!-- Token balances (ERC-20: USDT, etc.) --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                      Token Balances
+                    </p>
+                    <%= cond do %>
+                      <% @wallet_tokens == :loading -> %>
+                        <div class="flex items-center gap-3 text-gray-500 py-4">
+                          <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin">
                           </div>
-                        <% end %>
-                      </div>
-                    <% true -> %>
-                      <p class="text-xs text-gray-500 py-2">No ERC-20 tokens held by this wallet.</p>
-                  <% end %>
-                </div>
-                <%!-- Chain info --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex items-center justify-between">
-                  <div>
-                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">Network</p>
-                    <p class="text-sm text-white font-mono">Kite Testnet · Chain 2368</p>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">Block</p>
-                    <p class="text-sm text-white font-mono">{@block_number || "—"}</p>
-                  </div>
-                </div>
-                <%!-- On-chain transaction history --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                  <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">Recent On-Chain Transactions</p>
-                  <%= cond do %>
-                    <% @wallet_txs == :loading -> %>
-                      <div class="flex items-center gap-3 text-gray-500 py-4">
-                        <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-                        <span class="text-xs">Loading transactions from Kitescan...</span>
-                      </div>
-                    <% is_list(@wallet_txs) && @wallet_txs != [] -> %>
-                      <div class="space-y-3">
-                        <%= for tx <- @wallet_txs do %>
-                          <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                            <div class="flex items-center gap-3 min-w-0">
-                              <div class={"w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold #{if tx.from && String.downcase(tx.from) == String.downcase(@selected_agent.wallet_address || ""), do: "bg-red-500/20 text-red-400", else: "bg-green-500/20 text-green-400"}"}>
-                                {if tx.from && String.downcase(tx.from) == String.downcase(@selected_agent.wallet_address || ""), do: "↑", else: "↓"}
-                              </div>
+                          <span class="text-xs">Loading token balances...</span>
+                        </div>
+                      <% is_list(@wallet_tokens) && @wallet_tokens != [] -> %>
+                        <div class="space-y-3">
+                          <%= for token <- @wallet_tokens do %>
+                            <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                               <div class="min-w-0">
-                                <a
-                                  href={"https://testnet.kitescan.ai/tx/#{tx.hash}"}
-                                  target="_blank"
-                                  class="text-xs font-mono text-[#22c55e] hover:underline truncate block max-w-[200px]"
-                                >
-                                  {String.slice(tx.hash || "", 0..13)}...
-                                </a>
-                                <p class="text-[10px] text-gray-600 font-mono">
-                                  {if tx.timestamp, do: String.slice(to_string(tx.timestamp), 0..18), else: "—"}
-                                </p>
+                                <p class="text-sm font-bold text-white">{token.symbol}</p>
+                                <p class="text-[10px] text-gray-500 truncate">{token.token}</p>
+                              </div>
+                              <p class="text-sm font-mono text-white tabular-nums">
+                                {format_token_balance(token.balance, token.decimals)}
+                              </p>
+                            </div>
+                          <% end %>
+                        </div>
+                      <% true -> %>
+                        <p class="text-xs text-gray-500 py-2">
+                          No ERC-20 tokens held by this wallet.
+                        </p>
+                    <% end %>
+                  </div>
+                  <%!-- Chain info --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex items-center justify-between">
+                    <div>
+                      <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">
+                        Network
+                      </p>
+                      <p class="text-sm text-white font-mono">Kite Testnet · Chain 2368</p>
+                    </div>
+                    <div class="text-right">
+                      <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">
+                        Block
+                      </p>
+                      <p class="text-sm text-white font-mono">{@block_number || "—"}</p>
+                    </div>
+                  </div>
+                  <%!-- On-chain transaction history --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                      Recent On-Chain Transactions
+                    </p>
+                    <%= cond do %>
+                      <% @wallet_txs == :loading -> %>
+                        <div class="flex items-center gap-3 text-gray-500 py-4">
+                          <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin">
+                          </div>
+                          <span class="text-xs">Loading transactions from Kitescan...</span>
+                        </div>
+                      <% is_list(@wallet_txs) && @wallet_txs != [] -> %>
+                        <div class="space-y-3">
+                          <%= for tx <- @wallet_txs do %>
+                            <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                              <div class="flex items-center gap-3 min-w-0">
+                                <div class={"w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold #{if tx.from && String.downcase(tx.from) == String.downcase(@selected_agent.wallet_address || ""), do: "bg-red-500/20 text-red-400", else: "bg-green-500/20 text-green-400"}"}>
+                                  {if tx.from &&
+                                        String.downcase(tx.from) ==
+                                          String.downcase(@selected_agent.wallet_address || ""),
+                                      do: "↑",
+                                      else: "↓"}
+                                </div>
+                                <div class="min-w-0">
+                                  <a
+                                    href={"https://testnet.kitescan.ai/tx/#{tx.hash}"}
+                                    target="_blank"
+                                    class="text-xs font-mono text-[#22c55e] hover:underline truncate block max-w-[200px]"
+                                  >
+                                    {String.slice(tx.hash || "", 0..13)}...
+                                  </a>
+                                  <p class="text-[10px] text-gray-600 font-mono">
+                                    {if tx.timestamp,
+                                      do: String.slice(to_string(tx.timestamp), 0..18),
+                                      else: "—"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div class="text-right">
+                                <p class="text-xs font-mono text-white">{tx.value_eth} KITE</p>
+                                <p class="text-[10px] text-gray-600">{tx.status || "confirmed"}</p>
                               </div>
                             </div>
-                            <div class="text-right">
-                              <p class="text-xs font-mono text-white">{tx.value_eth} KITE</p>
-                              <p class="text-[10px] text-gray-600">{tx.status || "confirmed"}</p>
-                            </div>
-                          </div>
-                        <% end %>
-                      </div>
-                    <% true -> %>
-                      <p class="text-xs text-gray-600 py-4">No on-chain transactions yet. Fund your wallet at faucet.gokite.ai to see activity here.</p>
-                  <% end %>
+                          <% end %>
+                        </div>
+                      <% true -> %>
+                        <p class="text-xs text-gray-600 py-4">
+                          No on-chain transactions yet. Fund your wallet at faucet.gokite.ai to see activity here.
+                        </p>
+                    <% end %>
+                  </div>
                 </div>
-              </div>
-            <% else %>
-              <p class="text-gray-500 text-sm">No agent selected.</p>
-            <% end %>
-          </div>
+              <% else %>
+                <p class="text-gray-500 text-sm">No agent selected.</p>
+              <% end %>
+            </div>
           <% end %>
 
           <%!-- ═══════════════ EDGESCORER TAB ═══════════════ --%>
           <%= if @active_tab == :edge_scorer do %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-            <div class="flex items-center justify-between">
-              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">EdgeScorer — Portfolio Analysis</h2>
-              <button
-                phx-click="switch_tab"
-                phx-value-tab="edge_scorer"
-                class="text-xs text-gray-500 hover:text-white transition-colors font-mono uppercase tracking-widest"
-              >
-                ↻ Refresh
-              </button>
-            </div>
-
-            <%= if @edge_scores_loading do %>
-              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
-                <p class="text-gray-500 text-sm animate-pulse">Scoring positions...</p>
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+              <div class="flex items-center justify-between">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  EdgeScorer — Portfolio Analysis
+                </h2>
+                <button
+                  phx-click="switch_tab"
+                  phx-value-tab="edge_scorer"
+                  class="text-xs text-gray-500 hover:text-white transition-colors font-mono uppercase tracking-widest"
+                >
+                  ↻ Refresh
+                </button>
               </div>
-            <% else %>
-              <%= if @portfolio_scores do %>
-                <% all_scores = (@portfolio_scores.alpaca_scores || []) ++ (@portfolio_scores.kalshi_scores || []) %>
 
-                <%!-- Position Scores --%>
-                <%= if all_scores != [] do %>
-                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <%= for score <- all_scores do %>
-                      <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 hover:border-white/20 transition-all">
-                        <div class="flex items-center justify-between mb-3">
-                          <div>
-                            <span class="text-sm font-black text-white tracking-tight">{score[:ticker] || score[:title]}</span>
-                            <span class={["ml-2 text-[10px] font-bold px-2 py-0.5 rounded border uppercase",
-                              score.platform == :alpaca && "text-blue-400 border-blue-500/20 bg-blue-500/10",
-                              score.platform == :kalshi && "text-purple-400 border-purple-500/20 bg-purple-500/10"
-                            ]}>{score.platform}</span>
+              <%= if @edge_scores_loading do %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                  <p class="text-gray-500 text-sm animate-pulse">Scoring positions...</p>
+                </div>
+              <% else %>
+                <%= if @portfolio_scores do %>
+                  <% all_scores =
+                    (@portfolio_scores.alpaca_scores || []) ++ (@portfolio_scores.kalshi_scores || []) %>
+
+                  <%!-- Position Scores --%>
+                  <%= if all_scores != [] do %>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <%= for score <- all_scores do %>
+                        <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6 hover:border-white/20 transition-all">
+                          <div class="flex items-center justify-between mb-3">
+                            <div>
+                              <span class="text-sm font-black text-white tracking-tight">
+                                {score[:ticker] || score[:title]}
+                              </span>
+                              <span class={[
+                                "ml-2 text-[10px] font-bold px-2 py-0.5 rounded border uppercase",
+                                score.platform == :alpaca &&
+                                  "text-blue-400 border-blue-500/20 bg-blue-500/10",
+                                score.platform == :kalshi &&
+                                  "text-purple-400 border-purple-500/20 bg-purple-500/10"
+                              ]}>
+                                {score.platform}
+                              </span>
+                            </div>
+                            <span class={[
+                              "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border",
+                              score.recommendation == :strong_hold &&
+                                "text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10",
+                              score.recommendation == :hold &&
+                                "text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10",
+                              score.recommendation == :watch &&
+                                "text-orange-400 border-orange-500/30 bg-orange-500/10",
+                              score.recommendation == :exit &&
+                                "text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10"
+                            ]}>
+                              {String.replace(Atom.to_string(score.recommendation), "_", " ")}
+                            </span>
                           </div>
-                          <span class={["text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border",
-                            score.recommendation == :strong_hold && "text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10",
-                            score.recommendation == :hold && "text-[#f59e0b] border-[#f59e0b]/30 bg-[#f59e0b]/10",
-                            score.recommendation == :watch && "text-orange-400 border-orange-500/30 bg-orange-500/10",
-                            score.recommendation == :exit && "text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10"
-                          ]}>{String.replace(Atom.to_string(score.recommendation), "_", " ")}</span>
-                        </div>
-                        <%!-- Score bar --%>
-                        <div class="mb-3">
-                          <div class="flex items-center justify-between mb-1">
-                            <span class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Edge</span>
-                            <span class="text-xl font-black text-white">{score.score}</span>
+                          <%!-- Score bar --%>
+                          <div class="mb-3">
+                            <div class="flex items-center justify-between mb-1">
+                              <span class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">
+                                Edge
+                              </span>
+                              <span class="text-xl font-black text-white">{score.score}</span>
+                            </div>
+                            <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div
+                                class={[
+                                  "h-full rounded-full",
+                                  score.score >= 75 && "bg-[#22c55e]",
+                                  score.score >= 60 && score.score < 75 && "bg-[#f59e0b]",
+                                  score.score >= 40 && score.score < 60 && "bg-orange-500",
+                                  score.score < 40 && "bg-[#ef4444]"
+                                ]}
+                                style={"width: #{score.score}%"}
+                              >
+                              </div>
+                            </div>
                           </div>
-                          <div class="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                            <div class={["h-full rounded-full",
-                              score.score >= 75 && "bg-[#22c55e]",
-                              score.score >= 60 && score.score < 75 && "bg-[#f59e0b]",
-                              score.score >= 40 && score.score < 60 && "bg-orange-500",
-                              score.score < 40 && "bg-[#ef4444]"
-                            ]} style={"width: #{score.score}%"}></div>
+                          <%!-- Position data --%>
+                          <div class="space-y-1.5 text-xs font-mono">
+                            <div class="flex justify-between text-gray-400">
+                              <span>Side</span>
+                              <span class="text-white">{score.side}</span>
+                            </div>
+                            <div class="flex justify-between text-gray-400">
+                              <span>P&L</span>
+                              <span class={[
+                                score.pnl_pct >= 0 && "text-[#22c55e]",
+                                score.pnl_pct < 0 && "text-[#ef4444]"
+                              ]}>
+                                {if score.pnl_pct >= 0, do: "+", else: ""}{score.pnl_pct}%
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <%!-- Position data --%>
-                        <div class="space-y-1.5 text-xs font-mono">
-                          <div class="flex justify-between text-gray-400">
-                            <span>Side</span>
-                            <span class="text-white">{score.side}</span>
-                          </div>
-                          <div class="flex justify-between text-gray-400">
-                            <span>P&L</span>
-                            <span class={[score.pnl_pct >= 0 && "text-[#22c55e]", score.pnl_pct < 0 && "text-[#ef4444]"]}>
-                              {if score.pnl_pct >= 0, do: "+", else: ""}{score.pnl_pct}%
+                          <%!-- Breakdown --%>
+                          <div class="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-1.5 text-[10px] font-mono text-gray-500">
+                            <span>
+                              Entry:
+                              <span class="text-gray-300">{score.breakdown.entry_quality}/30</span>
+                            </span>
+                            <span>
+                              Momentum:
+                              <span class="text-gray-300">{score.breakdown.momentum}/25</span>
+                            </span>
+                            <span>
+                              R:R: <span class="text-gray-300">{score.breakdown.risk_reward}/25</span>
+                            </span>
+                            <span>
+                              Liquidity:
+                              <span class="text-gray-300">{score.breakdown.liquidity}/20</span>
                             </span>
                           </div>
                         </div>
-                        <%!-- Breakdown --%>
-                        <div class="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-1.5 text-[10px] font-mono text-gray-500">
-                          <span>Entry: <span class="text-gray-300">{score.breakdown.entry_quality}/30</span></span>
-                          <span>Momentum: <span class="text-gray-300">{score.breakdown.momentum}/25</span></span>
-                          <span>R:R: <span class="text-gray-300">{score.breakdown.risk_reward}/25</span></span>
-                          <span>Liquidity: <span class="text-gray-300">{score.breakdown.liquidity}/20</span></span>
-                        </div>
-                      </div>
-                    <% end %>
-                  </div>
-                <% end %>
-
-                <%!-- Suggestions --%>
-                <%= if @portfolio_scores.suggestions != [] do %>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-                    <div class="px-6 py-4 border-b border-white/10">
-                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Suggestions</h3>
-                    </div>
-                    <div class="divide-y divide-white/5">
-                      <%= for sug <- @portfolio_scores.suggestions do %>
-                        <div class="px-6 py-3 flex items-center justify-between">
-                          <div class="flex items-center gap-3">
-                            <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase",
-                              sug.action == :exit && "text-red-400 border-red-500/20 bg-red-500/10",
-                              sug.action == :hold && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
-                            ]}>{sug.action}</span>
-                            <span class="text-xs text-white font-bold">{sug.ticker}</span>
-                            <span class="text-[10px] text-gray-500">{sug.platform}</span>
-                          </div>
-                          <span class="text-xs text-gray-400">{sug.reason}</span>
-                        </div>
                       <% end %>
                     </div>
-                  </div>
-                <% end %>
+                  <% end %>
 
-                <%= if all_scores == [] do %>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
-                    <p class="text-gray-500 text-sm">No open positions to score. Open trades on the Alpaca or Kalshi tabs first.</p>
+                  <%!-- Suggestions --%>
+                  <%= if @portfolio_scores.suggestions != [] do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+                      <div class="px-6 py-4 border-b border-white/10">
+                        <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                          Agent Suggestions
+                        </h3>
+                      </div>
+                      <div class="divide-y divide-white/5">
+                        <%= for sug <- @portfolio_scores.suggestions do %>
+                          <div class="px-6 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                              <span class={[
+                                "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                sug.action == :exit && "text-red-400 border-red-500/20 bg-red-500/10",
+                                sug.action == :hold &&
+                                  "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
+                              ]}>
+                                {sug.action}
+                              </span>
+                              <span class="text-xs text-white font-bold">{sug.ticker}</span>
+                              <span class="text-[10px] text-gray-500">{sug.platform}</span>
+                            </div>
+                            <span class="text-xs text-gray-400">{sug.reason}</span>
+                          </div>
+                        <% end %>
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <%= if all_scores == [] do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                      <p class="text-gray-500 text-sm">
+                        No open positions to score. Open trades on the Alpaca or Kalshi tabs first.
+                      </p>
+                    </div>
+                  <% end %>
+                <% else %>
+                  <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-10 text-center space-y-3">
+                    <p class="text-yellow-400 text-sm font-bold">Could not load portfolio data</p>
+                    <p class="text-gray-500 text-xs">
+                      Check API keys in Settings, then try refreshing.
+                    </p>
+                    <button
+                      phx-click="switch_tab"
+                      phx-value-tab="edge_scorer"
+                      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold uppercase tracking-widest transition-all"
+                    >
+                      ↻ Retry
+                    </button>
                   </div>
                 <% end %>
-              <% else %>
-                <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-10 text-center space-y-3">
-                  <p class="text-yellow-400 text-sm font-bold">Could not load portfolio data</p>
-                  <p class="text-gray-500 text-xs">Check API keys in Settings, then try refreshing.</p>
-                  <button
-                    phx-click="switch_tab"
-                    phx-value-tab="edge_scorer"
-                    class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold uppercase tracking-widest transition-all"
-                  >
-                    ↻ Retry
-                  </button>
-                </div>
               <% end %>
-            <% end %>
-          </div>
+            </div>
           <% end %>
 
           <%!-- Alpaca Tab --%>
@@ -2409,11 +2788,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% :not_configured -> %>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
                     <p class="text-gray-500 text-sm mb-3">Alpaca API keys not configured.</p>
-                    <.link navigate={~p"/api-keys"} class="text-xs font-bold text-white underline">Add keys in Settings →</.link>
+                    <.link navigate={~p"/api-keys"} class="text-xs font-bold text-white underline">
+                      Add keys in Settings →
+                    </.link>
                   </div>
                 <% :unauthorized -> %>
                   <div class="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
-                    <p class="text-red-400 text-sm">Alpaca credentials invalid — check your API key in Settings.</p>
+                    <p class="text-red-400 text-sm">
+                      Alpaca credentials invalid — check your API key in Settings.
+                    </p>
                   </div>
                 <% :error -> %>
                   <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-center">
@@ -2421,7 +2804,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 <% nil -> %>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
-                    <p class="text-gray-500 text-sm">Click the Alpaca tab to load your paper account.</p>
+                    <p class="text-gray-500 text-sm">
+                      Click the Alpaca tab to load your paper account.
+                    </p>
                   </div>
                 <% data -> %>
                   <%!-- Account Summary — primary numbers --%>
@@ -2433,7 +2818,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       {"Buying Power", "$#{:erlang.float_to_binary(data.account.buying_power || 0.0, decimals: 2)}", "text-blue-400"}
                     ] do %>
                       <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">{label}</p>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                          {label}
+                        </p>
                         <p class={"text-lg font-black tabular-nums #{color}"}>{val}</p>
                       </div>
                     <% end %>
@@ -2451,28 +2838,46 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </p>
                       <span class={[
                         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-widest",
-                        data.account.shorting_enabled && "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
-                        !data.account.shorting_enabled && "border-white/10 bg-white/[0.02] text-gray-500"
+                        data.account.shorting_enabled &&
+                          "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                        !data.account.shorting_enabled &&
+                          "border-white/10 bg-white/[0.02] text-gray-500"
                       ]}>
                         {if data.account.shorting_enabled, do: "✓ Shorting", else: "Cash Only"}
                       </span>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">Reg-T BP</p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">${format_money(data.account.regt_buying_power)}</p>
+                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                          Reg-T BP
+                        </p>
+                        <p class="text-base font-black text-gray-300 tabular-nums">
+                          ${format_money(data.account.regt_buying_power)}
+                        </p>
                       </div>
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">Day-Trade BP</p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">${format_money(data.account.daytrading_buying_power)}</p>
+                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                          Day-Trade BP
+                        </p>
+                        <p class="text-base font-black text-gray-300 tabular-nums">
+                          ${format_money(data.account.daytrading_buying_power)}
+                        </p>
                       </div>
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">Non-Marginable BP</p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">${format_money(data.account.non_marginable_buying_power)}</p>
+                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                          Non-Marginable BP
+                        </p>
+                        <p class="text-base font-black text-gray-300 tabular-nums">
+                          ${format_money(data.account.non_marginable_buying_power)}
+                        </p>
                       </div>
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">Multiplier</p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">{format_multiplier(data.account.multiplier)}</p>
+                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                          Multiplier
+                        </p>
+                        <p class="text-base font-black text-gray-300 tabular-nums">
+                          {format_multiplier(data.account.multiplier)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -2480,11 +2885,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%!-- Equity Chart --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
                     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Portfolio Equity ({@alpaca_period})</p>
+                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                        Portfolio Equity ({@alpaca_period})
+                      </p>
                       <%= if length(@alpaca_history) > 1 do %>
                         <% first_val = List.first(@alpaca_history).v %>
                         <% last_val = List.last(@alpaca_history).v %>
-                        <% pct_change = if first_val > 0, do: Float.round((last_val - first_val) / first_val * 100, 2), else: 0.0 %>
+                        <% pct_change =
+                          if first_val > 0,
+                            do: Float.round((last_val - first_val) / first_val * 100, 2),
+                            else: 0.0 %>
                         <span class={"text-xs font-mono font-bold #{if pct_change >= 0, do: "text-[#22c55e]", else: "text-red-400"}"}>
                           {if pct_change >= 0, do: "+", else: ""}{pct_change}%
                         </span>
@@ -2500,7 +2910,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           class={[
                             "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
                             @alpaca_period == range && "bg-white text-black border-white",
-                            @alpaca_period != range && "bg-white/[0.02] text-gray-500 border-white/10 hover:text-white hover:border-white/20"
+                            @alpaca_period != range &&
+                              "bg-white/[0.02] text-gray-500 border-white/10 hover:text-white hover:border-white/20"
                           ]}
                         >
                           {range}
@@ -2535,18 +2946,32 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         />
                       </svg>
                       <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
-                        <span>${List.first(@alpaca_history, %{}) |> Map.get(:equity, 0) |> Float.round(0) |> trunc()}</span>
-                        <span>${List.last(@alpaca_history, %{}) |> Map.get(:equity, 0) |> Float.round(0) |> trunc()}</span>
+                        <span>
+                          ${List.first(@alpaca_history, %{})
+                          |> Map.get(:equity, 0)
+                          |> Float.round(0)
+                          |> trunc()}
+                        </span>
+                        <span>
+                          ${List.last(@alpaca_history, %{})
+                          |> Map.get(:equity, 0)
+                          |> Float.round(0)
+                          |> trunc()}
+                        </span>
                       </div>
                     <% else %>
-                      <p class="text-center text-gray-600 text-xs py-10">No equity history for this range.</p>
+                      <p class="text-center text-gray-600 text-xs py-10">
+                        No equity history for this range.
+                      </p>
                     <% end %>
                   </div>
 
                   <%!-- Positions --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                     <div class="px-6 py-4 border-b border-white/10">
-                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Open Positions</h3>
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                        Open Positions
+                      </h3>
                     </div>
                     <%= if data.positions == [] do %>
                       <p class="px-6 py-8 text-center text-sm text-gray-600">No open positions.</p>
@@ -2555,14 +2980,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Symbol", "Side", "Qty", "Avg Entry", "Current", "P&L"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                                {h}
+                              </th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">{p.symbol}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">
+                                {p.symbol}
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-gray-400">{p.side}</td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">
                                 {p.qty}
@@ -2570,14 +2999,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                      Catches HAL-style stuck-order cases
                                      where the position count looks fine
                                      but a sell is hanging. --%>
-                                <span :if={(Map.get(p, :held_for_orders) || 0) > 0} class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border border-yellow-500/30 bg-yellow-500/10 text-yellow-400" title="Held for resting orders — agent has open buy/sell against this position">
+                                <span
+                                  :if={(Map.get(p, :held_for_orders) || 0) > 0}
+                                  class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
+                                  title="Held for resting orders — agent has open buy/sell against this position"
+                                >
                                   {format_held(p.held_for_orders)} held
                                 </span>
                               </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}</td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">
+                                ${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
+                                ${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}
+                              </td>
                               <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
-                                {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(p.unrealized_pl || 0.0), decimals: 2)}
+                                {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(
+                                  abs(p.unrealized_pl || 0.0), decimals: 2)}
                               </td>
                             </tr>
                           <% end %>
@@ -2589,8 +3027,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%!-- Recent Orders --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                     <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Recent Filled Orders</h3>
-                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">via Alpaca Paper</span>
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                        Recent Filled Orders
+                      </h3>
+                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">
+                        via Alpaca Paper
+                      </span>
                     </div>
                     <%= if data.orders == [] do %>
                       <p class="px-6 py-8 text-center text-sm text-gray-600">No filled orders yet.</p>
@@ -2599,25 +3041,49 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Symbol", "Side", "Qty", "Fill Price", "Time"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                                {h}
+                              </th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for o <- data.orders do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">{o.symbol}</td>
-                              <td class="px-4 py-3">
-                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", o.side == "buy" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", o.side == "sell" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{o.side}</span>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white">
+                                {o.symbol}
                               </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">{o.filled_qty}</td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">{if o.filled_avg_price, do: "$#{:erlang.float_to_binary(o.filled_avg_price, decimals: 2)}", else: "—"}</td>
+                              <td class="px-4 py-3">
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  o.side == "buy" &&
+                                    "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+                                  o.side == "sell" && "text-red-400 border-red-500/20 bg-red-500/10"
+                                ]}>
+                                  {o.side}
+                                </span>
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">
+                                {o.filled_qty}
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
+                                {if o.filled_avg_price,
+                                  do: "$#{:erlang.float_to_binary(o.filled_avg_price, decimals: 2)}",
+                                  else: "—"}
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if o.submitted_at do %>
-                                  <span id={"alpaca-order-time-#{o.id || o.symbol}"} phx-hook="LocalTime" data-iso={o.submitted_at} data-format="datetime">
+                                  <span
+                                    id={"alpaca-order-time-#{o.id || o.symbol}"}
+                                    phx-hook="LocalTime"
+                                    data-iso={o.submitted_at}
+                                    data-format="datetime"
+                                  >
                                     {String.slice(o.submitted_at, 0, 16) |> String.replace("T", " ")}
                                   </span>
-                                <% else %>—<% end %>
+                                <% else %>
+                                  —
+                                <% end %>
                               </td>
                             </tr>
                           <% end %>
@@ -2640,11 +3106,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% :not_configured -> %>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
                     <p class="text-gray-500 text-sm mb-3">Kalshi API keys not configured.</p>
-                    <.link navigate={~p"/api-keys"} class="text-xs font-bold text-white underline">Add keys in Settings →</.link>
+                    <.link navigate={~p"/api-keys"} class="text-xs font-bold text-white underline">
+                      Add keys in Settings →
+                    </.link>
                   </div>
                 <% :unauthorized -> %>
                   <div class="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
-                    <p class="text-red-400 text-sm">Kalshi credentials invalid — check your API key and PEM in Settings.</p>
+                    <p class="text-red-400 text-sm">
+                      Kalshi credentials invalid — check your API key and PEM in Settings.
+                    </p>
                   </div>
                 <% :error -> %>
                   <div class="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-center">
@@ -2652,7 +3122,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 <% nil -> %>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
-                    <p class="text-gray-500 text-sm">Click the Kalshi tab to load your demo portfolio.</p>
+                    <p class="text-gray-500 text-sm">
+                      Click the Kalshi tab to load your demo portfolio.
+                    </p>
                   </div>
                 <% data -> %>
                   <%!-- Account Summary Cards --%>
@@ -2664,7 +3136,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       {"Open Positions", "#{length(data.positions)}", "text-blue-400"}
                     ] do %>
                       <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">{label}</p>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                          {label}
+                        </p>
                         <p class={"text-lg font-black tabular-nums #{color}"}>{val}</p>
                       </div>
                     <% end %>
@@ -2674,8 +3148,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%= if length(data.fills) > 1 do %>
                     <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
                       <div class="flex items-center justify-between mb-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Recent Trade Activity</p>
-                        <span class="text-xs font-mono text-gray-500">{length(data.fills)} fills</span>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                          Recent Trade Activity
+                        </p>
+                        <span class="text-xs font-mono text-gray-500">
+                          {length(data.fills)} fills
+                        </span>
                       </div>
                       <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
                         <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
@@ -2710,7 +3188,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%!-- Open Positions --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                     <div class="px-6 py-4 border-b border-white/10">
-                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Open Positions</h3>
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                        Open Positions
+                      </h3>
                     </div>
                     <%= if data.positions == [] do %>
                       <p class="px-6 py-8 text-center text-sm text-gray-600">No open positions.</p>
@@ -2719,7 +3199,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Market", "Status", "Side", "Contracts", "Avg", "Bid / Ask", "Value"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                                {h}
+                              </th>
                             <% end %>
                           </tr>
                         </thead>
@@ -2734,19 +3216,35 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3">
                                 <% {label, badge_classes} = kalshi_status_badge(p.status) %>
-                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap", badge_classes]}>
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap",
+                                  badge_classes
+                                ]}>
                                   {label}
                                 </span>
                               </td>
                               <td class="px-4 py-3">
-                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", p.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{p.side}</span>
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  p.side == "yes" &&
+                                    "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+                                  p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"
+                                ]}>
+                                  {p.side}
+                                </span>
                               </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">{p.contracts}</td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">{:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">
+                                {p.contracts}
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">
+                                {:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
                                 {kalshi_live_quote(p)}
                               </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-white">${:erlang.float_to_binary(p.value, decimals: 2)}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-white">
+                                ${:erlang.float_to_binary(p.value, decimals: 2)}
+                              </td>
                             </tr>
                           <% end %>
                         </tbody>
@@ -2757,8 +3255,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%!-- Recent Fills --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                     <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                      <h3 class="text-xs font-black text-white uppercase tracking-widest">Recent Fills</h3>
-                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">via Kalshi Demo</span>
+                      <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                        Recent Fills
+                      </h3>
+                      <span class="text-[10px] text-gray-600 uppercase tracking-widest">
+                        via Kalshi Demo
+                      </span>
                     </div>
                     <%= if data.fills == [] do %>
                       <p class="px-6 py-8 text-center text-sm text-gray-600">No fills yet.</p>
@@ -2767,28 +3269,58 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Market", "Side", "Action", "Contracts", "Price", "Time"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                                {h}
+                              </th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for f <- Enum.take(data.fills, 10) do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">{f.ticker}</td>
-                              <td class="px-4 py-3">
-                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", f.side == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", f.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{f.side}</span>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">
+                                {f.ticker}
                               </td>
                               <td class="px-4 py-3">
-                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", f.action == "buy" && "text-blue-400 border-blue-500/20 bg-blue-500/10", f.action == "sell" && "text-orange-400 border-orange-500/20 bg-orange-500/10"]}>{f.action}</span>
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  f.side == "yes" &&
+                                    "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+                                  f.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"
+                                ]}>
+                                  {f.side}
+                                </span>
                               </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">{f.count}</td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">{:erlang.float_to_binary(f.price * 100, decimals: 0)}¢</td>
+                              <td class="px-4 py-3">
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  f.action == "buy" &&
+                                    "text-blue-400 border-blue-500/20 bg-blue-500/10",
+                                  f.action == "sell" &&
+                                    "text-orange-400 border-orange-500/20 bg-orange-500/10"
+                                ]}>
+                                  {f.action}
+                                </span>
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">
+                                {f.count}
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
+                                {:erlang.float_to_binary(f.price * 100, decimals: 0)}¢
+                              </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if f.created_time do %>
-                                  <span id={"kalshi-fill-time-#{f.trade_id || f.ticker}"} phx-hook="LocalTime" data-iso={f.created_time} data-format="datetime">
+                                  <span
+                                    id={"kalshi-fill-time-#{f.trade_id || f.ticker}"}
+                                    phx-hook="LocalTime"
+                                    data-iso={f.created_time}
+                                    data-format="datetime"
+                                  >
                                     {String.slice(f.created_time, 0, 16) |> String.replace("T", " ")}
                                   </span>
-                                <% else %>—<% end %>
+                                <% else %>
+                                  —
+                                <% end %>
                               </td>
                             </tr>
                           <% end %>
@@ -2801,32 +3333,54 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <%= if data.settlements != [] do %>
                     <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                       <div class="px-6 py-4 border-b border-white/10">
-                        <h3 class="text-xs font-black text-white uppercase tracking-widest">Settlements</h3>
+                        <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                          Settlements
+                        </h3>
                       </div>
                       <table class="w-full text-sm">
                         <thead>
                           <tr class="border-b border-white/5">
                             <%= for h <- ["Market", "Result", "Revenue", "Settled"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                                {h}
+                              </th>
                             <% end %>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                           <%= for s <- Enum.take(data.settlements, 10) do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">{s.ticker}</td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">
+                                {s.ticker}
+                              </td>
                               <td class="px-4 py-3">
-                                <span class={["text-[10px] font-black px-2 py-1 rounded border uppercase", s.market_result == "yes" && "text-emerald-400 border-emerald-500/20 bg-emerald-500/10", s.market_result == "no" && "text-red-400 border-red-500/20 bg-red-500/10"]}>{s.market_result || "—"}</span>
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  s.market_result == "yes" &&
+                                    "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+                                  s.market_result == "no" &&
+                                    "text-red-400 border-red-500/20 bg-red-500/10"
+                                ]}>
+                                  {s.market_result || "—"}
+                                </span>
                               </td>
                               <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
-                                {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(abs(s.revenue), decimals: 2)}
+                                {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(
+                                  abs(s.revenue), decimals: 2)}
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
                                 <%= if s.settled_time do %>
-                                  <span id={"kalshi-settle-time-#{s.ticker}"} phx-hook="LocalTime" data-iso={s.settled_time} data-format="datetime">
+                                  <span
+                                    id={"kalshi-settle-time-#{s.ticker}"}
+                                    phx-hook="LocalTime"
+                                    data-iso={s.settled_time}
+                                    data-format="datetime"
+                                  >
                                     {String.slice(s.settled_time, 0, 16) |> String.replace("T", " ")}
                                   </span>
-                                <% else %>—<% end %>
+                                <% else %>
+                                  —
+                                <% end %>
                               </td>
                             </tr>
                           <% end %>
@@ -2840,261 +3394,393 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- ═══════════════ POLYMARKET TAB ═══════════════ --%>
           <%= if @active_tab == :polymarket do %>
-          <% agent_can_trade = @selected_agent && Polymarket.can_trade?(@selected_agent) %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-            <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
-              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                Polymarket
-              </h2>
-              <div class="flex items-center gap-2">
-                <%= if @selected_agent && not agent_can_trade do %>
-                  <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
-                    View only
+            <% agent_can_trade = @selected_agent && Polymarket.can_trade?(@selected_agent) %>
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+              <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  Polymarket
+                </h2>
+                <div class="flex items-center gap-2">
+                  <%= if @selected_agent && not agent_can_trade do %>
+                    <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
+                      View only
+                    </span>
+                  <% end %>
+                  <span class={[
+                    "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest",
+                    if(@polymarket_mode == :live,
+                      do: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
+                      else: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                    )
+                  ]}>
+                    {@polymarket_mode} mode
                   </span>
+                </div>
+              </div>
+
+              <%!-- Paper positions --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                  {if @selected_agent, do: "Agent Paper Positions", else: "All Org Paper Positions"}
+                </p>
+                <%= cond do %>
+                  <% @polymarket_positions == [] -> %>
+                    <p class="text-xs text-gray-500 py-2">No paper positions yet.</p>
+                  <% true -> %>
+                    <div class="space-y-2">
+                      <%= for pos <- @polymarket_positions do %>
+                        <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                          <div class="min-w-0">
+                            <p class="text-sm font-bold text-white truncate" title={pos.market_id}>
+                              {truncate_market(pos.market_id, 40)}
+                            </p>
+                            <p class="text-[10px] text-gray-500 uppercase tracking-widest">
+                              {pos.outcome} · {pos.mode}
+                            </p>
+                          </div>
+                          <div class="text-right">
+                            <p class="text-sm font-mono text-white">{pos.size}</p>
+                            <p class="text-[10px] text-gray-500 font-mono">@ {pos.avg_price}</p>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
                 <% end %>
-                <span class={[
-                  "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest",
-                  if(@polymarket_mode == :live,
-                    do: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
-                    else: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30")
-                ]}>
-                  {@polymarket_mode} mode
-                </span>
+              </div>
+
+              <%!-- Market browser --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                  Trending Markets (Gamma API)
+                </p>
+                <%= cond do %>
+                  <% @polymarket_data == :loading -> %>
+                    <div class="flex items-center gap-3 text-gray-500 py-4">
+                      <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin">
+                      </div>
+                      <span class="text-xs">Loading markets...</span>
+                    </div>
+                  <% is_list(@polymarket_data) && @polymarket_data != [] -> %>
+                    <div class="space-y-3">
+                      <%= for market <- @polymarket_data do %>
+                        <div class="py-3 border-b border-white/5 last:border-0">
+                          <div class="flex items-start justify-between gap-4">
+                            <div class="min-w-0 flex-1">
+                              <p class="text-sm font-bold text-white">
+                                {Polymarket.market_field(
+                                  market,
+                                  "question",
+                                  Polymarket.market_field(market, "slug", "—")
+                                )}
+                              </p>
+                              <p class="text-[10px] text-gray-500 font-mono mt-1 truncate">
+                                {Polymarket.market_field(
+                                  market,
+                                  "conditionId",
+                                  Polymarket.market_field(market, "id", "")
+                                )}
+                              </p>
+                            </div>
+                            <div class="text-right shrink-0">
+                              <% prices =
+                                try do
+                                  KiteAgentHub.TradingPlatforms.PolymarketClient.extract_prices(
+                                    market
+                                  )
+                                rescue
+                                  _ -> %{}
+                                end %>
+                              <p class="text-xs font-mono text-emerald-300">
+                                YES {Polymarket.format_price(Map.get(prices || %{}, "yes"))}
+                              </p>
+                              <p class="text-xs font-mono text-red-300">
+                                NO {Polymarket.format_price(Map.get(prices || %{}, "no"))}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% true -> %>
+                    <p class="text-xs text-gray-500 py-2">
+                      No markets returned. Gamma API may be rate-limited or unreachable.
+                    </p>
+                <% end %>
               </div>
             </div>
-
-            <%!-- Paper positions --%>
-            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
-              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
-                {if @selected_agent, do: "Agent Paper Positions", else: "All Org Paper Positions"}
-              </p>
-              <%= cond do %>
-                <% @polymarket_positions == [] -> %>
-                  <p class="text-xs text-gray-500 py-2">No paper positions yet.</p>
-                <% true -> %>
-                  <div class="space-y-2">
-                    <%= for pos <- @polymarket_positions do %>
-                      <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                        <div class="min-w-0">
-                          <p class="text-sm font-bold text-white truncate" title={pos.market_id}>
-                            {truncate_market(pos.market_id, 40)}
-                          </p>
-                          <p class="text-[10px] text-gray-500 uppercase tracking-widest">
-                            {pos.outcome} · {pos.mode}
-                          </p>
-                        </div>
-                        <div class="text-right">
-                          <p class="text-sm font-mono text-white">{pos.size}</p>
-                          <p class="text-[10px] text-gray-500 font-mono">@ {pos.avg_price}</p>
-                        </div>
-                      </div>
-                    <% end %>
-                  </div>
-              <% end %>
-            </div>
-
-            <%!-- Market browser --%>
-            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
-                Trending Markets (Gamma API)
-              </p>
-              <%= cond do %>
-                <% @polymarket_data == :loading -> %>
-                  <div class="flex items-center gap-3 text-gray-500 py-4">
-                    <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-                    <span class="text-xs">Loading markets...</span>
-                  </div>
-                <% is_list(@polymarket_data) && @polymarket_data != [] -> %>
-                  <div class="space-y-3">
-                    <%= for market <- @polymarket_data do %>
-                      <div class="py-3 border-b border-white/5 last:border-0">
-                        <div class="flex items-start justify-between gap-4">
-                          <div class="min-w-0 flex-1">
-                            <p class="text-sm font-bold text-white">
-                              {Polymarket.market_field(market, "question", Polymarket.market_field(market, "slug", "—"))}
-                            </p>
-                            <p class="text-[10px] text-gray-500 font-mono mt-1 truncate">
-                              {Polymarket.market_field(market, "conditionId", Polymarket.market_field(market, "id", ""))}
-                            </p>
-                          </div>
-                          <div class="text-right shrink-0">
-                            <% prices =
-                              try do
-                                KiteAgentHub.TradingPlatforms.PolymarketClient.extract_prices(market)
-                              rescue
-                                _ -> %{}
-                              end %>
-                            <p class="text-xs font-mono text-emerald-300">
-                              YES {Polymarket.format_price(Map.get(prices || %{}, "yes"))}
-                            </p>
-                            <p class="text-xs font-mono text-red-300">
-                              NO {Polymarket.format_price(Map.get(prices || %{}, "no"))}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    <% end %>
-                  </div>
-                <% true -> %>
-                  <p class="text-xs text-gray-500 py-2">No markets returned. Gamma API may be rate-limited or unreachable.</p>
-              <% end %>
-            </div>
-          </div>
           <% end %>
 
           <%!-- ═══════════════ FOREX TAB ═══════════════ --%>
           <%= if @active_tab == :forex do %>
-          <% forex_agent_can_trade =
-               @selected_agent &&
-                 Oanda.can_trade?(@selected_agent) %>
-          <% forex_provider_label =
-               case {@forex_provider, @forex_oanda_env} do
-                 {:oanda, :live} -> "OANDA Live"
-                 {:oanda, _} -> "OANDA Practice"
-                 {:none, _} -> "ForEx"
-                 _ -> "no provider"
-               end %>
-          <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-            <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
-              <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                ForEx ({forex_provider_label})
-              </h2>
-              <div class="flex items-center gap-2">
-                <%= if @selected_agent && not forex_agent_can_trade do %>
-                  <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
-                    View only
+            <% forex_agent_can_trade =
+              @selected_agent &&
+                Oanda.can_trade?(@selected_agent) %>
+            <% forex_provider_label =
+              case {@forex_provider, @forex_oanda_env} do
+                {:oanda, :live} -> "OANDA Live"
+                {:oanda, _} -> "OANDA Practice"
+                {:none, _} -> "ForEx"
+                _ -> "no provider"
+              end %>
+            <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+              <div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  ForEx ({forex_provider_label})
+                </h2>
+                <div class="flex items-center gap-2">
+                  <%= if @selected_agent && not forex_agent_can_trade do %>
+                    <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
+                      View only
+                    </span>
+                  <% end %>
+                  <span class={[
+                    "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest border",
+                    if(@forex_oanda_env == :live,
+                      do: "bg-red-500/20 text-red-200 border-red-500/40",
+                      else: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                    )
+                  ]}>
+                    {cond do
+                      @forex_oanda_env == :live -> "Live"
+                      @forex_provider == :oanda -> "Practice"
+                      true -> "Demo"
+                    end}
                   </span>
-                <% end %>
-                <span class={[
-                  "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest border",
-                  if(@forex_oanda_env == :live,
-                    do: "bg-red-500/20 text-red-200 border-red-500/40",
-                    else: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30")
-                ]}>
-                  {cond do
-                    @forex_oanda_env == :live -> "Live"
-                    @forex_provider == :oanda -> "Practice"
-                    true -> "Demo"
-                  end}
-                </span>
+                </div>
               </div>
-            </div>
 
-            <%!-- Account summary (OANDA only) --%>
-            <%= if @forex_provider == :oanda and is_map(@forex_account) do %>
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <%= for {label, key, tone} <- [
+              <%!-- Action flash (quick-trade success/error). Cleared on
+                 next forex_symbol change or any successful action. --%>
+              <%= case @forex_action_flash do %>
+                <% {:ok, msg} -> %>
+                  <div class="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-xs text-emerald-200 font-mono">
+                    {msg}
+                  </div>
+                <% {:error, msg} -> %>
+                  <div class="mb-4 rounded-xl border border-red-500/30 bg-red-500/[0.08] px-4 py-3 text-xs text-red-200 font-mono">
+                    {msg}
+                  </div>
+                <% _ -> %>
+              <% end %>
+
+              <%!-- Live bid/ask quote pill (mirrors OANDA's chart-overlay
+                 SELL/BUY pill from their web UI). Only renders when we
+                 actually have pricing for the selected symbol. --%>
+              <%= if is_map(@forex_pricing) do %>
+                <% bid = best_bid(@forex_pricing)
+                ask = best_ask(@forex_pricing)
+                spread = quote_spread(@forex_pricing) %>
+                <div class="mb-6 inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2">
+                  <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                    {Oanda.field(@forex_pricing, "instrument", @forex_symbol)}
+                  </span>
+                  <span class="text-[10px] font-bold text-red-300 uppercase tracking-widest">
+                    SELL
+                  </span>
+                  <span class="text-sm font-mono text-white tabular-nums">{bid || "—"}</span>
+                  <span class="text-[10px] text-gray-500 font-mono">spread {spread || "—"}</span>
+                  <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">
+                    BUY
+                  </span>
+                  <span class="text-sm font-mono text-white tabular-nums">{ask || "—"}</span>
+                  <%= if Map.get(@forex_pricing, "tradeable") == false do %>
+                    <span class="text-[10px] font-bold text-yellow-300 uppercase tracking-widest">
+                      market closed
+                    </span>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <%!-- Account summary (OANDA only) --%>
+              <%= if @forex_provider == :oanda and is_map(@forex_account) do %>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                  <%= for {label, key, tone} <- [
                     {"Balance", "balance", "text-white"},
                     {"NAV", "NAV", "text-emerald-400"},
                     {"Unrealized P&L", "unrealizedPL", "text-blue-400"},
                     {"Margin Used", "marginUsed", "text-gray-300"}
                   ] do %>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
-                      {label}
-                    </p>
-                    <p class={["text-lg font-mono tabular-nums mt-1", tone]}>
-                      {Oanda.field(@forex_account, key, "—")}
-                    </p>
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
-
-            <%!-- Chart (OANDA candles only) --%>
-            <%= if @forex_provider == :oanda and @forex_candles != [] do %>
-              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
-                <div class="flex items-center justify-between mb-3">
-                  <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
-                    {@forex_symbol} — 5m candles (last 120)
-                  </p>
-                  <span class="text-[10px] text-gray-600 font-mono">mid close</span>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                      <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                        {label}
+                      </p>
+                      <p class={["text-lg font-mono tabular-nums mt-1", tone]}>
+                        {Oanda.field(@forex_account, key, "—")}
+                      </p>
+                    </div>
+                  <% end %>
                 </div>
-                <% pts = Oanda.sparkline_points(@forex_candles, 640, 120) %>
-                <%= if pts != "" do %>
-                  <svg viewBox="0 0 640 120" preserveAspectRatio="none" class="w-full h-32">
-                    <polyline
-                      points={pts}
-                      fill="none"
-                      stroke="#22c55e"
-                      stroke-width="1.5"
-                      stroke-linejoin="round"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                <% else %>
-                  <p class="text-xs text-gray-500 py-2">No chart data yet.</p>
+              <% end %>
+
+              <%!-- Chart (OANDA candles only) --%>
+              <%= if @forex_provider == :oanda and @forex_candles != [] do %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                      {@forex_symbol} — 5m candles (last 120)
+                    </p>
+                    <span class="text-[10px] text-gray-600 font-mono">mid close</span>
+                  </div>
+                  <% pts = Oanda.sparkline_points(@forex_candles, 640, 120) %>
+                  <%= if pts != "" do %>
+                    <svg viewBox="0 0 640 120" preserveAspectRatio="none" class="w-full h-32">
+                      <polyline
+                        points={pts}
+                        fill="none"
+                        stroke="#22c55e"
+                        stroke-width="1.5"
+                        stroke-linejoin="round"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  <% else %>
+                    <p class="text-xs text-gray-500 py-2">No chart data yet.</p>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <%!-- Quick Trade — practice-only ticket. Hidden when no
+                 trading agent is selected or OANDA is not wired up. --%>
+              <%= if forex_agent_can_trade and @forex_provider == :oanda and @forex_oanda_env == :practice do %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                  <div class="flex items-center justify-between mb-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                      Quick Trade ({@forex_symbol})
+                    </p>
+                    <span class="text-[10px] font-bold text-gray-600 uppercase tracking-widest">
+                      Practice — submits a market order
+                    </span>
+                  </div>
+                  <form phx-submit="forex_quick_trade" class="flex flex-wrap items-end gap-3">
+                    <div class="flex flex-col gap-1">
+                      <label class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                        Units
+                      </label>
+                      <input
+                        type="number"
+                        name="units"
+                        min="1"
+                        step="1"
+                        value={@forex_quick_trade_units}
+                        class="w-32 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 font-mono"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      name="side"
+                      value="sell"
+                      class="px-5 py-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-200 text-xs font-black uppercase tracking-widest hover:bg-red-500/25 transition-colors"
+                    >
+                      Sell
+                    </button>
+                    <button
+                      type="submit"
+                      name="side"
+                      value="buy"
+                      class="px-5 py-2 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-200 text-xs font-black uppercase tracking-widest hover:bg-blue-500/25 transition-colors"
+                    >
+                      Buy
+                    </button>
+                    <p class="text-[10px] text-gray-600 mt-2 basis-full">
+                      Agents submit forex via
+                      <span class="font-mono text-gray-400">POST /api/v1/trades</span>
+                      with <span class="font-mono text-gray-400">provider: "oanda_practice"</span>. This form mirrors that for human-driven smoke tests.
+                    </p>
+                  </form>
+                </div>
+              <% end %>
+
+              <%!-- Open positions --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                  Open Positions
+                </p>
+                <%= cond do %>
+                  <% @forex_loading -> %>
+                    <div class="flex items-center gap-3 text-gray-500 py-4">
+                      <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin">
+                      </div>
+                      <span class="text-xs">Loading…</span>
+                    </div>
+                  <% is_list(@forex_positions) && @forex_positions != [] -> %>
+                    <div class="space-y-2">
+                      <%= for pos <- @forex_positions do %>
+                        <% inst = Oanda.field(pos, "instrument", Oanda.field(pos, "symbol", "—")) %>
+                        <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                          <div class="min-w-0">
+                            <p class="text-sm font-bold text-white">
+                              {inst}
+                            </p>
+                            <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
+                              {position_side(pos)} · units {position_units(pos)}
+                            </p>
+                          </div>
+                          <div class="flex items-center gap-3">
+                            <p class="text-sm font-mono text-emerald-300">
+                              {position_unrealized_pl(pos)}
+                            </p>
+                            <%= if forex_agent_can_trade and @forex_oanda_env == :practice do %>
+                              <button
+                                phx-click="forex_close_position"
+                                phx-value-instrument={inst}
+                                data-confirm={"Close all open #{inst} on OANDA practice?"}
+                                class="px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+                              >
+                                Close
+                              </button>
+                            <% end %>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% true -> %>
+                    <p class="text-xs text-gray-500 py-2">
+                      No open positions. Add OANDA credentials in Settings to connect.
+                    </p>
                 <% end %>
               </div>
-            <% end %>
 
-            <%!-- Open positions --%>
-            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
-              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
-                Open Positions
-              </p>
-              <%= cond do %>
-                <% @forex_loading -> %>
-                  <div class="flex items-center gap-3 text-gray-500 py-4">
-                    <div class="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-                    <span class="text-xs">Loading…</span>
-                  </div>
-                <% is_list(@forex_positions) && @forex_positions != [] -> %>
-                  <div class="space-y-2">
-                    <%= for pos <- @forex_positions do %>
-                      <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                        <div class="min-w-0">
-                          <p class="text-sm font-bold text-white">
-                            {Oanda.field(pos, "instrument", Oanda.field(pos, "symbol", "—"))}
-                          </p>
-                          <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
-                            {Oanda.field(pos, "side", Oanda.field(pos, "direction", ""))}
-                          </p>
-                        </div>
-                        <div class="text-right">
-                          <p class="text-sm font-mono text-white">
-                            {Oanda.field(pos, "quantity", Oanda.field(pos, "qty", "—"))}
-                          </p>
-                        </div>
-                      </div>
-                    <% end %>
-                  </div>
-                <% true -> %>
-                  <p class="text-xs text-gray-500 py-2">No open positions. Add OANDA credentials in Settings to connect.</p>
-              <% end %>
+              <%!-- Instruments --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
+                  Available Instruments
+                </p>
+                <%= cond do %>
+                  <% is_list(@forex_instruments) && @forex_instruments != [] -> %>
+                    <div class="flex flex-wrap gap-2">
+                      <%= for inst <- @forex_instruments do %>
+                        <span class="text-[10px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.02] text-gray-300">
+                          {Oanda.field(inst, "name", Oanda.field(inst, "symbol", "—"))}
+                        </span>
+                      <% end %>
+                    </div>
+                  <% true -> %>
+                    <p class="text-xs text-gray-500 py-2">No instruments loaded.</p>
+                <% end %>
+              </div>
             </div>
-
-            <%!-- Instruments --%>
-            <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-              <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
-                Available Instruments
-              </p>
-              <%= cond do %>
-                <% is_list(@forex_instruments) && @forex_instruments != [] -> %>
-                  <div class="flex flex-wrap gap-2">
-                    <%= for inst <- @forex_instruments do %>
-                      <span class="text-[10px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.02] text-gray-300">
-                        {Oanda.field(inst, "name", Oanda.field(inst, "symbol", "—"))}
-                      </span>
-                    <% end %>
-                  </div>
-                <% true -> %>
-                  <p class="text-xs text-gray-500 py-2">No instruments loaded.</p>
-              <% end %>
-            </div>
-          </div>
           <% end %>
-
         <% end %>
       </div>
 
       <%!-- Agent Context Modal --%>
       <%= if @show_agent_context do %>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" phx-click="close_agent_context">
-          <div class="relative w-full max-w-3xl max-h-[80vh] mx-4 rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl overflow-hidden" phx-click-away="close_agent_context">
+        <div
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          phx-click="close_agent_context"
+        >
+          <div
+            class="relative w-full max-w-3xl max-h-[80vh] mx-4 rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl overflow-hidden"
+            phx-click-away="close_agent_context"
+          >
             <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h2 class="text-xs font-black text-white uppercase tracking-widest">Agent Context — Copy to Claude/GPT</h2>
-              <button phx-click="close_agent_context" class="text-gray-500 hover:text-white transition-colors">
+              <h2 class="text-xs font-black text-white uppercase tracking-widest">
+                Agent Context — Copy to Claude/GPT
+              </h2>
+              <button
+                phx-click="close_agent_context"
+                class="text-gray-500 hover:text-white transition-colors"
+              >
                 <.icon name="hero-x-mark" class="w-5 h-5" />
               </button>
             </div>
@@ -3102,7 +3788,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <pre class="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-black/40 rounded-xl p-4 border border-white/5">{@agent_context_text}</pre>
             </div>
             <div class="px-6 py-4 border-t border-white/10 flex items-center justify-between">
-              <p class="text-[10px] text-gray-600 uppercase tracking-widest">Paste into Claude Code, ChatGPT, or any LLM</p>
+              <p class="text-[10px] text-gray-600 uppercase tracking-widest">
+                Paste into Claude Code, ChatGPT, or any LLM
+              </p>
               <button
                 id="copy-context-btn"
                 phx-hook="CopyToClipboard"
@@ -3164,9 +3852,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   def handle_event(event, params, socket) do
-    Logger.warning(
-      "DashboardLive: unhandled handle_event #{inspect(event)} #{inspect(params)}"
-    )
+    Logger.warning("DashboardLive: unhandled handle_event #{inspect(event)} #{inspect(params)}")
 
     {:noreply, socket}
   end
@@ -3211,8 +3897,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp kalshi_fill_sparkline(fills, width, height) when length(fills) > 1 do
     # Plot cumulative fill value over time (reversed since fills come newest-first)
     reversed = Enum.reverse(fills)
-    values = reversed
-    |> Enum.scan(0.0, fn f, acc -> acc + f.count * f.price end)
+
+    values =
+      reversed
+      |> Enum.scan(0.0, fn f, acc -> acc + f.count * f.price end)
 
     min_v = Enum.min(values)
     max_v = Enum.max(values)
@@ -3408,18 +4096,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp mcp_config_json(_agent) do
-    Jason.encode!(%{
-      "mcpServers" => %{
-        "kah" => %{
-          "command" => "node",
-          "args" => ["mcp-server/index.js"],
-          "env" => %{
-            "KAH_AGENT_TOKEN" => @token_placeholder,
-            "KAH_BASE_URL" => "https://kite-agent-hub.fly.dev"
+    Jason.encode!(
+      %{
+        "mcpServers" => %{
+          "kah" => %{
+            "command" => "node",
+            "args" => ["mcp-server/index.js"],
+            "env" => %{
+              "KAH_AGENT_TOKEN" => @token_placeholder,
+              "KAH_BASE_URL" => "https://kite-agent-hub.fly.dev"
+            }
           }
         }
-      }
-    }, pretty: true)
+      },
+      pretty: true
+    )
   end
 
   # Token mask: show first 8 chars + dots when collapsed.
