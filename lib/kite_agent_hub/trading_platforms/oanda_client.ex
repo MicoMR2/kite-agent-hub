@@ -94,15 +94,31 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..201 ->
         {:ok, body}
 
-      {:ok, %Req.Response{status: status}} ->
+      {:ok, %Req.Response{status: status, body: body}} ->
         Logger.warning("OANDA practice order #{status} on /accounts/#{account_id}/orders")
-        {:error, {:http, status}}
+        {:error, {:http, status, sanitize_error_body(body)}}
 
       {:error, reason} ->
         Logger.warning("OANDA practice order transport error: #{inspect(reason)}")
         {:error, reason}
     end
   end
+
+  # Strip OANDA error payloads down to a non-PII shape that's safe to
+  # surface to agents and bubble up to the dashboard. The full body
+  # echoes the order payload (including signed units, account context),
+  # which we don't want sitting in worker logs or trade rows.
+  @doc false
+  def sanitize_error_body(%{} = body) do
+    Map.take(body, [
+      "errorCode",
+      "errorMessage",
+      "orderRejectTransaction",
+      "lastTransactionID"
+    ])
+  end
+
+  def sanitize_error_body(_), do: nil
 
   @doc false
   def practice_order_body(instrument, units, opts \\ %{}) do

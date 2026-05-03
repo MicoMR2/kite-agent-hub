@@ -84,6 +84,38 @@ defmodule KiteAgentHub.Oanda do
   end
 
   @doc """
+  Fetch live bid/ask pricing for a list of OANDA instruments. Returns a
+  list of price maps as returned by OANDA, or `[]` on any failure.
+
+  Instruments are filtered against the same `XXX_YYY` regex used by the
+  candles call so a malformed agent payload can't reach the upstream
+  URL.
+  """
+  def pricing(org_id, instruments, env \\ :practice)
+
+  def pricing(org_id, instruments, env) when is_list(instruments) do
+    safe =
+      instruments
+      |> Enum.filter(&(is_binary(&1) and Regex.match?(~r/^[A-Z]{2,8}_[A-Z]{2,8}$/, &1)))
+      |> Enum.uniq()
+
+    case safe do
+      [] ->
+        []
+
+      list ->
+        with_token(org_id, env, fn token, account_id ->
+          case OandaClient.pricing(token, account_id, list, env) do
+            {:ok, %{"prices" => prices}} when is_list(prices) -> prices
+            _ -> []
+          end
+        end)
+    end
+  end
+
+  def pricing(_org_id, _instruments, _env), do: []
+
+  @doc """
   Fetch OHLC candles for a single instrument. Returns a list of candle
   maps (as returned by OANDA) or `[]` on any failure.
   """
