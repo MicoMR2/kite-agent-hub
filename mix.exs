@@ -62,6 +62,11 @@ defmodule KiteAgentHub.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
+      # WebSocket client for Alpaca streaming feed (stocks/crypto/news).
+      # WebSockex is a higher-level GenServer-based WebSocket client with
+      # built-in reconnect handling and a callback API that fits our
+      # AlpacaStream module shape (handle_connect, handle_frame, etc).
+      {:websockex, "~> 0.4.3"},
       {:ex_keccak, "~> 0.7"},
       {:ex_secp256k1, "~> 0.8"},
       {:ex_rlp, "~> 0.6"},
