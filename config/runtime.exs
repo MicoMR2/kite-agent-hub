@@ -23,7 +23,7 @@ polymarket_mode =
 # privacy guarantee is never silently dependent on shared key state.
 collective_intelligence_salt = System.get_env("COLLECTIVE_INTELLIGENCE_SALT")
 
-if config_env() == :prod and (collective_intelligence_salt in [nil, ""]) do
+if config_env() == :prod and collective_intelligence_salt in [nil, ""] do
   raise """
   COLLECTIVE_INTELLIGENCE_SALT is not set.
 
@@ -87,7 +87,12 @@ if config_env() == :prod do
   config :kite_agent_hub, KiteAgentHub.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    # Bumped from 10 → 25 default. Each AgentRunner tick holds a
+    # connection through the entire Repo.with_user block, which
+    # currently includes slow LLM / HTTP-oracle calls. Pool exhaustion
+    # was causing tick GenServer crashes under load. Long term: refactor
+    # to release the connection before slow non-DB work.
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "25"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
     socket_options: maybe_ipv6
