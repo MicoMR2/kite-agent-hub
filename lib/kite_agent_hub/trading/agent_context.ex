@@ -254,10 +254,12 @@ defmodule KiteAgentHub.Trading.AgentContext do
     config issue, not a server issue. Tell the user to do ONE of these
     based on their runtime:
 
-    **Codex CLI:** run `codex --full-auto`, OR add to `~/.codex/config.toml`:
+    **Codex CLI** one-shot: `codex -s workspace-write -c sandbox_workspace_write.network_access=true`,
+    OR persistent in `~/.codex/config.toml`:
 
-        [sandbox]
-        mode = "workspace-write"
+        sandbox_mode = "workspace-write"
+
+        [sandbox_workspace_write]
         network_access = true
 
     **Claude Code:** type `/permissions` in-session and add:

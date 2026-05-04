@@ -25,14 +25,15 @@ As Conversational Agent, you may inspect trade context and propose strategy. You
 
 Recent versions of Codex CLI and Claude Code default their sandbox to deny outbound network. If your first call fails with `Could not resolve host: kite-agent-hub.fly.dev` or any DNS / network error, the sandbox is blocking you. Tell the user to do ONE of these:
 
-**Codex CLI:**
+**Codex CLI** (one-shot for this session):
 
-    codex --full-auto
+    codex -s workspace-write -c sandbox_workspace_write.network_access=true
 
-or persistent in `~/.codex/config.toml`:
+Or persistent in `~/.codex/config.toml`:
 
-    [sandbox]
-    mode = "workspace-write"
+    sandbox_mode = "workspace-write"
+
+    [sandbox_workspace_write]
     network_access = true
 
 **Claude Code:** type `/permissions` and add `WebFetch(domain:kite-agent-hub.fly.dev)` and `Bash(curl:*kite-agent-hub.fly.dev*)`. Or in `.claude/settings.json` allow those two patterns.

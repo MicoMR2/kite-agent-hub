@@ -4814,13 +4814,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </summary>
                     <div class="px-4 pb-3 pt-1 space-y-2 text-[11px] text-gray-300">
                       <p>One-shot per session:</p>
-                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">codex --full-auto</pre>
+                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">codex -s workspace-write -c sandbox_workspace_write.network_access=true</pre>
                       <p>
                         Or persistent (recommended) — add to <code class="bg-white/[0.06] px-1 rounded">~/.codex/config.toml</code>:
                       </p>
-                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">[sandbox]
-    mode = "workspace-write"
-    network_access = true</pre>
+                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true</pre>
                     </div>
                   </details>
 
