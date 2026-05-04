@@ -89,6 +89,10 @@ defmodule KiteAgentHub.Trading.AgentContext do
     | Oracle Lag (M-004) | Kalshi | Lag >5s, edge >$0.05 after fees |
     | Gamma Scalp (M-005) | Alpaca | Catalyst <4h, gamma/theta >2.0 |
     | Closing Line Value (M-006) | Kalshi | Model prob differs >$0.05 from market |
+    | Carry Trade (M-007) | OANDA | High-yield long vs low-yield short, low realized vol |
+    | Range Mean Reversion (M-008) | OANDA | Major in 50-pip range >2 days, RSI extremes |
+    | Momentum Breakout (M-009) | OANDA | Price closes outside 24h H/L on rising volume |
+    | News Fade (M-010) | OANDA | First 60s post-NFP/CPI/FOMC overshoot >2σ |
 
     ## Communication Protocol
     When posting updates, use this format:
