@@ -172,10 +172,12 @@ defmodule KiteAgentHub.Trading do
     limit = Keyword.get(opts, :limit, 50)
     offset = Keyword.get(opts, :offset, 0)
     status = Keyword.get(opts, :status)
+    platform = Keyword.get(opts, :platform)
 
     TradeRecord
     |> where(kite_agent_id: ^agent_id)
     |> then(fn q -> if status, do: where(q, status: ^status), else: q end)
+    |> then(fn q -> if platform, do: where(q, platform: ^platform), else: q end)
     |> order_by(desc: :inserted_at)
     |> limit(^limit)
     |> offset(^offset)
