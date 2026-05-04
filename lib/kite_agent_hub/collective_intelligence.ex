@@ -46,6 +46,43 @@ defmodule KiteAgentHub.CollectiveIntelligence do
     end
   end
 
+  @doc """
+  Insert a synthetic / public-seed insight directly. Used by the
+  KciSeederWorker to bootstrap the corpus from public market-data
+  backtests so new agents have something to read on day 1, before
+  any user trade has settled.
+
+  Caller must supply:
+    * `:source_trade_hash` — deterministic so reruns are idempotent
+      (insert uses on_conflict: :nothing against the unique index)
+    * `:source_org_hash`   — typically `source_hash("seed", "v1")` so
+      seeded rows are clearly bucketed apart from real org contributions
+    * the same shape fields a real record_trade_outcome would build
+      (agent_type, platform, market_class, side, action, status,
+      outcome_bucket, notional_bucket, hold_time_bucket, observed_week)
+
+  No org-opt-in check here — public seed data is publicly contributed
+  by design (it does not represent any real user). The reciprocity
+  gate at /api/v1/collective-intelligence is independent.
+  """
+  def record_synthetic_outcome(attrs) when is_map(attrs) do
+    %TradeInsight{}
+    |> TradeInsight.changeset(attrs)
+    |> Repo.insert(on_conflict: :nothing, conflict_target: :source_trade_hash)
+    |> case do
+      {:ok, _insight} -> :ok
+      {:error, _changeset} = err -> err
+    end
+  end
+
+  @doc """
+  Public helper for the Seeder so it can derive deterministic seed
+  hashes without poking at private functions. Same HMAC + salt as
+  the real-trade path so seeded rows can never collide with real
+  org_id hashes.
+  """
+  def seed_hash(kind, value), do: source_hash(kind, value)
+
   def purge_org_contributions(org_id) when is_binary(org_id) do
     source_org_hash = source_hash("org", org_id)
 
@@ -86,6 +123,8 @@ defmodule KiteAgentHub.CollectiveIntelligence do
         name: "Kite Collective Intelligence",
         consent_version: @consent_version,
         privacy: "anonymized, bucketed, opt-in trade outcome learning",
+        notes:
+          "Includes both real opt-in user trades (agent_type in trading/research/conversational) and public-seed synthetic backtests (agent_type=synthetic). Filter by agent_type if you want one or the other.",
         insights: insights
       }
     else

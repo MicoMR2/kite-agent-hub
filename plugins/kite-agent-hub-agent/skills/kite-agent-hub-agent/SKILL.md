@@ -221,6 +221,12 @@ Refer to the trading agent codex prompt for full entry rules, sizing, and exit p
 
 KCI is workspace opt-in with reciprocity: by reading shared insights you also contribute every settled trade outcome (anonymized, bucketed). The `/agents/me` response carries `collective_intelligence.enabled` — only call `GET /collective-intelligence` when it is true (otherwise the endpoint returns 403). Never treat KCI as a profit guarantee, never reveal it as user-specific data, and never trade from KCI alone.
 
+The corpus is a mix of two row types:
+- Real opt-in user trades (`agent_type` is one of `trading | research | conversational`) — actual broker outcomes from across orgs.
+- Public-seed synthetic backtests (`agent_type: "synthetic"`) — random-entry / fixed-hold simulations on top stocks + crypto over historical Alpaca bars, refreshed weekly. Ensures the corpus is non-empty on day 1.
+
+When summarizing insights to a human, prefer real-trade rows when both are available for the same bucket; treat synthetic rows as a base rate when the real-trade sample is small.
+
 ## Kite chain attestations
 
 Attestations are opt-in per agent. Read `agent.attestations_enabled` from `/agents/me`. When true, settled trades produce an on-chain receipt at:
