@@ -10,7 +10,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiParserTest do
   alias KiteAgentHub.TradingPlatforms.KalshiClient
 
   describe "order_body" do
-    test "yes-side reduce-only sell payload" do
+    test "yes-side reduce-only sell payload — only yes_price, no cross-side" do
       {:ok, body} =
         KalshiClient.order_body("KXTEST-26JAN01-YES", "yes", 2, "0.62", %{
           "action" => "sell",
@@ -22,9 +22,36 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiParserTest do
       assert body["side"] == "yes"
       assert body["count"] == 2
       assert body["yes_price"] == 62
-      assert body["no_price"] == 38
+      refute Map.has_key?(body, "no_price")
+      refute Map.has_key?(body, "yes_price_dollars")
+      refute Map.has_key?(body, "no_price_dollars")
       assert body["reduce_only"] == true
       assert body["time_in_force"] == "immediate_or_cancel"
+    end
+
+    test "no-side buy payload — only no_price, no cross-side" do
+      {:ok, body} =
+        KalshiClient.order_body("KXTEST-26JAN01-YES", "no", 3, 40, %{
+          "action" => "buy"
+        })
+
+      assert body["side"] == "no"
+      assert body["no_price"] == 40
+      refute Map.has_key?(body, "yes_price")
+      refute Map.has_key?(body, "yes_price_dollars")
+      refute Map.has_key?(body, "no_price_dollars")
+    end
+
+    test "dollar-form opts are dropped — cents form is always authoritative" do
+      {:ok, body} =
+        KalshiClient.order_body("KXTEST-26JAN01-YES", "yes", 1, 60, %{
+          "yes_price_dollars" => 0.6,
+          "no_price_dollars" => 0.4
+        })
+
+      refute Map.has_key?(body, "yes_price_dollars")
+      refute Map.has_key?(body, "no_price_dollars")
+      assert body["yes_price"] == 60
     end
 
     test "post_only carries through to payload" do

@@ -205,8 +205,6 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
         |> put_kalshi_prices(side, price_cents, opts)
         |> put_optional("client_order_id", opts["client_order_id"])
         |> put_optional("count_fp", opts["count_fp"])
-        |> put_optional("yes_price_dollars", opts["yes_price_dollars"])
-        |> put_optional("no_price_dollars", opts["no_price_dollars"])
         |> put_optional("expiration_ts", parse_int(opts["expiration_ts"]))
         |> put_optional("time_in_force", normalize_time_in_force(opts["time_in_force"]))
         |> put_optional("buy_max_cost", parse_int(opts["buy_max_cost"]))
@@ -337,17 +335,25 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
+  # Kalshi's CreateOrder endpoint requires *exactly one* of yes_price,
+  # no_price, yes_price_dollars, or no_price_dollars per request — sending
+  # the cross-side derivation (both yes_price and no_price) bounces with
+  # `invalid_order`. We always emit the cents-form field that matches
+  # the side being traded; opts can override the value but never the field.
   defp put_kalshi_prices(body, side, price_cents, opts) do
-    yes_price = normalize_price_value(opts["yes_price"])
-    no_price = normalize_price_value(opts["no_price"])
+    case normalize_kalshi_side(side) do
+      "no" ->
+        Map.put(body, "no_price", normalize_price_value(opts["no_price"]) || price_cents)
 
-    body
-    |> Map.put(
-      "yes_price",
-      yes_price || if(side == "yes", do: price_cents, else: 100 - price_cents)
-    )
-    |> Map.put("no_price", no_price || if(side == "no", do: price_cents, else: 100 - price_cents))
+      _ ->
+        Map.put(body, "yes_price", normalize_price_value(opts["yes_price"]) || price_cents)
+    end
   end
+
+  defp normalize_kalshi_side(side) when is_binary(side),
+    do: side |> String.trim() |> String.downcase()
+
+  defp normalize_kalshi_side(_), do: "yes"
 
   defp normalize_action("sell"), do: "sell"
   defp normalize_action(_), do: "buy"
