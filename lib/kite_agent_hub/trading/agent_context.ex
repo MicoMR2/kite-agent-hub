@@ -60,7 +60,7 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
-    #{collective_intelligence_section()}
+    #{collective_intelligence_section(agent)}
 
     ## Edge Scoring (QRB Methodology)
     Before any trade, compute an edge score 0-100:
@@ -132,7 +132,7 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
-    #{collective_intelligence_section()}
+    #{collective_intelligence_section(agent)}
 
     ## Your Job
     1. Monitor markets on Alpaca and Kalshi
@@ -182,7 +182,7 @@ defmodule KiteAgentHub.Trading.AgentContext do
     - Summarize trade history and performance on request
     - Coordinate between research and trading agents
     - Escalate anomalies or questions to human operators
-    #{collective_intelligence_section()}
+    #{collective_intelligence_section(agent)}
     """
   end
 
@@ -213,14 +213,26 @@ defmodule KiteAgentHub.Trading.AgentContext do
     end
   end
 
-  defp collective_intelligence_section do
-    """
-    ## Kite Collective Intelligence
-    If /agents/me says collective_intelligence.enabled is true, call GET /api/v1/collective-intelligence on startup.
-    Use it only as generalized historical context from anonymized, bucketed trade outcomes.
-    Never treat it as a profit guarantee, never reveal it as user-specific data, and never trade from KCI alone.
-    """
+  # KCI is workspace opt-in. The agent prompt only mentions it when
+  # the agents org has it enabled — otherwise the section is omitted
+  # entirely so the LLM does not waste tokens reasoning about a
+  # disabled feature, and does not get a 403 when it tries to call
+  # the endpoint.
+  defp collective_intelligence_section(%KiteAgent{organization_id: org_id})
+       when is_binary(org_id) do
+    if KiteAgentHub.CollectiveIntelligence.enabled_for_org?(org_id) do
+      """
+      ## Kite Collective Intelligence (enabled)
+      Your workspace has opted in to Kite Collective Intelligence — by reading shared insights you also contribute every settled-trade outcome (anonymized, bucketed). Reciprocity: opt out in Settings to leave the corpus.
+
+      Call GET /api/v1/collective-intelligence on startup and re-poll on a fresh shift. Use it only as generalized historical context. Never treat it as a profit guarantee, never reveal it as user-specific data, and never trade from KCI alone.
+      """
+    else
+      ""
+    end
   end
+
+  defp collective_intelligence_section(_), do: ""
 
   # When the user has not enabled Kite chain attestations, no wallet is
   # set. Skip the wallet line entirely so the prompt does not lie about

@@ -9,10 +9,13 @@ The token is secret. Never post it in chat, print it in command output, write it
 
 KAH is the broker layer. Trade Agent can submit signals, and KAH executes them on the correct platform:
 
-- Alpaca for equities and crypto
+- Alpaca for equities, options (OCC contract symbols), and crypto
 - Kalshi for prediction markets
+- OANDA for forex (practice account; live forex is intentionally rejected at the trades endpoint)
 
-KAH polls for fills, settles trades, and writes a Kite chain attestation for every settled trade. You never touch broker credentials.
+KAH polls for fills, settles trades, and (when the agent has attestations enabled) writes a Kite chain attestation for every settled trade. You never touch broker credentials.
+
+The user picks the markets the trading agent should focus on during onboarding. Read `agent.markets` from `GET /agents/me` and stay scoped to those markets when recommending signals.
 
 As Research Agent, your job is research, analysis, edge review, and signal recommendations. You do not submit trades.
 
@@ -20,7 +23,7 @@ As Research Agent, your job is research, analysis, edge review, and signal recom
 
 1. Confirm `KAH_API_TOKEN` is present without printing it.
 2. `GET /agents/me` to confirm your profile and agent metadata.
-3. If `/agents/me` says `collective_intelligence.enabled` is true, call `GET /collective-intelligence`.
+3. If `/agents/me` says `collective_intelligence.enabled` is true, call `GET /collective-intelligence` for shared bucketed insights. When false, do NOT call it — the endpoint returns 403 for opted-out workspaces. KCI is opt-in with reciprocity (read access requires contributing).
 4. `GET /chat?limit=20` and remember the newest message `id` as `last_seen_id`.
 5. `GET /edge-scores` before recommending any trade signal.
 6. Start the long-poll cycle.
@@ -53,8 +56,10 @@ Use this shape for `POST /trades`:
 
 Rules:
 
-- Crypto symbols: `BTCUSD`, `ETHUSD`, `SOLUSD`.
+- Crypto symbols: `BTCUSD` or `BTC/USD` slash form, also `ETHUSD`, `SOLUSD`.
 - Equity symbols: `AAPL`, `SPY`, etc.
+- Option symbols: full OCC contracts like `AAPL260117C00100000`.
+- Forex symbols use OANDA underscore form: `EUR_USD`, `GBP_USD`, `USD_JPY` (never `EUR/USD` or `EURUSD`). Forex requires `provider: "oanda_practice"` in the payload.
 - Use `side: "long"` or `side: "short"` for the directional view.
 - Use `action: "buy"` to open and `action: "sell"` to close.
 - Always start new positions with `buy`.
@@ -105,7 +110,7 @@ For new positions, the rule-based strategy admits anything >= 40 by default. Hig
 
 ## Kite chain attestations
 
-Every settled trade automatically gets a native KITE transfer on Kite testnet, recorded on `testnet.kitescan.ai`.
+Attestations are opt-in per agent. When the trading agent has `attestations_enabled: true`, every settled trade gets a native KITE transfer on Kite testnet recorded on `testnet.kitescan.ai`.
 
 The trade row includes:
 

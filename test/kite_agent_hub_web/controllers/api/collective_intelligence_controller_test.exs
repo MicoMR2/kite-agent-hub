@@ -8,17 +8,20 @@ defmodule KiteAgentHubWeb.API.CollectiveIntelligenceControllerTest do
   defp auth(conn, agent), do: put_req_header(conn, "authorization", "Bearer " <> agent.api_token)
 
   describe "GET /api/v1/collective-intelligence" do
-    test "returns disabled summary by default", %{conn: conn} do
+    test "403s with reciprocity message when workspace has not opted in", %{conn: conn} do
       %{agent: agent} = trading_scope_fixture()
 
       resp =
         conn
         |> auth(Repo.reload!(agent))
         |> get(~p"/api/v1/collective-intelligence")
-        |> json_response(200)
+        |> json_response(403)
 
-      assert resp["collective_intelligence"]["enabled"] == false
-      assert resp["collective_intelligence"]["insights"] == []
+      assert resp["ok"] == false
+      assert resp["error"] == "kci_not_enabled"
+      assert resp["message"] =~ "Settings"
+      assert resp["message"] =~ "contribute"
+      assert is_binary(resp["consent_version"])
     end
 
     test "returns enabled summary for opted-in workspaces", %{conn: conn} do
