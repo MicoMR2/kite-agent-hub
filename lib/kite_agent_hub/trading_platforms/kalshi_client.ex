@@ -355,6 +355,10 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   defp normalize_kalshi_side(_), do: "yes"
 
+  defp integer_or_zero(n) when is_integer(n) and n >= 0, do: n
+  defp integer_or_zero(n) when is_float(n) and n >= 0, do: round(n)
+  defp integer_or_zero(_), do: 0
+
   defp normalize_action("sell"), do: "sell"
   defp normalize_action(_), do: "buy"
 
@@ -474,19 +478,32 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     end
   end
 
-  defp parse_placed_order({:ok, %{"order" => o}}) do
+  @doc false
+  # Kalshi's CreateOrder response carries enough detail to distinguish
+  # full-fill / partial-fill / no-fill outcomes — callers shouldn't have
+  # to round-trip back to GET /portfolio/orders to figure out what
+  # happened. `taker_fill_count` is the immediate fill count against
+  # resting makers; `taker_fill_cost` is total cents paid for those
+  # fills. `remaining_count` is what stayed unfilled (cancelled for IOC,
+  # resting on book for GTC).
+  def parse_placed_order({:ok, %{"order" => o}}) do
     {:ok,
      %{
        id: o["order_id"],
        ticker: o["ticker"],
        side: o["side"],
        count: o["count"],
-       status: o["status"]
+       status: o["status"],
+       taker_fill_count: integer_or_zero(o["taker_fill_count"]),
+       taker_fill_cost: integer_or_zero(o["taker_fill_cost"]),
+       remaining_count: integer_or_zero(o["remaining_count"]),
+       yes_price: o["yes_price"],
+       no_price: o["no_price"]
      }}
   end
 
-  defp parse_placed_order({:ok, _}), do: {:error, "unexpected kalshi order response shape"}
-  defp parse_placed_order(err), do: err
+  def parse_placed_order({:ok, _}), do: {:error, "unexpected kalshi order response shape"}
+  def parse_placed_order(err), do: err
 
   # PATCH helper for amend_order. Mirrors post/5 but uses Req.patch.
   defp patch(path, body, key_id, pem, env) do
