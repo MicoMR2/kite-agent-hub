@@ -70,18 +70,38 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         :tick,
         %{agent_id: agent_id, interval_ms: interval, owner_user_id: owner_user_id} = state
       ) do
+    # Wrap the with_user transaction in try/rescue so a transient DB
+    # pool exhaustion (DBConnection.ConnectionError, RuntimeError from
+    # transaction timeout, etc.) does not terminate the GenServer.
+    # When the GenServer terminates the supervisor restarts it, which
+    # immediately ticks again and hammers the pool further — exactly
+    # the cascade we saw in production logs.
     result =
-      Repo.with_user(owner_user_id, fn ->
-        agent = Trading.get_agent!(agent_id)
+      try do
+        Repo.with_user(owner_user_id, fn ->
+          agent = Trading.get_agent!(agent_id)
 
-        if agent.status != "active" do
-          Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
-          :stop
-        else
-          run_cycle(agent, owner_user_id)
-          :continue
-        end
-      end)
+          if agent.status != "active" do
+            Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
+            :stop
+          else
+            run_cycle(agent, owner_user_id)
+            :continue
+          end
+        end)
+      rescue
+        e in DBConnection.ConnectionError ->
+          Logger.warning(
+            "AgentRunner: agent #{agent_id} tick deferred — DB pool busy: #{Exception.message(e)}"
+          )
+
+          {:error, :db_pool_busy}
+
+        e ->
+          Logger.error("AgentRunner: agent #{agent_id} tick raised: #{Exception.message(e)}")
+
+          {:error, :exception}
+      end
 
     case result do
       {:ok, :stop} ->
@@ -212,8 +232,14 @@ defmodule KiteAgentHub.Kite.AgentRunner do
     }
   end
 
+  # Jittered schedule. With many active agents all ticking on the same
+  # 60s boundary, every connection in the pool gets checked out at the
+  # exact same instant — the queueing time for late arrivals exceeds
+  # the 15s checkout timeout and the runner crashes. Adding ±25% jitter
+  # spreads the load so the pool can serve them in turn.
   defp schedule_tick(interval) do
-    Process.send_after(self(), :tick, interval)
+    jittered = interval + :rand.uniform(div(interval, 2)) - div(interval, 4)
+    Process.send_after(self(), :tick, jittered)
   end
 
   defp via(agent_id) do
