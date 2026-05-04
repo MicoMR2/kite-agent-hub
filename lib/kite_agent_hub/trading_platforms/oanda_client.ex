@@ -49,6 +49,7 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
   end
 
   @valid_granularities ~w(M1 M5 M15 M30 H1 H4 D)
+  @valid_price_sources ~w(M B A)
 
   @doc """
   GET /v3/instruments/{name}/candles — OHLC candles for chart rendering.
@@ -56,9 +57,17 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
   `instrument` must match the OANDA symbol convention (e.g. EUR_USD);
   validated against a strict regex before URL interpolation to prevent
   path traversal. `granularity` must be one of `@valid_granularities`
-  (M1..D). `count` is clamped to 1..500.
+  (M1..D). `count` is clamped to 1..500. `price` must be one of
+  `@valid_price_sources` ("M" mid, "B" bid, "A" ask) — defaults to mid.
   """
-  def candles(token, instrument, granularity \\ "M5", count \\ 120, env \\ :practice)
+  def candles(
+        token,
+        instrument,
+        granularity \\ "M5",
+        count \\ 120,
+        env \\ :practice,
+        price \\ "M"
+      )
       when is_binary(token) and is_binary(instrument) do
     cond do
       not valid_instrument?(instrument) ->
@@ -67,11 +76,18 @@ defmodule KiteAgentHub.TradingPlatforms.OandaClient do
       granularity not in @valid_granularities ->
         {:error, :invalid_granularity}
 
+      price not in @valid_price_sources ->
+        {:error, :invalid_price_source}
+
       true ->
         clamped = count |> max(1) |> min(500)
 
         query =
-          URI.encode_query(%{"granularity" => granularity, "count" => clamped, "price" => "M"})
+          URI.encode_query(%{
+            "granularity" => granularity,
+            "count" => clamped,
+            "price" => price
+          })
 
         get("/instruments/" <> instrument <> "/candles?" <> query, token, env)
     end
