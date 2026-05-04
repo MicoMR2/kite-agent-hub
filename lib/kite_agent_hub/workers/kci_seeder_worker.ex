@@ -114,30 +114,46 @@ defmodule KiteAgentHub.Workers.KciSeederWorker do
     end
   end
 
-  defp fetch_crypto_bars(org_id, symbol, _timeframe) do
-    # EquityOracle does not yet expose crypto bars (snapshots only) —
-    # fall back to the snapshots minute/daily bar so the seeder still
-    # produces SOME crypto data points until a dedicated bars wrapper
-    # lands. Returns 1-2 bars per symbol so the seeder logs a small
-    # but non-zero count instead of skipping crypto entirely.
-    case EquityOracle.crypto_snapshots(org_id, [symbol]) do
-      {:ok, snapshots_map} when is_map(snapshots_map) ->
-        bars =
-          snapshots_map
-          |> Map.values()
-          |> Enum.flat_map(fn snap ->
-            [
-              snap["minuteBar"],
-              snap["dailyBar"],
-              snap["prevDailyBar"]
-            ]
-            |> Enum.filter(&is_map/1)
-          end)
-
+  defp fetch_crypto_bars(org_id, symbol, timeframe) do
+    # EquityOracle.crypto_bars/4 now wraps the dedicated
+    # /v1beta3/crypto/us/bars endpoint, giving us a full historical
+    # series instead of the 1-2 bars the old snapshot fallback returned.
+    # The Seeder's backtest walk needs hold+1 data points to emit any
+    # synthetic insights, so a real series is required.
+    case EquityOracle.crypto_bars(org_id, [symbol], timeframe, @bars_per_run) do
+      {:ok, bars_map} when is_map(bars_map) ->
+        # crypto_bars returns %{"BTC/USD" => [bar, ...]}; unwrap the
+        # bars list for the requested symbol (try both slash and no-slash
+        # forms since clean_crypto_symbols normalises to slash).
+        slash_sym = to_slash(symbol)
+        bars = Map.get(bars_map, slash_sym) || Map.get(bars_map, symbol) || []
         {:ok, bars}
+
+      {:ok, _} ->
+        {:ok, []}
 
       {:error, _} = err ->
         err
+    end
+  end
+
+  # Ensure the symbol is in the slash form that Alpaca returns keys in.
+  # "BTCUSD" → "BTC/USD"; "BTC/USD" passthrough.
+  defp to_slash(sym) do
+    cond do
+      String.contains?(sym, "/") ->
+        sym
+
+      String.ends_with?(sym, "USDC") ->
+        base = String.replace_suffix(sym, "USDC", "")
+        "#{base}/USDC"
+
+      String.ends_with?(sym, "USD") ->
+        base = String.replace_suffix(sym, "USD", "")
+        "#{base}/USD"
+
+      true ->
+        sym
     end
   end
 
