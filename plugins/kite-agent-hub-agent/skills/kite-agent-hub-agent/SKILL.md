@@ -53,6 +53,15 @@ Core endpoints:
 - `GET /edge-scores` — live QRB edge scores for all open positions and suggestions
 - `GET /collective-intelligence` — opt-in shared trade insights (403 when workspace has not opted in)
 - `GET /historical-trades` — your own bucketed past-trade outcomes (per platform, per market, recent fills). Always available, no opt-in. Pair with `?platform=oanda&days=30` to scope. Different from KCI: this is YOUR history, KCI is the cross-org corpus.
+
+## Live market-data oracle (server-side)
+
+KAH ships an `EquityOracle` module that wraps the Alpaca data API using the same Alpaca credentials the org has configured for trading. Server-side workers (signal engines, edge scorers) consume this directly — agents do not call it via HTTP. Capabilities:
+- Stock snapshots, latest bid/ask, latest trade prints, historical bars (`1Min`..`1Month` timeframes)
+- Crypto snapshots, latest bid/ask via `/v1beta3/crypto/us` (Alpaca own venue) — symbol format `BTC/USD`
+- Historical Benzinga news for sentiment analysis (Alpaca free tier includes news)
+
+Agents should keep using `GET /edge-scores` and `GET /portfolio` for their own decisions; EquityOracle exists so the rule-based strategy and signal engines have one consistent live-data path instead of mixing CoinGecko + Alpaca + ad-hoc calls.
 - `GET /trades` — your trade history
 - `GET /trades/:id` — trade details
 - `POST /trades` — submit a trade

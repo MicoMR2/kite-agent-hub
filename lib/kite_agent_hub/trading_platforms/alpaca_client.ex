@@ -222,6 +222,164 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     end
   end
 
+  @doc """
+  GET /v2/stocks/quotes/latest — most recent bid/ask for one or many
+  stock symbols. Returns `{:ok, %{symbol => quote_map}}` where each
+  quote_map is the raw OANDA-shape `%{"bp", "bs", "ap", "as", "t", ...}`
+  payload, or `{:ok, %{}}` when nothing matches.
+  """
+  def latest_quotes(key_id, secret, symbols) when is_list(symbols) do
+    case clean_symbols(symbols) do
+      [] ->
+        {:ok, %{}}
+
+      list ->
+        get_data(
+          key_id,
+          secret,
+          "/v2/stocks/quotes/latest?symbols=#{Enum.join(list, ",")}&feed=iex",
+          fn body -> {:ok, Map.get(body, "quotes", %{})} end,
+          "latest_quotes"
+        )
+    end
+  end
+
+  @doc "GET /v2/stocks/trades/latest — same shape as latest_quotes but trades."
+  def latest_trades(key_id, secret, symbols) when is_list(symbols) do
+    case clean_symbols(symbols) do
+      [] ->
+        {:ok, %{}}
+
+      list ->
+        get_data(
+          key_id,
+          secret,
+          "/v2/stocks/trades/latest?symbols=#{Enum.join(list, ",")}&feed=iex",
+          fn body -> {:ok, Map.get(body, "trades", %{})} end,
+          "latest_trades"
+        )
+    end
+  end
+
+  @doc """
+  GET /v1beta3/crypto/{loc}/snapshots — current crypto snapshot bundle
+  (latest trade/quote, minute/daily/prev-daily bars). Default loc is
+  `us` (Alpaca's own crypto exchange). Symbol format is `BTC/USD` —
+  the slash is required.
+  """
+  def crypto_snapshots(key_id, secret, symbols, loc \\ "us") when is_list(symbols) do
+    case clean_crypto_symbols(symbols) do
+      [] ->
+        {:ok, %{}}
+
+      list ->
+        get_data(
+          key_id,
+          secret,
+          "/v1beta3/crypto/#{loc}/snapshots?symbols=#{Enum.join(list, ",")}",
+          fn body -> {:ok, Map.get(body, "snapshots", %{})} end,
+          "crypto_snapshots"
+        )
+    end
+  end
+
+  @doc "GET /v1beta3/crypto/{loc}/latest/quotes — latest crypto bid/ask map."
+  def crypto_latest_quotes(key_id, secret, symbols, loc \\ "us") when is_list(symbols) do
+    case clean_crypto_symbols(symbols) do
+      [] ->
+        {:ok, %{}}
+
+      list ->
+        get_data(
+          key_id,
+          secret,
+          "/v1beta3/crypto/#{loc}/latest/quotes?symbols=#{Enum.join(list, ",")}",
+          fn body -> {:ok, Map.get(body, "quotes", %{})} end,
+          "crypto_latest_quotes"
+        )
+    end
+  end
+
+  @doc """
+  GET /v1beta1/news — historical Benzinga news for sentiment analysis.
+  `opts` accepts :symbols (list), :limit (1..50), :start, :end, :sort,
+  :include_content, :exclude_contentless. The auth headers are the
+  standard Alpaca pair so any org with Alpaca creds gets news for free.
+  """
+  def news(key_id, secret, opts \\ []) do
+    params = news_query(opts)
+
+    get_data(
+      key_id,
+      secret,
+      "/v1beta1/news" <> if(params == "", do: "", else: "?" <> params),
+      fn body -> {:ok, Map.get(body, "news", [])} end,
+      "news"
+    )
+  end
+
+  defp news_query(opts) do
+    [
+      symbols: opts |> Keyword.get(:symbols, []) |> List.wrap() |> Enum.join(","),
+      start: Keyword.get(opts, :start),
+      end: Keyword.get(opts, :end),
+      sort: Keyword.get(opts, :sort, "desc"),
+      limit: opts |> Keyword.get(:limit, 10) |> max(1) |> min(50),
+      include_content: Keyword.get(opts, :include_content),
+      exclude_contentless: Keyword.get(opts, :exclude_contentless, true),
+      page_token: Keyword.get(opts, :page_token)
+    ]
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+    |> URI.encode_query()
+  end
+
+  defp clean_symbols(symbols) do
+    symbols
+    |> Enum.map(&(&1 |> to_string() |> String.trim() |> String.upcase()))
+    |> Enum.filter(&Regex.match?(@ticker_regex, &1))
+    |> Enum.uniq()
+  end
+
+  # Crypto symbols come in two forms: `BTC/USD` (modern, Alpaca v3) and
+  # `BTCUSD` (legacy). Normalize to slash form which the v1beta3 endpoints
+  # require, and accept either input.
+  defp clean_crypto_symbols(symbols) do
+    symbols
+    |> Enum.map(fn s ->
+      raw = s |> to_string() |> String.trim() |> String.upcase()
+
+      cond do
+        String.contains?(raw, "/") -> raw
+        String.ends_with?(raw, "USD") -> String.replace(raw, ~r/USD$/, "/USD")
+        String.ends_with?(raw, "USDC") -> String.replace(raw, ~r/USDC$/, "/USDC")
+        true -> raw
+      end
+    end)
+    |> Enum.filter(&Regex.match?(~r"^[A-Z]{2,8}/[A-Z]{2,8}$", &1))
+    |> Enum.uniq()
+  end
+
+  # Shared HTTP fetcher for the data endpoints. Handles the auth
+  # headers + the standard 200 / 401 / other / transport branches so
+  # the public functions stay focused on parsing.
+  defp get_data(key_id, secret, path, parser, label) do
+    url = @data_base <> path
+
+    headers = [
+      {"APCA-API-KEY-ID", key_id},
+      {"APCA-API-SECRET-KEY", secret}
+    ]
+
+    case Req.get(url, headers: headers, retry: false) do
+      {:ok, %{status: 200, body: body}} when is_map(body) -> parser.(body)
+      {:ok, %{status: 200, body: body}} when is_list(body) -> {:ok, body}
+      {:ok, %{status: 200}} -> {:ok, %{}}
+      {:ok, %{status: 401}} -> {:error, :unauthorized}
+      {:ok, %{status: status}} -> {:error, "alpaca #{label} #{status}"}
+      {:error, reason} -> {:error, "alpaca #{label} HTTP: #{inspect(reason)}"}
+    end
+  end
+
   defp extract_latest_trade_prices(body) do
     Enum.reduce(body, %{}, fn {sym, payload}, acc ->
       price =
