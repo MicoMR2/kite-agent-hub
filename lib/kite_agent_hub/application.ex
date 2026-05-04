@@ -18,6 +18,10 @@ defmodule KiteAgentHub.Application do
       # In-memory ring-buffer log — must start before AgentRunnerSupervisor
       # so runners can push entries from their first tick.
       KiteAgentHub.Kite.AgentLog,
+      # Alpaca WebSocket streaming supervisor — starts feeds on demand.
+      # No feeds are started at boot; call AlpacaStreamSupervisor.start_feed/3
+      # from the dashboard or a background task after resolving credentials.
+      KiteAgentHub.TradingPlatforms.AlpacaStreamSupervisor,
       KiteAgentHub.Kite.AgentRunnerSupervisor,
       KiteAgentHubWeb.Endpoint
     ]

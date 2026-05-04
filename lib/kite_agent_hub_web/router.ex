@@ -57,6 +57,10 @@ defmodule KiteAgentHubWeb.Router do
     get "/broker/orders", BrokerOrdersController, :index
     delete "/broker/orders/:id", BrokerOrdersController, :delete
     get "/market-data/kalshi", KalshiMarketController, :show
+    # Alpaca WebSocket streaming feed management
+    post "/stream/start", StreamController, :start
+    delete "/stream/stop", StreamController, :stop
+    get "/stream/status", StreamController, :status
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
