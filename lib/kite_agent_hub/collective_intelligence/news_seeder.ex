@@ -28,16 +28,16 @@ defmodule KiteAgentHub.CollectiveIntelligence.NewsSeeder do
   @positive_words ~w(
     beat beats beating exceeded exceeds outperform outperforms upgraded upgrade
     surges surge surging rallies rally rallying rises rise rising gains gain
-    record high bullish strong stronger strength profit profits boom booming
-    growth grows growing expansion expands expands breakthrough innovation
-    optimistic confident confidence top tops
+    record bullish strong stronger strength profit profits boom booming
+    growth grows growing expansion expands breakthrough innovation
+    optimistic confident confidence
   )
 
   @negative_words ~w(
     miss misses missed disappoints disappoint disappointing falls fall falling
     drops drop dropping declines decline declining slumps slump slumping
     downgraded downgrade warning warns warn losses loss cuts cut cutting
-    weak weaker weakness bearish concern concerns concerns feared fear
+    weak weaker weakness bearish concern concerns feared fear
     struggles struggle struggling crisis downturn contraction
   )
 
