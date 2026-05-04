@@ -249,6 +249,78 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     end
   end
 
+  @doc """
+  Fetch resting (pending) limit orders — orders sitting in the book
+  awaiting a counterparty fill. Filters server-side by `status=resting`
+  so the response only contains open, cancellable orders.
+
+  Returns `{:ok, [order_map]}` where each order includes an `:order_id`
+  field usable with `cancel_order/4` or `amend_order/6`.
+  """
+  def list_pending_orders(key_id, pem, env \\ "paper") do
+    case get("/portfolio/orders?status=resting&limit=200", key_id, pem, env) do
+      {:ok, %{"orders" => list}} when is_list(list) ->
+        {:ok, Enum.map(list, &parse_order/1)}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Fetch a single order by its Kalshi order ID.
+
+  Returns `{:ok, order_map}` or `{:error, reason}`. Useful for polling
+  the fill status of a specific resting order without fetching the full
+  pending list.
+  """
+  def get_order(key_id, pem, order_id, env \\ "paper") do
+    case get("/portfolio/orders/#{order_id}", key_id, pem, env) do
+      {:ok, %{"order" => o}} when is_map(o) -> {:ok, parse_order(o)}
+      {:ok, _} -> {:error, "kalshi get_order: unexpected response shape"}
+      err -> err
+    end
+  end
+
+  @doc """
+  Cancel a single resting order by its Kalshi order ID.
+
+  `DELETE /portfolio/orders/{order_id}` returns the cancelled order.
+  Kalshi does NOT use HTTP 204 here — it returns 200 with the order body.
+
+  Returns:
+  - `{:ok, :cancelled}` on success
+  - `{:ok, :already_terminal}` when the order is filled/cancelled/expired
+    (Kalshi returns 400 with `code: "order_not_found"` or similar)
+  - `{:error, reason}` on auth or transport failure
+  """
+  def cancel_order(key_id, pem, order_id, env \\ "paper") do
+    delete("/portfolio/orders/#{order_id}", key_id, pem, env)
+  end
+
+  @doc """
+  Amend a resting order's price and/or count in place.
+
+  Kalshi supports `PATCH /portfolio/orders/{order_id}` to atomically
+  adjust a limit order without cancelling + re-entering. If only one
+  of `price_cents` or `count` needs to change, pass `nil` for the other.
+
+  Returns `{:ok, order_map}` or `{:error, reason}`.
+  """
+  def amend_order(key_id, pem, order_id, opts \\ [], env \\ "paper") do
+    body =
+      %{}
+      |> put_optional("count", opts[:count])
+      |> put_optional("yes_price", opts[:yes_price_cents])
+      |> put_optional("no_price", opts[:no_price_cents])
+
+    patch("/portfolio/orders/#{order_id}", body, key_id, pem, env)
+    |> parse_placed_order()
+  end
+
   @doc "Fetch settlements. Returns list of settlement maps."
   def settlements(key_id, pem, limit \\ 20, env \\ "paper") do
     case get("/portfolio/settlements?limit=#{limit}", key_id, pem, env) do
@@ -409,6 +481,83 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
 
   defp parse_placed_order({:ok, _}), do: {:error, "unexpected kalshi order response shape"}
   defp parse_placed_order(err), do: err
+
+  # PATCH helper for amend_order. Mirrors post/5 but uses Req.patch.
+  defp patch(path, body, key_id, pem, env) do
+    ts_ms = System.os_time(:millisecond)
+    full_path = @api_prefix <> path
+    msg = "#{ts_ms}PATCH#{full_path}"
+
+    case sign_request(msg, pem) do
+      {:ok, signature_b64} ->
+        headers = [
+          {"KALSHI-ACCESS-KEY", key_id},
+          {"KALSHI-ACCESS-SIGNATURE", signature_b64},
+          {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
+        ]
+
+        case Req.patch(base_host(env) <> full_path, json: body, headers: headers) do
+          {:ok, %{status: s, body: resp_body}} when s in [200, 201] ->
+            {:ok, resp_body}
+
+          {:ok, %{status: 401, body: resp_body}} ->
+            {:error, "kalshi 401: #{inspect(resp_body)}"}
+
+          {:ok, %{status: status, body: resp_body}} ->
+            {:error, "kalshi #{status}: #{inspect(resp_body)}"}
+
+          {:error, reason} ->
+            {:error, "kalshi HTTP: #{inspect(reason)}"}
+        end
+
+      {:error, reason} ->
+        {:error, "kalshi sign failed: #{inspect(reason)}"}
+    end
+  end
+
+  # DELETE helper for cancel_order.
+  defp delete(path, key_id, pem, env) do
+    require Logger
+
+    ts_ms = System.os_time(:millisecond)
+    full_path = @api_prefix <> path
+    msg = "#{ts_ms}DELETE#{full_path}"
+
+    case sign_request(msg, pem) do
+      {:ok, signature_b64} ->
+        headers = [
+          {"KALSHI-ACCESS-KEY", key_id},
+          {"KALSHI-ACCESS-SIGNATURE", signature_b64},
+          {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
+        ]
+
+        url = base_host(env) <> full_path
+
+        case Req.delete(url, headers: headers, retry: false) do
+          {:ok, %{status: s}} when s in [200, 204] ->
+            {:ok, :cancelled}
+
+          {:ok, %{status: 400, body: body}} ->
+            # Kalshi returns 400 with a code string when the order is
+            # not in a cancellable state (already filled / expired).
+            # Treat as idempotent so the UI can safely retry.
+            Logger.info("Kalshi DELETE #{path} — 400 (not cancellable): #{inspect(body)}")
+            {:ok, :already_terminal}
+
+          {:ok, %{status: 401, body: body}} ->
+            {:error, "kalshi 401: #{inspect(body)}"}
+
+          {:ok, %{status: status, body: body}} ->
+            {:error, "kalshi #{status}: #{inspect(body)}"}
+
+          {:error, reason} ->
+            {:error, "kalshi HTTP: #{inspect(reason)}"}
+        end
+
+      {:error, reason} ->
+        {:error, "kalshi sign failed: #{inspect(reason)}"}
+    end
+  end
 
   defp get(path, key_id, pem, env) do
     ts_ms = System.os_time(:millisecond)
