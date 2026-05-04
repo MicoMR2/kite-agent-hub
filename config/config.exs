@@ -125,7 +125,13 @@ config :kite_agent_hub, Oban,
        # settlement path never returns a terminal status — those stuck
        # rows block same-symbol re-entry via wash-trade rules until a
        # human intervenes.
-       {"* * * * *", KiteAgentHub.Workers.StuckTradeSweeper}
+       {"* * * * *", KiteAgentHub.Workers.StuckTradeSweeper},
+       # Weekly bootstrap of the Kite Collective Intelligence corpus
+       # from public market-data backtests. Synthesizes ~50 outcomes
+       # per seed market (top 10 equities + 3 crypto) so new agents
+       # have meaningful baseline win-rate insights from day 1.
+       # Idempotent on source_trade_hash — re-runs upsert cleanly.
+       {"0 4 * * 0", KiteAgentHub.Workers.KciSeederWorker}
      ]}
   ]
 

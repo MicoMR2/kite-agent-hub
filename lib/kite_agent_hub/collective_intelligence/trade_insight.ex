@@ -5,7 +5,11 @@ defmodule KiteAgentHub.CollectiveIntelligence.TradeInsight do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @agent_types ~w(trading research conversational unknown)
+  # `synthetic` rows are public-seed insights inserted by KciSeederWorker
+  # from historical-data backtests — kept in a distinct bucket so callers
+  # can filter them in or out depending on whether they want real-trade
+  # outcomes only.
+  @agent_types ~w(trading research conversational unknown synthetic)
   @platforms ~w(alpaca kalshi oanda_practice polymarket kite unknown)
   @market_classes ~w(equity option crypto forex prediction other)
   @outcome_buckets ~w(profit loss flat settled cancelled failed open)
