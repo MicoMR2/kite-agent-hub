@@ -7,6 +7,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
   alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
+  # Debounce interval for stats refresh triggered by trade broadcasts.
+  # Multiple trades settling in quick succession only trigger one API
+  # call instead of hammering Alpaca/Kalshi on every single event.
+  @stats_debounce_ms 3_000
+
   @impl true
   def mount(_params, _session, socket) do
     try do
@@ -536,11 +541,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   # ── PubSub / async messages ───────────────────────────────────────────────────
-
-  # Debounce interval for stats refresh triggered by trade broadcasts.
-  # Multiple trades settling in quick succession only trigger one API
-  # call instead of hammering Alpaca/Kalshi on every single event.
-  @stats_debounce_ms 3_000
 
   @impl true
   def handle_info({:trade_created, trade}, socket) do
@@ -4706,24 +4706,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
     Keep messages short. You are talking to humans and other agents in a shared room. Avoid filler.
     When something fails, post the exact error string + the trade id so the team can grep logs.
     """
-  end
-
-  defp mcp_config_json(_agent) do
-    Jason.encode!(
-      %{
-        "mcpServers" => %{
-          "kah" => %{
-            "command" => "node",
-            "args" => ["mcp-server/index.js"],
-            "env" => %{
-              "KAH_AGENT_TOKEN" => @token_placeholder,
-              "KAH_BASE_URL" => "https://kite-agent-hub.fly.dev"
-            }
-          }
-        }
-      },
-      pretty: true
-    )
   end
 
   # Token mask: show first 8 chars + dots when collapsed.

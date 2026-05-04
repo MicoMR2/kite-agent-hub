@@ -3,7 +3,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
 
   require Logger
 
-  alias KiteAgentHub.{Credentials, Orgs, Trading}
+  alias KiteAgentHub.{Credentials, Orgs}
 
   @providers [
     %{
