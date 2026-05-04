@@ -128,6 +128,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:kalshi_data, nil)
       |> assign(:agent_log_entries, [])
       |> assign(:agent_log_subscribed_id, nil)
+      |> assign(:alpaca_live_tick_enabled, false)
+      |> assign(:alpaca_live_tick_status, :off)
+      |> assign(:alpaca_live_tick_prices, %{})
+      |> assign(:alpaca_live_tick_subscribed_symbols, [])
       |> assign(:wallet_txs, nil)
       |> assign(:wallet_tokens, nil)
       |> assign(:show_agent_context, false)
@@ -186,6 +190,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:kalshi_data, nil)
     |> assign(:agent_log_entries, [])
     |> assign(:agent_log_subscribed_id, nil)
+    |> assign(:alpaca_live_tick_enabled, false)
+    |> assign(:alpaca_live_tick_status, :off)
+    |> assign(:alpaca_live_tick_prices, %{})
+    |> assign(:alpaca_live_tick_subscribed_symbols, [])
     |> assign(:wallet_txs, nil)
     |> assign(:wallet_tokens, nil)
     |> assign(:show_agent_context, false)
@@ -369,6 +377,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
               KiteAgentHub.Kite.AgentLog.unsubscribe(id)
               assign(socket, :agent_log_subscribed_id, nil)
           end
+      end
+
+    # If the user is leaving the Alpaca tab while live ticks are on,
+    # release the per-symbol PubSub subscriptions so we do not keep
+    # receiving frames into a tab that is not rendering.
+    socket =
+      if tab_atom != :alpaca and socket.assigns[:alpaca_live_tick_enabled] do
+        disable_alpaca_live_ticks(socket)
+      else
+        socket
       end
 
     socket
@@ -572,6 +590,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
      socket
      |> assign(:alpaca_period, period)
      |> assign(:alpaca_data, :loading)}
+  end
+
+  # Live tick toggle: switch between 30s polling and push-based streaming
+  # for the Alpaca tab's open-positions price column. When ON, we start
+  # the AlpacaStream :stocks feed for the symbols currently in view and
+  # subscribe this LiveView to each per-symbol PubSub topic. Trade-tick
+  # events flow into @alpaca_live_tick_prices and overlay the static
+  # `current_price` from the polling response.
+  def handle_event("alpaca_live_tick_toggle", _params, socket) do
+    if socket.assigns.alpaca_live_tick_enabled do
+      {:noreply, disable_alpaca_live_ticks(socket)}
+    else
+      {:noreply, enable_alpaca_live_ticks(socket)}
+    end
   end
 
   # ── PubSub / async messages ───────────────────────────────────────────────────
@@ -1305,6 +1337,85 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp parse_positive_int(value) when is_integer(value) and value > 0, do: value
   defp parse_positive_int(_), do: nil
+
+  # ── Alpaca live-tick toggle helpers ──────────────────────────────────────────
+
+  alias KiteAgentHub.TradingPlatforms.{AlpacaStream, AlpacaStreamSupervisor}
+
+  defp enable_alpaca_live_ticks(socket) do
+    org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
+
+    symbols =
+      case socket.assigns[:alpaca_data] do
+        %{positions: positions} when is_list(positions) ->
+          positions
+          |> Enum.map(& &1.symbol)
+          |> Enum.filter(&is_binary/1)
+          |> Enum.uniq()
+
+        _ ->
+          []
+      end
+
+    cond do
+      is_nil(org_id) ->
+        assign(socket, :alpaca_live_tick_status, :error)
+
+      symbols == [] ->
+        # Toggle on with zero open positions = nothing to stream. Set
+        # status so the UI can show the no-symbols hint instead of a
+        # silent no-op.
+        socket
+        |> assign(:alpaca_live_tick_enabled, true)
+        |> assign(:alpaca_live_tick_status, :no_symbols)
+
+      true ->
+        # Start the stocks feed (idempotent — returns :already_started
+        # if another LV/agent already opened it).
+        start_result =
+          AlpacaStreamSupervisor.start_feed(:stocks, org_id,
+            symbols: symbols,
+            topics: ["trades"]
+          )
+
+        case start_result do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, {:already_started, _pid}} ->
+            :ok
+
+          {:error, reason} ->
+            require Logger
+            Logger.warning("alpaca_live_tick start_feed failed: #{inspect(reason)}")
+        end
+
+        # Subscribe THIS LiveView process to each symbol's tick topic.
+        Enum.each(symbols, &AlpacaStream.subscribe(:stocks, &1))
+
+        socket
+        |> assign(:alpaca_live_tick_enabled, true)
+        |> assign(:alpaca_live_tick_status, :connecting)
+        |> assign(:alpaca_live_tick_subscribed_symbols, symbols)
+    end
+  end
+
+  defp disable_alpaca_live_ticks(socket) do
+    Enum.each(socket.assigns[:alpaca_live_tick_subscribed_symbols] || [], fn sym ->
+      Phoenix.PubSub.unsubscribe(KiteAgentHub.PubSub, AlpacaStream.topic(:stocks, sym))
+    end)
+
+    # NOTE: we do NOT stop the stream feed here. Other LiveViews or
+    # background agents may still be subscribed. Stopping the feed is
+    # a separate admin action — most disconnects (tab close, navigate
+    # away) just need the LV to release its subscriptions.
+
+    socket
+    |> assign(:alpaca_live_tick_enabled, false)
+    |> assign(:alpaca_live_tick_status, :off)
+    |> assign(:alpaca_live_tick_subscribed_symbols, [])
+    |> assign(:alpaca_live_tick_prices, %{})
+  end
 
   defp format_oanda_error({:http, status, %{"errorMessage" => msg}}),
     do: "#{status} — #{msg}"
@@ -3363,10 +3474,47 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                   <%!-- Positions --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
-                    <div class="px-6 py-4 border-b border-white/10">
-                      <h3 class="text-xs font-black text-white uppercase tracking-widest">
-                        Open Positions
-                      </h3>
+                    <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap">
+                      <div class="flex items-center gap-3">
+                        <h3 class="text-xs font-black text-white uppercase tracking-widest">
+                          Open Positions
+                        </h3>
+
+                        <%!-- Live tick status pill — only meaningful when toggle is on --%>
+                        <%= if @alpaca_live_tick_enabled do %>
+                          <% {dot_color, label} =
+                            case @alpaca_live_tick_status do
+                              :live -> {"bg-emerald-500", "LIVE"}
+                              :connecting -> {"bg-yellow-500", "CONNECTING"}
+                              :no_symbols -> {"bg-gray-500", "NO POSITIONS"}
+                              :error -> {"bg-red-500", "ERROR"}
+                              _ -> {"bg-gray-500", "OFF"}
+                            end %>
+                          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-white/15 bg-white/[0.05] text-[10px] font-bold uppercase tracking-widest text-white">
+                            <span class={["w-1.5 h-1.5 rounded-full", dot_color, "animate-pulse"]}>
+                            </span>
+                            {label}
+                          </span>
+                        <% end %>
+                      </div>
+
+                      <%!-- Toggle button. When ON, the LiveView subscribes to the
+                           AlpacaStream :stocks feed for every symbol in this table
+                           and overlays each row's Current price with the latest
+                           trade tick. Polling continues at 30s as a fallback. --%>
+                      <button
+                        phx-click="alpaca_live_tick_toggle"
+                        class={[
+                          "px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest transition-colors",
+                          if(@alpaca_live_tick_enabled,
+                            do: "bg-emerald-600 hover:bg-emerald-500 border-emerald-700 text-white",
+                            else:
+                              "bg-white/[0.05] hover:bg-white/[0.1] border-white/20 text-gray-300 hover:text-white"
+                          )
+                        ]}
+                      >
+                        {if @alpaca_live_tick_enabled, do: "Live ticks: ON", else: "Live ticks: OFF"}
+                      </button>
                     </div>
                     <%= if data.positions == [] do %>
                       <p class="px-6 py-8 text-center text-sm text-gray-600">No open positions.</p>
@@ -3406,7 +3554,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 ${:erlang.float_to_binary(p.avg_entry || 0.0, decimals: 2)}
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
-                                ${:erlang.float_to_binary(p.current_price || 0.0, decimals: 2)}
+                                <% live_price = Map.get(@alpaca_live_tick_prices, p.symbol)
+                                display_price = live_price || p.current_price || 0.0 %>
+                                <span class={[
+                                  if(live_price, do: "text-emerald-300", else: "text-gray-300")
+                                ]}>
+                                  ${:erlang.float_to_binary(display_price * 1.0, decimals: 2)}
+                                </span>
+                                <%= if live_price do %>
+                                  <span
+                                    title="Live tick from Alpaca stream"
+                                    class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"
+                                  >
+                                  </span>
+                                <% end %>
                               </td>
                               <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if (p.unrealized_pl || 0) >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if (p.unrealized_pl || 0) >= 0, do: "+", else: ""}${:erlang.float_to_binary(
@@ -4638,6 +4799,32 @@ defmodule KiteAgentHubWeb.DashboardLive do
     # Prepend newest entry; keep assigns list bounded to 100.
     entries = [entry | socket.assigns.agent_log_entries] |> Enum.take(100)
     {:noreply, assign(socket, :agent_log_entries, entries)}
+  end
+
+  # Live trade tick from AlpacaStream. Update the per-symbol live price
+  # map; the Alpaca tab template overlays this onto the static
+  # current_price column when present.
+  def handle_info(%{type: "t", symbol: sym, price: price}, socket)
+      when is_binary(sym) and is_number(price) do
+    prices = Map.put(socket.assigns[:alpaca_live_tick_prices] || %{}, sym, price)
+
+    # First tick that arrives flips status from :connecting → :live.
+    status =
+      case socket.assigns[:alpaca_live_tick_status] do
+        :live -> :live
+        _ -> :live
+      end
+
+    {:noreply,
+     socket
+     |> assign(:alpaca_live_tick_prices, prices)
+     |> assign(:alpaca_live_tick_status, status)}
+  end
+
+  # Other tick types (quotes, bars) ignored for now — could overlay
+  # bid/ask later if we add columns for it.
+  def handle_info(%{type: t}, socket) when t in ["q", "b", "n"] do
+    {:noreply, socket}
   end
 
   # Safety net: an unmatched handle_info or handle_event crashes the LV
