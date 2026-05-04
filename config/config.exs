@@ -135,7 +135,12 @@ config :kite_agent_hub, Oban,
        # News-sentiment seeder: seeds KCI with synthetic outcomes derived
        # from Benzinga headline sentiment. Daily at 05:00 UTC so it runs
        # after the bar-based seeder and captures the latest news cycle.
-       {"0 5 * * *", KiteAgentHub.Workers.NewsSentimentSeederWorker}
+       {"0 5 * * *", KiteAgentHub.Workers.NewsSentimentSeederWorker},
+       # Method-specific synthetic backtests — weekly Sunday 06:00 UTC.
+       # Gates each method's backtest on real entry conditions (e.g. M-007
+       # carry only runs when OANDA realised vol is below threshold).
+       # Idempotent on source_trade_hash.
+       {"0 6 * * 0", KiteAgentHub.Workers.MethodBacktestWorker}
      ]}
   ]
 
