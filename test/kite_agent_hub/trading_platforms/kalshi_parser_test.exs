@@ -64,6 +64,92 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiParserTest do
     end
   end
 
+  describe "parse_placed_order — fill detection" do
+    test "fully executed order surfaces full taker fill" do
+      response =
+        {:ok,
+         %{
+           "order" => %{
+             "order_id" => "ord_full",
+             "ticker" => "KXTEST-26JAN01-YES",
+             "side" => "yes",
+             "count" => 5,
+             "status" => "executed",
+             "taker_fill_count" => 5,
+             "taker_fill_cost" => 380,
+             "remaining_count" => 0,
+             "yes_price" => 76,
+             "no_price" => nil
+           }
+         }}
+
+      {:ok, parsed} = KalshiClient.parse_placed_order(response)
+
+      assert parsed.id == "ord_full"
+      assert parsed.status == "executed"
+      assert parsed.taker_fill_count == 5
+      assert parsed.taker_fill_cost == 380
+      assert parsed.remaining_count == 0
+      assert parsed.yes_price == 76
+    end
+
+    test "canceled IOC with partial fill exposes the filled portion" do
+      response =
+        {:ok,
+         %{
+           "order" => %{
+             "order_id" => "ord_partial",
+             "ticker" => "KXTEST-26JAN01-YES",
+             "side" => "yes",
+             "count" => 10,
+             "status" => "canceled",
+             "taker_fill_count" => 4,
+             "taker_fill_cost" => 284,
+             "remaining_count" => 6,
+             "yes_price" => 71
+           }
+         }}
+
+      {:ok, parsed} = KalshiClient.parse_placed_order(response)
+
+      assert parsed.status == "canceled"
+      assert parsed.taker_fill_count == 4
+      assert parsed.taker_fill_cost == 284
+      assert parsed.remaining_count == 6
+    end
+
+    test "canceled with no fills surfaces zero counts" do
+      response =
+        {:ok,
+         %{
+           "order" => %{
+             "order_id" => "ord_nofill",
+             "ticker" => "KXTEST-26JAN01-YES",
+             "side" => "yes",
+             "count" => 10,
+             "status" => "canceled",
+             "yes_price" => 71
+           }
+         }}
+
+      {:ok, parsed} = KalshiClient.parse_placed_order(response)
+
+      assert parsed.status == "canceled"
+      assert parsed.taker_fill_count == 0
+      assert parsed.taker_fill_cost == 0
+      assert parsed.remaining_count == 0
+    end
+
+    test "missing order envelope returns error" do
+      assert {:error, "unexpected kalshi order response shape"} =
+               KalshiClient.parse_placed_order({:ok, %{}})
+    end
+
+    test "passes through upstream errors unchanged" do
+      assert {:error, :timeout} = KalshiClient.parse_placed_order({:error, :timeout})
+    end
+  end
+
   describe "orderbook parser shape" do
     # The orderbook function lives behind get/4 (HTTP) so we exercise
     # the parsing slice through a small helper that reuses the same

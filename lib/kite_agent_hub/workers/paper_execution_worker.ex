@@ -378,34 +378,42 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   # (limit order waiting to match). Executed orders settle and attest
   # synchronously; resting orders stay open for a future settlement
   # worker to poll.
+  #
+  # A "canceled" response from an IOC order can still carry partial
+  # fills — `taker_fill_count > 0` means N contracts hit makers before
+  # the rest got cancelled. We settle that filled portion at the actual
+  # average fill price and only mark the trade failed when zero
+  # contracts cleared.
   defp handle_kalshi_response(trade, order, job_id) do
     update_attrs = maybe_put_order_id(%{}, order.id)
+    filled = Map.get(order, :taker_fill_count, 0)
 
     case order.status do
       "executed" ->
         Logger.info(
-          "PaperExecutionWorker job=#{job_id} provider=kalshi FILLED order=#{order.id}"
+          "PaperExecutionWorker job=#{job_id} provider=kalshi FILLED order=#{order.id} count=#{filled}"
         )
 
-        with {:ok, updated} <- Trading.update_trade(trade, update_attrs),
-             {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
-          enqueue_attestation(settled)
-          {:ok, settled}
-        else
-          {:error, reason} ->
-            Logger.error(
-              "PaperExecutionWorker job=#{job_id} provider=kalshi settle failed: #{inspect(reason)}"
-            )
+        attrs = maybe_put_partial_fill(update_attrs, order, trade)
+        settle_kalshi(trade, attrs, job_id, order.id)
 
-            {:error, reason}
-        end
+      status when status in ["canceled", "cancelled"] and filled > 0 ->
+        Logger.info(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi PARTIAL FILL order=#{order.id} filled=#{filled}/#{order.count}"
+        )
+
+        attrs = maybe_put_partial_fill(update_attrs, order, trade)
+        settle_kalshi(trade, attrs, job_id, order.id)
 
       status when status in ["canceled", "cancelled"] ->
+        limit_cents = order_limit_cents(order)
+        reason = "kalshi cancelled — 0 of #{order.count || trade.contracts} filled at #{limit_cents}c (likely IOC un-marketable)"
+
         Logger.info(
-          "PaperExecutionWorker job=#{job_id} provider=kalshi cancelled order=#{order.id}"
+          "PaperExecutionWorker job=#{job_id} provider=kalshi cancelled order=#{order.id} reason=#{reason}"
         )
 
-        mark_trade_failed(trade, "kalshi cancelled")
+        mark_trade_failed(trade, reason)
         {:error, :kalshi_cancelled}
 
       status ->
@@ -414,6 +422,59 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
         )
 
         Trading.update_trade(trade, update_attrs)
+    end
+  end
+
+  defp settle_kalshi(trade, attrs, job_id, order_id) do
+    with {:ok, updated} <- Trading.update_trade(trade, attrs),
+         {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
+      enqueue_attestation(settled)
+      {:ok, settled}
+    else
+      {:error, reason} ->
+        Logger.error(
+          "PaperExecutionWorker job=#{job_id} provider=kalshi settle failed order=#{order_id}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  # When Kalshi reports a partial (or full) taker fill, the trade row
+  # should reflect what actually cleared — not what we asked for.
+  # taker_fill_cost is total cents across all taker fills, so
+  # avg fill price (dollars) = cost / count / 100.
+  defp maybe_put_partial_fill(attrs, order, trade) do
+    filled = Map.get(order, :taker_fill_count, 0)
+    cost_cents = Map.get(order, :taker_fill_cost, 0)
+
+    cond do
+      filled <= 0 ->
+        attrs
+
+      cost_cents > 0 ->
+        avg = Decimal.div(Decimal.new(cost_cents), Decimal.new(filled * 100))
+
+        attrs
+        |> Map.put(:contracts, Decimal.new(filled))
+        |> Map.put(:fill_price, avg)
+
+      true ->
+        # Filled but no cost reported — keep existing fill_price, just
+        # update the contracts count so settle math is honest.
+        Map.put(attrs, :contracts, Decimal.new(filled))
+        |> tap(fn _ ->
+          Logger.warning(
+            "PaperExecutionWorker provider=kalshi partial fill missing taker_fill_cost trade=#{trade.id}"
+          )
+        end)
+    end
+  end
+
+  defp order_limit_cents(order) do
+    case Map.get(order, :side) do
+      "no" -> Map.get(order, :no_price)
+      _ -> Map.get(order, :yes_price)
     end
   end
 
