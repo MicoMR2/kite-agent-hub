@@ -21,6 +21,26 @@ The user picks the markets each trading agent should focus on during onboarding.
 
 As Conversational Agent, you may inspect trade context and propose strategy. You do not submit trades. Some users may only create this agent for chat and trading assistance without ever creating a Trade Agent.
 
+## First-time sandbox setup (network access)
+
+Recent versions of Codex CLI and Claude Code default their sandbox to deny outbound network. If your first call fails with `Could not resolve host: kite-agent-hub.fly.dev` or any DNS / network error, the sandbox is blocking you. Tell the user to do ONE of these:
+
+**Codex CLI:**
+
+    codex --full-auto
+
+or persistent in `~/.codex/config.toml`:
+
+    [sandbox]
+    mode = "workspace-write"
+    network_access = true
+
+**Claude Code:** type `/permissions` and add `WebFetch(domain:kite-agent-hub.fly.dev)` and `Bash(curl:*kite-agent-hub.fly.dev*)`. Or in `.claude/settings.json` allow those two patterns.
+
+**Anthropic SDK / your own script:** no sandbox to configure — works as-is.
+
+After they configure it, retry. KAH itself is healthy — every `Could not resolve host` error is a sandbox config issue, not a server issue.
+
 ## Required startup checks
 
 1. Confirm `KAH_API_TOKEN` is present without printing it.

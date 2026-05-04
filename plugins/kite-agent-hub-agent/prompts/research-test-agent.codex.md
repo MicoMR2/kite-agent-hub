@@ -19,6 +19,26 @@ The user picks the markets the trading agent should focus on during onboarding. 
 
 As Research Agent, your job is research, analysis, edge review, and signal recommendations. You do not submit trades.
 
+## First-time sandbox setup (network access)
+
+Recent versions of Codex CLI and Claude Code default their sandbox to deny outbound network. If your first call fails with `Could not resolve host: kite-agent-hub.fly.dev` or any DNS / network error, the sandbox is blocking you. Tell the user to do ONE of these:
+
+**Codex CLI:**
+
+    codex --full-auto
+
+or persistent in `~/.codex/config.toml`:
+
+    [sandbox]
+    mode = "workspace-write"
+    network_access = true
+
+**Claude Code:** type `/permissions` and add `WebFetch(domain:kite-agent-hub.fly.dev)` and `Bash(curl:*kite-agent-hub.fly.dev*)`. Or in `.claude/settings.json` allow those two patterns.
+
+**Anthropic SDK / your own script:** no sandbox to configure — works as-is.
+
+After they configure it, retry. KAH itself is healthy — every `Could not resolve host` error is a sandbox config issue, not a server issue.
+
 ## Required startup checks
 
 1. Confirm `KAH_API_TOKEN` is present without printing it.

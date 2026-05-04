@@ -1338,6 +1338,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp parse_positive_int(value) when is_integer(value) and value > 0, do: value
   defp parse_positive_int(_), do: nil
 
+  # JSON snippet rendered into the Agent Context modal's Claude Code
+  # setup details. Lives in a helper because raw `{` inside HEEx is
+  # reserved as the start of an Elixir expression — wrapping the
+  # literal in a function call sidesteps the parser.
+  defp claude_settings_snippet do
+    ~S"""
+    {"permissions": {"allow": [
+      "WebFetch(domain:kite-agent-hub.fly.dev)",
+      "Bash(curl:*kite-agent-hub.fly.dev*)"
+    ]}}
+    """
+  end
+
   # ── Alpaca live-tick toggle helpers ──────────────────────────────────────────
 
   alias KiteAgentHub.TradingPlatforms.{AlpacaStream, AlpacaStreamSupervisor}
@@ -4773,8 +4786,90 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <.icon name="hero-x-mark" class="w-5 h-5" />
               </button>
             </div>
-            <div class="p-6 overflow-y-auto max-h-[60vh]">
-              <pre class="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-black/40 rounded-xl p-4 border border-white/5">{@agent_context_text}</pre>
+
+            <div class="p-6 overflow-y-auto max-h-[60vh] space-y-6">
+              <%!-- ── Setup section — read this BEFORE pasting the prompt ── --%>
+              <div class="rounded-xl border border-yellow-500/30 bg-yellow-500/[0.04] p-5 space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-yellow-300 text-base">⚙️</span>
+                  <h3 class="text-xs font-black text-yellow-200 uppercase tracking-widest">
+                    First-time setup (one minute, then never again)
+                  </h3>
+                </div>
+                <p class="text-[11px] text-gray-300 leading-relaxed">
+                  Recent versions of <strong>Codex CLI</strong>
+                  and <strong>Claude Code</strong>
+                  default their sandbox to deny outbound network. Without this step the agent
+                  cannot reach
+                  <code class="px-1 py-0.5 rounded bg-white/[0.08] text-white">
+                    kite-agent-hub.fly.dev
+                  </code>
+                  — you will see a "Could not resolve host" error. Pick your runtime:
+                </p>
+
+                <div class="space-y-3">
+                  <details class="rounded-lg border border-white/10 bg-black/30">
+                    <summary class="cursor-pointer px-4 py-2.5 text-[11px] font-bold text-white uppercase tracking-widest hover:bg-white/[0.04]">
+                      Codex CLI
+                    </summary>
+                    <div class="px-4 pb-3 pt-1 space-y-2 text-[11px] text-gray-300">
+                      <p>One-shot per session:</p>
+                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">codex --full-auto</pre>
+                      <p>
+                        Or persistent (recommended) — add to <code class="bg-white/[0.06] px-1 rounded">~/.codex/config.toml</code>:
+                      </p>
+                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">[sandbox]
+    mode = "workspace-write"
+    network_access = true</pre>
+                    </div>
+                  </details>
+
+                  <details class="rounded-lg border border-white/10 bg-black/30">
+                    <summary class="cursor-pointer px-4 py-2.5 text-[11px] font-bold text-white uppercase tracking-widest hover:bg-white/[0.04]">
+                      Claude Code
+                    </summary>
+                    <div class="px-4 pb-3 pt-1 space-y-2 text-[11px] text-gray-300">
+                      <p>
+                        In-session: type
+                        <code class="bg-white/[0.06] px-1 rounded">/permissions</code>
+                        and add:
+                      </p>
+                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">WebFetch(domain:kite-agent-hub.fly.dev)
+    Bash(curl:*kite-agent-hub.fly.dev*)</pre>
+                      <p>
+                        Or persistent — in <code class="bg-white/[0.06] px-1 rounded">.claude/settings.json</code>:
+                      </p>
+                      <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">{claude_settings_snippet()}</pre>
+                    </div>
+                  </details>
+
+                  <details class="rounded-lg border border-white/10 bg-black/30">
+                    <summary class="cursor-pointer px-4 py-2.5 text-[11px] font-bold text-white uppercase tracking-widest hover:bg-white/[0.04]">
+                      Direct Anthropic SDK / your own script
+                    </summary>
+                    <div class="px-4 pb-3 pt-1 space-y-2 text-[11px] text-gray-300">
+                      <p>
+                        No sandbox to configure — should work as-is. If your script still cannot reach KAH, check your local firewall / VPN / proxy.
+                      </p>
+                    </div>
+                  </details>
+                </div>
+
+                <p class="text-[10px] text-gray-500 leading-relaxed">
+                  Quick verify (run in a regular terminal — bypasses any sandbox):
+                  <code class="block mt-1 px-2 py-1.5 rounded bg-black/60 border border-white/5 font-mono text-[10px] text-emerald-300 break-all">
+                    curl -sS -H "Authorization: Bearer YOUR_TOKEN" https://kite-agent-hub.fly.dev/api/v1/agents/me
+                  </code>
+                </p>
+              </div>
+
+              <%!-- ── The actual agent prompt ── --%>
+              <div class="space-y-2">
+                <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                  Agent prompt — paste into your LLM after sandbox is configured
+                </p>
+                <pre class="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-black/40 rounded-xl p-4 border border-white/5">{@agent_context_text}</pre>
+              </div>
             </div>
             <div class="px-6 py-4 border-t border-white/10 flex items-center justify-between">
               <p class="text-[10px] text-gray-600 uppercase tracking-widest">
