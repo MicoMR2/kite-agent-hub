@@ -8,11 +8,38 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
   Every `interval_ms` (default 60s) it:
   1. Reloads the agent — stops itself if agent is no longer active.
-  2. Fetches a lightweight market snapshot from Kite chain (block number + vault balance).
-  3. Calls SignalEngine.generate/2 with the context.
-  4. If {:ok, signal} — enqueues a TradeExecutionWorker job via Oban.
-  5. If {:hold, _}   — logs and waits for the next tick.
-  6. Enqueues a PositionSyncWorker on every tick to keep settlements current.
+  2. Runs the rule-based exit pass (DB: reads edge scores / open trades).
+  3. Builds a market context snapshot (DB: reads trade counts).
+  4. **Releases the DB connection** — the `Repo.with_user` block ends here.
+  5. Calls SignalEngine.generate/2 with the context (LLM HTTP call).
+  6. If {:ok, signal} — enqueues a TradeExecutionWorker job via Oban.
+  7. If {:hold, _}   — logs and waits for the next tick.
+  8. Enqueues a PositionSyncWorker on every tick to keep settlements current.
+
+  ## DB pool design
+
+  The original code ran the entire cycle — including the LLM call — inside
+  `Repo.with_user/2`. That held a DB connection for the full LLM round-trip
+  (~1-5 seconds per agent). With N active agents all ticking together, the
+  pool of `pool_size` connections was exhausted by tick N+1, causing
+  `DBConnection.ConnectionError` cascades that restarted the GenServers and
+  hammered the pool further.
+
+  The fix is a two-phase split:
+
+  **Phase 1 — DB phase** (`Repo.with_user` block):
+    - Load agent, check status.
+    - Run rule-based exit pass (needs RLS-scoped edge scores).
+    - Build context map (needs RLS-scoped trade counts / open trades).
+    - Returns `{:ok, {agent, context}}` or `{:ok, :stop}`.
+
+  **Phase 2 — LLM phase** (after the block, no DB connection held):
+    - `SignalEngine.generate(agent, context)` — external HTTP, may take seconds.
+    - `Oban.insert` for TradeExecutionWorker — uses its own short-lived connection.
+    - `Oban.insert` for PositionSyncWorker — same.
+
+  `Oban.insert` does need a DB connection but only for a ~1ms INSERT, not a
+  multi-second LLM call, so we move those outside `Repo.with_user` too.
 
   The runner is supervised by AgentRunnerSupervisor.
   """
@@ -70,13 +97,14 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         :tick,
         %{agent_id: agent_id, interval_ms: interval, owner_user_id: owner_user_id} = state
       ) do
-    # Wrap the with_user transaction in try/rescue so a transient DB
-    # pool exhaustion (DBConnection.ConnectionError, RuntimeError from
-    # transaction timeout, etc.) does not terminate the GenServer.
-    # When the GenServer terminates the supervisor restarts it, which
-    # immediately ticks again and hammers the pool further — exactly
-    # the cascade we saw in production logs.
-    result =
+    # ── Phase 1: DB phase ───────────────────────────────────────────────────────
+    # Run everything that needs a RLS-scoped DB connection inside a single
+    # Repo.with_user block. The block returns either:
+    #   {:ok, :stop}                  — agent deactivated; stop the GenServer
+    #   {:ok, {:run, agent, context, rule_actions}} — proceed to LLM phase
+    #
+    # The block ENDS before the LLM call so the connection is released promptly.
+    db_result =
       try do
         Repo.with_user(owner_user_id, fn ->
           agent = Trading.get_agent!(agent_id)
@@ -85,8 +113,11 @@ defmodule KiteAgentHub.Kite.AgentRunner do
             Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
             :stop
           else
-            run_cycle(agent, owner_user_id)
-            :continue
+            # Rule-based exit pass needs the RLS context for edge-score queries.
+            rule_actions = collect_rule_based_actions(agent)
+            # Context build reads trade counts / open positions — also needs RLS.
+            context = build_context(agent)
+            {:run, agent, context, rule_actions}
           end
         end)
       rescue
@@ -101,6 +132,21 @@ defmodule KiteAgentHub.Kite.AgentRunner do
           Logger.error("AgentRunner: agent #{agent_id} tick raised: #{Exception.message(e)}")
 
           {:error, :exception}
+      end
+
+    # ── Phase 2: LLM + enqueue phase (no DB connection held) ───────────────────
+    result =
+      case db_result do
+        {:ok, :stop} ->
+          {:ok, :stop}
+
+        {:ok, {:run, agent, context, rule_actions}} ->
+          # DB connection is released. Now do the slow I/O.
+          run_post_db_phase(agent, context, rule_actions, owner_user_id)
+          {:ok, :continue}
+
+        {:error, _} = err ->
+          err
       end
 
     case result do
@@ -120,24 +166,35 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  defp run_cycle(agent, owner_user_id) do
-    # Always sync open positions — pass owner_user_id so SettlementWorker can satisfy RLS
+  # Collect rule-based exit actions while still inside Repo.with_user.
+  # Returns a (possibly empty) list of action maps. Crashes are caught so
+  # a buggy edge-scorer doesn't take down the whole runner.
+  defp collect_rule_based_actions(agent) do
+    RuleBasedStrategy.plan_actions(agent)
+  rescue
+    e ->
+      Logger.error(
+        "AgentRunner: rule-based pass crashed for agent #{agent.id}: #{Exception.message(e)}"
+      )
+
+      []
+  end
+
+  # Phase 2: called AFTER Repo.with_user closes (no DB connection held).
+  # - Enqueue PositionSyncWorker (Oban INSERT — own fast connection).
+  # - Execute rule-based actions (Oban INSERTs — own fast connections).
+  # - Call SignalEngine.generate (LLM HTTP — can take several seconds).
+  # - Enqueue TradeExecutionWorker if a signal is returned.
+  defp run_post_db_phase(agent, context, rule_actions, owner_user_id) do
+    # Always sync open positions every tick.
     %{"agent_id" => agent.id, "owner_user_id" => owner_user_id}
     |> PositionSyncWorker.new()
     |> Oban.insert()
 
-    # Rule-based exit pass — runs every tick regardless of LLM availability.
-    # This is the 24/7 floor: even in BYO-LLM mode (no external signal source),
-    # the agent still defends its positions by cutting losers and letting
-    # winners run based on live QRB scoring.
-    run_rule_based_pass(agent, owner_user_id)
+    # Execute any rule-based exits collected in Phase 1.
+    run_rule_based_exits(agent, rule_actions, owner_user_id)
 
-    # LLM-sourced signal pass — only emits trades when SignalEngine is
-    # actually wired to an API key or external LLM. In BYO-LLM mode this
-    # returns {:hold, "byo_llm_mode"} and is a no-op; the external LLM
-    # drives new entries via the /api/v1 endpoints instead.
-    context = build_context(agent)
-
+    # LLM-sourced signal pass. In BYO-LLM mode returns {:hold, "byo_llm_mode"}.
     case SignalEngine.generate(agent, context) do
       {:ok, signal} ->
         Logger.info(
@@ -158,9 +215,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
     end
   end
 
-  defp run_rule_based_pass(agent, owner_user_id) do
-    actions = RuleBasedStrategy.plan_actions(agent)
-
+  defp run_rule_based_exits(agent, actions, owner_user_id) do
     if actions == [] do
       :noop
     else
@@ -185,11 +240,6 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         |> Oban.insert()
       end)
     end
-  rescue
-    e ->
-      Logger.error(
-        "AgentRunner: rule-based pass crashed for agent #{agent.id}: #{Exception.message(e)}"
-      )
   end
 
   defp build_context(agent) do
