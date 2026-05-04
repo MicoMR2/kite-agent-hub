@@ -15,6 +15,9 @@ defmodule KiteAgentHub.Application do
       {Oban, Application.fetch_env!(:kite_agent_hub, Oban)},
       {Registry, keys: :unique, name: KiteAgentHub.AgentRegistry},
       KiteAgentHub.Api.RateLimiter,
+      # In-memory ring-buffer log — must start before AgentRunnerSupervisor
+      # so runners can push entries from their first tick.
+      KiteAgentHub.Kite.AgentLog,
       KiteAgentHub.Kite.AgentRunnerSupervisor,
       KiteAgentHubWeb.Endpoint
     ]
