@@ -144,7 +144,20 @@ defmodule KiteAgentHub.CollectiveIntelligence.Seeder do
     }
   end
 
+  # Bars come back in two shapes depending on the source:
+  #   - AlpacaClient.bars/5 parses to atom keys: %{c: 187.4, t: "..."}
+  #   - Raw v2/stocks/bars JSON has string keys: %{"c" => 187.4, "t" => "..."}
+  # Crypto-snapshot bars also use string keys. Tolerate both so the
+  # seeder works regardless of which fetcher produced the series.
+  defp close_of(%{c: c}) when is_number(c), do: c
   defp close_of(%{"c" => c}) when is_number(c), do: c
+
+  defp close_of(%{c: c}) when is_binary(c) do
+    case Float.parse(c) do
+      {f, _} -> f
+      :error -> nil
+    end
+  end
 
   defp close_of(%{"c" => c}) when is_binary(c) do
     case Float.parse(c) do
@@ -155,6 +168,7 @@ defmodule KiteAgentHub.CollectiveIntelligence.Seeder do
 
   defp close_of(_), do: nil
 
+  defp timestamp_of(%{t: t}) when is_binary(t), do: t
   defp timestamp_of(%{"t" => t}) when is_binary(t), do: t
   defp timestamp_of(_), do: nil
 

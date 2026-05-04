@@ -92,6 +92,41 @@ defmodule KiteAgentHub.CollectiveIntelligence.SeederTest do
       assert Enum.all?(attrs, &(&1.outcome_bucket == "flat"))
     end
 
+    test "tolerates atom-keyed bars (AlpacaClient.bars parsed shape)" do
+      # AlpacaClient.bars/5 returns bars with atom keys like %{c: 187.4, t: "..."}.
+      # The Seeder must handle both atom-keyed and string-keyed shapes so it
+      # works whether the caller passes raw JSON or parsed structs.
+      atom_bars =
+        Enum.map(1..12, fn i ->
+          %{
+            c: 100.0 + i,
+            o: 100.0 + i,
+            h: 100.0 + i,
+            l: 100.0 + i,
+            v: 1_000_000,
+            t:
+              DateTime.utc_now()
+              |> DateTime.add(-i * 86_400, :second)
+              |> DateTime.to_iso8601()
+          }
+        end)
+
+      attrs =
+        Seeder.insights_from_bars(atom_bars,
+          platform: "alpaca",
+          symbol: "AAPL",
+          timeframe: "1Day",
+          market_class: "equity",
+          hold_bars: 10
+        )
+
+      # Should produce the same 4 insights (2 entries × long+short) as the
+      # string-keyed version, not collapse to []
+      assert length(attrs) == 4
+      assert Enum.count(attrs, &(&1.side == "long")) == 2
+      assert Enum.count(attrs, &(&1.side == "short")) == 2
+    end
+
     test "rerun produces identical source_trade_hash (idempotent insert)" do
       bars = Enum.map(1..12, fn i -> bar(100.0 + i, -i) end)
 
