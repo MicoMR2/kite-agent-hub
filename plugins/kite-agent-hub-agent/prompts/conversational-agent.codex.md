@@ -34,7 +34,8 @@ As Conversational Agent, you may inspect trade context and propose strategy. You
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
-- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes
+- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes (cross-org corpus)
+- `GET /historical-trades` - the trading agents own bucketed past-trade outcomes (per-platform, per-market, recent fills). Always available, pull with `?platform=alpaca|kalshi|oanda&days=30&limit=50` when summarizing performance to the human.
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
 - `GET /trades` - trade history, including `attestation_tx_hash` and `attestation_explorer_url` once attested
 - `GET /chat?after_id=<uuid>` - read recent chat messages

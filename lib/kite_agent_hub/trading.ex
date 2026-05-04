@@ -524,6 +524,97 @@ defmodule KiteAgentHub.Trading do
   end
 
   @doc """
+  Bucketed historical-trade summary for one agent, scoped to settled
+  rows (cancelled/failed/open are excluded — they have no learnable
+  outcome). Returns a 4-shape map:
+
+    * `:summary`     — totals across the agent (count, pnl, win rate)
+    * `:by_platform` — per-platform aggregates (alpaca / kalshi / oanda)
+    * `:by_market`   — per-symbol aggregates (top 20 by sample size)
+    * `:recent`      — last N settled rows (default 20, max 100)
+
+  Optional opts:
+    * `:days`     — only include trades settled in the last N days
+    * `:platform` — restrict to one platform string
+    * `:limit`    — `:recent` sample size (clamped 1..100)
+
+  Used by GET /api/v1/historical-trades so agents can reason about
+  their own past outcomes (in addition to the cross-workspace KCI
+  corpus from /collective-intelligence).
+  """
+  def historical_trades_summary(agent_id, opts \\ []) do
+    days = Keyword.get(opts, :days)
+    platform = Keyword.get(opts, :platform)
+    limit = opts |> Keyword.get(:limit, 20) |> max(1) |> min(100)
+
+    base =
+      TradeRecord
+      |> where(kite_agent_id: ^agent_id, status: "settled")
+      |> then(fn q -> if platform, do: where(q, platform: ^platform), else: q end)
+      |> then(fn q ->
+        case days do
+          n when is_integer(n) and n > 0 ->
+            cutoff = DateTime.utc_now() |> DateTime.add(-n * 86_400, :second)
+            where(q, [t], t.updated_at >= ^cutoff)
+
+          _ ->
+            q
+        end
+      end)
+
+    summary =
+      base
+      |> select([t], %{
+        settled_trades: count(t.id),
+        total_pnl: sum(t.realized_pnl),
+        win_count: sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        loss_count: sum(fragment("CASE WHEN ? < 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        flat_count: sum(fragment("CASE WHEN ? = 0 THEN 1 ELSE 0 END", t.realized_pnl))
+      })
+      |> Repo.one()
+
+    by_platform =
+      base
+      |> group_by([t], t.platform)
+      |> select([t], %{
+        platform: t.platform,
+        trades: count(t.id),
+        wins: sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        losses: sum(fragment("CASE WHEN ? < 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        pnl: sum(t.realized_pnl)
+      })
+      |> order_by([t], desc: count(t.id))
+      |> Repo.all()
+
+    by_market =
+      base
+      |> group_by([t], t.market)
+      |> select([t], %{
+        market: t.market,
+        trades: count(t.id),
+        wins: sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        losses: sum(fragment("CASE WHEN ? < 0 THEN 1 ELSE 0 END", t.realized_pnl)),
+        pnl: sum(t.realized_pnl)
+      })
+      |> order_by([t], desc: count(t.id))
+      |> limit(20)
+      |> Repo.all()
+
+    recent =
+      base
+      |> order_by([t], desc: t.updated_at)
+      |> limit(^limit)
+      |> Repo.all()
+
+    %{
+      summary: summary,
+      by_platform: by_platform,
+      by_market: by_market,
+      recent: recent
+    }
+  end
+
+  @doc """
   Count of trades for the given agent that have been attested on Kite chain
   (i.e. `attestation_tx_hash` is set). Used by the dashboard's on-chain
   activity summary card. PR #103.

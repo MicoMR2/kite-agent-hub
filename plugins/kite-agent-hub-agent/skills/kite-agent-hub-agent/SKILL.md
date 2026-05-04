@@ -52,6 +52,7 @@ Core endpoints:
 - `GET /forex/portfolio?env=practice&instruments=EUR_USD,GBP_USD` — pre-trade readiness for forex
 - `GET /edge-scores` — live QRB edge scores for all open positions and suggestions
 - `GET /collective-intelligence` — opt-in shared trade insights (403 when workspace has not opted in)
+- `GET /historical-trades` — your own bucketed past-trade outcomes (per platform, per market, recent fills). Always available, no opt-in. Pair with `?platform=oanda&days=30` to scope. Different from KCI: this is YOUR history, KCI is the cross-org corpus.
 - `GET /trades` — your trade history
 - `GET /trades/:id` — trade details
 - `POST /trades` — submit a trade

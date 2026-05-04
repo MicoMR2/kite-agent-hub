@@ -30,7 +30,8 @@ KAH polls for fills, settles trades, and writes a Kite chain attestation for eve
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
-- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes
+- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes (cross-org corpus)
+- `GET /historical-trades` - your own bucketed past-trade outcomes (per-platform, per-market, recent fills). Always available. Pair with `?platform=oanda&days=30` to scope. Different from KCI: this is YOUR history, KCI is the cross-org corpus.
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
 - `GET /trades` - trade history, including `platform`, `platform_order_id`, `attestation_tx_hash`, and `attestation_explorer_url`
 - `GET /portfolio` - live Alpaca account, positions, history, and recent orders
