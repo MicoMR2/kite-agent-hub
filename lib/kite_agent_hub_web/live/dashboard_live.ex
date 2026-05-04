@@ -1357,6 +1357,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
           []
       end
 
+    {stock_symbols, crypto_symbols} = partition_by_feed(symbols)
+
     cond do
       is_nil(org_id) ->
         assign(socket, :alpaca_live_tick_status, :error)
@@ -1370,39 +1372,73 @@ defmodule KiteAgentHubWeb.DashboardLive do
         |> assign(:alpaca_live_tick_status, :no_symbols)
 
       true ->
-        # Start the stocks feed (idempotent — returns :already_started
-        # if another LV/agent already opened it).
-        start_result =
-          AlpacaStreamSupervisor.start_feed(:stocks, org_id,
-            symbols: symbols,
-            topics: ["trades"]
-          )
-
-        case start_result do
-          {:ok, _pid} ->
-            :ok
-
-          {:error, {:already_started, _pid}} ->
-            :ok
-
-          {:error, reason} ->
-            require Logger
-            Logger.warning("alpaca_live_tick start_feed failed: #{inspect(reason)}")
+        # Start the stocks + crypto feeds in parallel — each is idempotent
+        # at the supervisor level (returns :already_started if another LV
+        # or agent already opened it). Skip a feed entirely when the
+        # corresponding symbol list is empty.
+        if stock_symbols != [] do
+          start_feed_safe(:stocks, org_id, stock_symbols)
+          Enum.each(stock_symbols, &AlpacaStream.subscribe(:stocks, &1))
         end
 
-        # Subscribe THIS LiveView process to each symbol's tick topic.
-        Enum.each(symbols, &AlpacaStream.subscribe(:stocks, &1))
+        if crypto_symbols != [] do
+          start_feed_safe(:crypto, org_id, crypto_symbols)
+          Enum.each(crypto_symbols, &AlpacaStream.subscribe(:crypto, &1))
+        end
+
+        # Track every (feed, symbol) pair we subscribed to so disable
+        # can release exactly those.
+        subscribed =
+          Enum.map(stock_symbols, &{:stocks, &1}) ++
+            Enum.map(crypto_symbols, &{:crypto, &1})
 
         socket
         |> assign(:alpaca_live_tick_enabled, true)
         |> assign(:alpaca_live_tick_status, :connecting)
-        |> assign(:alpaca_live_tick_subscribed_symbols, symbols)
+        |> assign(:alpaca_live_tick_subscribed_symbols, subscribed)
     end
   end
 
+  defp start_feed_safe(feed, org_id, symbols) do
+    case AlpacaStreamSupervisor.start_feed(feed, org_id, symbols: symbols, topics: ["trades"]) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, {:already_started, _pid}} ->
+        :ok
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("alpaca_live_tick start_feed(#{feed}) failed: #{inspect(reason)}")
+    end
+  end
+
+  # Alpaca symbols come in two shapes for crypto: legacy `BTCUSD` and modern
+  # `BTC/USD`. The slash form is unambiguous; for the legacy form we treat
+  # any 6+ char ticker ending in USD/USDC as crypto so it routes to the
+  # v1beta3 crypto stream instead of the IEX stocks stream. Returns
+  # `{stock_symbols, crypto_symbols}`.
+  @doc false
+  def partition_by_feed(symbols) do
+    Enum.split_with(symbols, fn sym ->
+      cond do
+        String.contains?(sym, "/") -> false
+        String.ends_with?(sym, "USDC") -> false
+        String.ends_with?(sym, "USD") and String.length(sym) >= 6 -> false
+        true -> true
+      end
+    end)
+  end
+
   defp disable_alpaca_live_ticks(socket) do
-    Enum.each(socket.assigns[:alpaca_live_tick_subscribed_symbols] || [], fn sym ->
-      Phoenix.PubSub.unsubscribe(KiteAgentHub.PubSub, AlpacaStream.topic(:stocks, sym))
+    Enum.each(socket.assigns[:alpaca_live_tick_subscribed_symbols] || [], fn
+      {feed, sym} when is_atom(feed) ->
+        Phoenix.PubSub.unsubscribe(KiteAgentHub.PubSub, AlpacaStream.topic(feed, sym))
+
+      sym when is_binary(sym) ->
+        # Backwards compat: pre-PR289 sockets stored bare symbol strings
+        # assuming :stocks. New code stores {feed, symbol} tuples.
+        Phoenix.PubSub.unsubscribe(KiteAgentHub.PubSub, AlpacaStream.topic(:stocks, sym))
     end)
 
     # NOTE: we do NOT stop the stream feed here. Other LiveViews or
