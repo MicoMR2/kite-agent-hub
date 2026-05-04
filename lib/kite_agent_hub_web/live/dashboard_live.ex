@@ -4522,17 +4522,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
                   <div class="divide-y divide-white/5 font-mono text-xs">
                     <%= for entry <- @agent_log_entries do %>
-                      <% level_classes = case entry.level do
-                           :error -> "text-red-400"
-                           :warn  -> "text-amber-400"
-                           :debug -> "text-gray-600"
-                           _      -> "text-gray-300"
-                         end %>
+                      <% level_classes =
+                        case entry.level do
+                          :error -> "text-red-400"
+                          :warn -> "text-amber-400"
+                          :debug -> "text-gray-600"
+                          _ -> "text-gray-300"
+                        end %>
                       <div class="flex items-start gap-3 px-4 py-2 hover:bg-white/[0.02]">
                         <span class="text-gray-600 shrink-0 tabular-nums">
                           {Calendar.strftime(entry.ts, "%H:%M:%S")}
                         </span>
-                        <span class={["shrink-0 uppercase text-[9px] font-black w-10 text-right", level_classes]}>
+                        <span class={[
+                          "shrink-0 uppercase text-[9px] font-black w-10 text-right",
+                          level_classes
+                        ]}>
                           {entry.level}
                         </span>
                         <span class="text-indigo-400 shrink-0 text-[10px]">
