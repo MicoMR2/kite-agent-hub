@@ -29,7 +29,13 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
             liquidity: non_neg_integer()
           }
         }
-  @type suggestion :: %{action: :exit | :hold, ticker: String.t(), platform: atom(), reason: String.t(), score: non_neg_integer()}
+  @type suggestion :: %{
+          action: :exit | :hold,
+          ticker: String.t(),
+          platform: atom(),
+          reason: String.t(),
+          score: non_neg_integer()
+        }
   @type portfolio_scores :: %{
           alpaca_scores: [position_score()],
           kalshi_scores: [position_score()],
@@ -67,7 +73,9 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
           {:ok, positions} -> Enum.map(positions, &score_alpaca_position/1)
           _ -> []
         end
-      _ -> []
+
+      _ ->
+        []
     end
   end
 
@@ -79,7 +87,8 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
     entry_quality = score_entry_quality(pnl_pct)
     momentum = score_momentum(pnl_pct, pos.side)
     risk_reward = score_risk_reward(pnl_pct)
-    liquidity = 16  # Alpaca equities generally liquid
+    # Alpaca equities generally liquid
+    liquidity = 16
 
     total = entry_quality + momentum + risk_reward + liquidity
 
@@ -88,6 +97,12 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
       ticker: pos.symbol,
       side: pos.side,
       qty: pos.qty,
+      # Propagate qty_available so RuleBasedStrategy can sell only what
+      # is not already locked in a resting Alpaca order. Without this,
+      # the strategy queues a duplicate sell every tick and Alpaca
+      # rejects with HTTP 403 "insufficient qty available" — a
+      # failed-row-per-tick loop until the stuck order is cancelled.
+      qty_available: Map.get(pos, :qty_available),
       entry_price: entry,
       current_price: current,
       pnl_pct: Float.round(pnl_pct, 2),
@@ -111,7 +126,9 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
           {:ok, positions} -> Enum.map(positions, &score_kalshi_position/1)
           _ -> []
         end
-      _ -> []
+
+      _ ->
+        []
     end
   end
 
@@ -161,27 +178,31 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
 
     # Suggest exiting weak positions
     weak = Enum.filter(all, &(&1.score < 40))
-    exit_suggestions = Enum.map(weak, fn pos ->
-      %{
-        action: :exit,
-        ticker: pos[:ticker] || pos[:title],
-        platform: pos.platform,
-        reason: "Edge score #{pos.score}/100 — below threshold. Consider closing.",
-        score: pos.score
-      }
-    end)
+
+    exit_suggestions =
+      Enum.map(weak, fn pos ->
+        %{
+          action: :exit,
+          ticker: pos[:ticker] || pos[:title],
+          platform: pos.platform,
+          reason: "Edge score #{pos.score}/100 — below threshold. Consider closing.",
+          score: pos.score
+        }
+      end)
 
     # Suggest holding strong positions
     strong = Enum.filter(all, &(&1.score >= 75))
-    hold_suggestions = Enum.map(strong, fn pos ->
-      %{
-        action: :hold,
-        ticker: pos[:ticker] || pos[:title],
-        platform: pos.platform,
-        reason: "Strong edge #{pos.score}/100 — maintain position.",
-        score: pos.score
-      }
-    end)
+
+    hold_suggestions =
+      Enum.map(strong, fn pos ->
+        %{
+          action: :hold,
+          ticker: pos[:ticker] || pos[:title],
+          platform: pos.platform,
+          reason: "Strong edge #{pos.score}/100 — maintain position.",
+          score: pos.score
+        }
+      end)
 
     (exit_suggestions ++ hold_suggestions)
     |> Enum.sort_by(& &1.score)
@@ -244,11 +265,12 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   defp score_kalshi_rr(current, _entry, side) do
     # For YES: potential = (1.0 - current) if you're long, risk = current
     # For NO: potential = current if you're short, risk = (1.0 - current)
-    {potential, risk} = case side do
-      "yes" -> {1.0 - current, current}
-      "no" -> {current, 1.0 - current}
-      _ -> {0.5, 0.5}
-    end
+    {potential, risk} =
+      case side do
+        "yes" -> {1.0 - current, current}
+        "no" -> {current, 1.0 - current}
+        _ -> {0.5, 0.5}
+      end
 
     ratio = if risk > 0, do: potential / risk, else: 0
 

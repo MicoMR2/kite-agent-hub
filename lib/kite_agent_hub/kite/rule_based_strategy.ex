@@ -75,9 +75,11 @@ defmodule KiteAgentHub.Kite.RuleBasedStrategy do
 
   # Skip actions that would produce a trade with no size or no price —
   # these would land in the queue as $0 sells and create bogus trade
-  # records without actually closing anything.
-  defp noop_action?(%{contracts: c, fill_price: p}) when c > 0 and p > 0.0, do: false
-  defp noop_action?(_), do: true
+  # records without actually closing anything. Exposed for testing the
+  # held-for-orders LLY regression in isolation.
+  @doc false
+  def noop_action?(%{contracts: c, fill_price: p}) when c > 0 and p > 0.0, do: false
+  def noop_action?(_), do: true
 
   @doc """
   Compute the current exit threshold for an agent based on its settled
@@ -119,13 +121,24 @@ defmodule KiteAgentHub.Kite.RuleBasedStrategy do
 
   defp exit_candidate?(_, _), do: false
 
-  defp to_action(pos, threshold) do
+  @doc false
+  def to_action(pos, threshold) do
+    # Prefer qty_available over qty when present — qty_available excludes
+    # shares already locked in a resting Alpaca order. Selling more than
+    # qty_available would trigger Alpaca HTTP 403 "insufficient qty
+    # available" and produce a failed TradeRecord row. The existing
+    # noop_action? filter drops the action entirely when this resolves
+    # to 0, so a fully-locked position is silently skipped instead of
+    # generating a failed-row-per-tick loop.
+    sellable =
+      pos[:qty_available] || pos[:contracts] || pos[:qty] || 0
+
     %{
       action: :exit,
       platform: pos.platform,
       ticker: Map.get(pos, :ticker) || Map.get(pos, :title),
       side: pos[:side],
-      contracts: pos[:contracts] || pos[:qty] || 0,
+      contracts: sellable,
       fill_price: pos[:current_price] || 0.0,
       reason:
         "rule_based_exit: score #{pos.score} < threshold #{threshold} (#{pos.recommendation})",
