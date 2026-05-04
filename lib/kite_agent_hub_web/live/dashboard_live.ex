@@ -144,7 +144,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_candles, [])
       |> assign(:forex_symbol, "EUR_USD")
       |> assign(:forex_pricing, nil)
+      |> assign(:forex_pricing_by_instrument, %{})
       |> assign(:forex_open_trades, [])
+      |> assign(:forex_recent_trades, [])
       |> assign(:forex_quick_trade_units, "1000")
       |> assign(:forex_action_flash, nil)
       |> assign(:forex_pending_trade, nil)
@@ -196,6 +198,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:forex_account, nil)
     |> assign(:forex_candles, [])
     |> assign(:forex_symbol, "EUR_USD")
+    |> assign(:forex_pricing, nil)
+    |> assign(:forex_pricing_by_instrument, %{})
+    |> assign(:forex_open_trades, [])
+    |> assign(:forex_recent_trades, [])
+    |> assign(:forex_quick_trade_units, "1000")
+    |> assign(:forex_action_flash, nil)
+    |> assign(:forex_pending_trade, nil)
     |> assign(:stats_refresh_timer, nil)
     |> assign(:chat_messages, [])
     |> stream(:trades, [])
@@ -786,48 +795,55 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   # Async ForEx tab loader. Prefers OANDA live when configured, then
-  # OANDA practice. Pulls balance + candles + live bid/ask + open
-  # trades for the selected symbol so the tab can render every UI
-  # surface (chart, quote pill, positions, open trades) without a
-  # second round trip. All errors swallow so a transient API outage
-  # cannot crash the LV (feedback_kah_lv_rescue).
+  # OANDA practice. One pass pulls everything the tab renders:
+  # account summary, candles for the selected symbol, ALL instruments
+  # plus their live bid/ask (so the instruments rail is clickable
+  # tickers, not a dead chip dump), open positions and trades, and the
+  # selected agents recent OANDA TradeRecord rows. Every fetch is
+  # try/rescue wrapped so a transient OANDA outage cannot crash the LV
+  # (feedback_kah_lv_rescue).
   def handle_info(:load_forex, socket) do
     require Logger
 
     symbol = socket.assigns[:forex_symbol] || "EUR_USD"
+    agent = socket.assigns[:selected_agent]
 
-    {positions, instruments, provider, oanda_env, account, candles, pricing, open_trades} =
+    {positions, instruments, provider, oanda_env, account, candles, pricing_by_instrument,
+     open_trades, recent_trades} =
       case socket.assigns[:organization] do
         %{id: org_id} ->
           try do
             case Oanda.active_env(org_id) do
-              :live ->
-                {Oanda.list_positions(org_id, :live), Oanda.list_instruments(org_id, :live),
-                 :oanda, :live, Oanda.account_summary(org_id, :live),
-                 Oanda.candles(org_id, symbol, "M5", 120, :live),
-                 first_price(Oanda.pricing(org_id, [symbol], :live)),
-                 Oanda.list_open_trades(org_id, :live)}
+              env when env in [:live, :practice] ->
+                instruments = Oanda.list_instruments(org_id, env)
 
-              :practice ->
-                {Oanda.list_positions(org_id, :practice),
-                 Oanda.list_instruments(org_id, :practice), :oanda, :practice,
-                 Oanda.account_summary(org_id, :practice),
-                 Oanda.candles(org_id, symbol, "M5", 120, :practice),
-                 first_price(Oanda.pricing(org_id, [symbol], :practice)),
-                 Oanda.list_open_trades(org_id, :practice)}
+                pricing_by_instrument =
+                  instruments
+                  |> instrument_names()
+                  |> case do
+                    [] -> %{}
+                    names -> price_map(Oanda.pricing(org_id, names, env))
+                  end
+
+                {Oanda.list_positions(org_id, env), instruments, :oanda, env,
+                 Oanda.account_summary(org_id, env),
+                 Oanda.candles(org_id, symbol, "M5", 120, env), pricing_by_instrument,
+                 Oanda.list_open_trades(org_id, env), recent_oanda_trades(agent)}
 
               _ ->
-                {[], [], :none, nil, nil, [], nil, []}
+                {[], [], :none, nil, nil, [], %{}, [], []}
             end
           rescue
             e ->
               Logger.error("DashboardLive :load_forex crashed: #{inspect(e)}")
-              {[], [], :none, nil, nil, [], nil, []}
+              {[], [], :none, nil, nil, [], %{}, [], []}
           end
 
         _ ->
-          {[], [], :none, nil, nil, [], nil, []}
+          {[], [], :none, nil, nil, [], %{}, [], []}
       end
+
+    pricing = Map.get(pricing_by_instrument, symbol)
 
     {:noreply,
      socket
@@ -838,12 +854,41 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_account, account)
      |> assign(:forex_candles, candles)
      |> assign(:forex_pricing, pricing)
+     |> assign(:forex_pricing_by_instrument, pricing_by_instrument)
      |> assign(:forex_open_trades, open_trades)
+     |> assign(:forex_recent_trades, recent_trades)
      |> assign(:forex_loading, false)}
   end
 
-  defp first_price([%{} = price | _]), do: price
-  defp first_price(_), do: nil
+  # Pull names off OANDAs instruments list, capped at the pricing
+  # endpoints 100-instrument limit. Empty list when malformed.
+  defp instrument_names(instruments) when is_list(instruments) do
+    instruments
+    |> Enum.map(fn i -> Map.get(i, "name") end)
+    |> Enum.filter(&is_binary/1)
+    |> Enum.take(100)
+  end
+
+  defp instrument_names(_), do: []
+
+  # Index pricing rows by instrument so the template can do O(1)
+  # lookups for the rail and the active-symbol quote pill.
+  defp price_map(pricing) when is_list(pricing) do
+    Map.new(pricing, fn p ->
+      {Map.get(p, "instrument"), p}
+    end)
+    |> Map.delete(nil)
+  end
+
+  defp price_map(_), do: %{}
+
+  defp recent_oanda_trades(%{id: agent_id}) when is_binary(agent_id) do
+    KiteAgentHub.Trading.list_trades(agent_id, platform: "oanda", limit: 12)
+  rescue
+    _ -> []
+  end
+
+  defp recent_oanda_trades(_), do: []
 
   # Symbol change: re-queue a load with the new symbol so the chart
   # refreshes against the correct instrument's candles.
@@ -3831,15 +3876,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
 
-              <%!-- Chart (OANDA candles only) --%>
+              <%!-- Chart (OANDA candles only) — sparkline of mid-close
+                   prices over the last 10 hours (120 × 5m candles).
+                   Quick visual on direction; for serious chart work
+                   use OANDAs full charting at trade.oanda.com. --%>
               <%= if @forex_provider == :oanda and @forex_candles != [] do %>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
-                  <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center justify-between mb-1">
                     <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
-                      {@forex_symbol} — 5m candles (last 120)
+                      {@forex_symbol} — last 10h
                     </p>
-                    <span class="text-[10px] text-gray-600 font-mono">mid close</span>
+                    <span class="text-[10px] text-gray-600 font-mono">120 × 5-min mid-close</span>
                   </div>
+                  <p class="text-[10px] text-gray-600 mb-3">
+                    Each point is the mid-price (between bid and ask) at the close of a 5-minute window. Shows recent direction at a glance.
+                  </p>
                   <% pts = Oanda.sparkline_points(@forex_candles, 640, 120) %>
                   <%= if pts != "" do %>
                     <svg viewBox="0 0 640 120" preserveAspectRatio="none" class="w-full h-32">
@@ -4063,22 +4114,141 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% end %>
               </div>
 
-              <%!-- Instruments --%>
-              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                <p class="text-xs text-gray-500 uppercase tracking-widest mb-4 font-bold">
-                  Available Instruments
-                </p>
+              <%!-- Instruments — clickable bid/ask grid. Click any pair
+                   to load it as the active symbol (chart, quote pill,
+                   Quick Trade form all re-render against it). Scrolls
+                   internally so all 70+ pairs fit without dominating
+                   the tab. --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                    Instruments — click to load
+                  </p>
+                  <span class="text-[10px] font-mono text-gray-600">
+                    {map_size(@forex_pricing_by_instrument)} live · {length(@forex_instruments)} total
+                  </span>
+                </div>
                 <%= cond do %>
                   <% is_list(@forex_instruments) && @forex_instruments != [] -> %>
-                    <div class="flex flex-wrap gap-2">
-                      <%= for inst <- @forex_instruments do %>
-                        <span class="text-[10px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.02] text-gray-300">
-                          {Oanda.field(inst, "name", Oanda.field(inst, "symbol", "—"))}
-                        </span>
-                      <% end %>
+                    <div class="max-h-96 overflow-y-auto pr-1 -mr-1">
+                      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                        <%= for inst <- @forex_instruments do %>
+                          <% name = Oanda.field(inst, "name", Oanda.field(inst, "symbol", "—"))
+                          price = Map.get(@forex_pricing_by_instrument, name)
+                          bid = best_bid(price)
+                          ask = best_ask(price)
+                          active? = name == @forex_symbol %>
+                          <button
+                            type="button"
+                            phx-click="forex_symbol"
+                            phx-value-symbol={name}
+                            class={[
+                              "flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                              if(active?,
+                                do: "bg-blue-600 border-blue-700 text-white shadow-md",
+                                else:
+                                  "bg-black/30 border-white/10 hover:bg-white/[0.06] hover:border-white/20 text-gray-200"
+                              )
+                            ]}
+                          >
+                            <span class="text-[11px] font-mono font-bold truncate">{name}</span>
+                            <span class={[
+                              "text-[10px] font-mono tabular-nums shrink-0",
+                              if(active?, do: "text-white", else: "text-gray-400")
+                            ]}>
+                              {bid || "—"} / {ask || "—"}
+                            </span>
+                          </button>
+                        <% end %>
+                      </div>
                     </div>
                   <% true -> %>
-                    <p class="text-xs text-gray-500 py-2">No instruments loaded.</p>
+                    <p class="text-xs text-gray-500 py-2">
+                      No instruments loaded. Add OANDA credentials in Settings.
+                    </p>
+                <% end %>
+              </div>
+
+              <%!-- Recent OANDA trades — pulled from KAH TradeRecord
+                   for the selected agent. Replaces the old chip dump
+                   so users actually see history below the tab. --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                    Recent OANDA Trades
+                  </p>
+                  <.link
+                    navigate={~p"/trades"}
+                    class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                  >
+                    View all →
+                  </.link>
+                </div>
+                <%= cond do %>
+                  <% @selected_agent == nil -> %>
+                    <p class="text-xs text-gray-500 py-2">
+                      Select an agent to see their forex history.
+                    </p>
+                  <% @forex_recent_trades == [] -> %>
+                    <p class="text-xs text-gray-500 py-2">
+                      No OANDA trades yet for this agent. Use Quick Trade above or have the agent submit via the API.
+                    </p>
+                  <% true -> %>
+                    <div class="space-y-1.5">
+                      <%= for trade <- @forex_recent_trades do %>
+                        <div class="flex items-center justify-between gap-3 py-2 px-3 rounded-lg bg-black/20 border border-white/5">
+                          <div class="flex items-center gap-3 min-w-0">
+                            <span
+                              class="text-[10px] text-gray-500 font-mono"
+                              phx-hook="LocalTime"
+                              id={"oanda-trade-time-#{trade.id}"}
+                              data-iso={DateTime.to_iso8601(trade.inserted_at)}
+                              data-format="datetime"
+                            >
+                              {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
+                            </span>
+                            <span class={[
+                              "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded text-white",
+                              if(trade.side in ["buy", "long"], do: "bg-blue-600", else: "bg-red-600")
+                            ]}>
+                              {trade.side}
+                            </span>
+                            <span class="text-xs font-mono text-white truncate">
+                              {trade.market || trade.ticker || "—"}
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-3 shrink-0">
+                            <span class="text-[11px] font-mono text-gray-300">
+                              {trade.contracts || trade.units || "—"}u
+                            </span>
+                            <%= if trade.price do %>
+                              <span class="text-[11px] font-mono text-gray-400">@ {trade.price}</span>
+                            <% end %>
+                            <span class={[
+                              "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border",
+                              case trade.status do
+                                "settled" ->
+                                  "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+
+                                "pending" ->
+                                  "border-yellow-500/30 bg-yellow-500/10 text-yellow-300"
+
+                                "failed" ->
+                                  "border-red-500/30 bg-red-500/10 text-red-300"
+
+                                "cancelled" ->
+                                  "border-gray-500/30 bg-gray-500/10 text-gray-400"
+
+                                _ ->
+                                  "border-white/10 bg-white/5 text-gray-400"
+                              end
+                            ]}>
+                              {trade.status}
+                            </span>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
                 <% end %>
               </div>
             </div>
