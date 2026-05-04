@@ -283,6 +283,55 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     end
   end
 
+  @doc """
+  Historical OHLCV bars for one or many crypto symbols via
+  `GET /v1beta3/crypto/{loc}/bars`.
+
+  Accepts symbols in slash form (`"BTC/USD"`) or legacy form (`"BTCUSD"`);
+  both are normalised to the slash form Alpaca requires. Returns:
+
+      {:ok, %{"BTC/USD" => [%{t: iso8601, o: float, h: float, l: float, c: float, v: float}]}}
+
+  or `{:error, reason}`. Symbols absent from the response body are simply
+  not in the returned map (rather than an error), so callers can handle
+  partial results gracefully.
+
+  `timeframe` accepts the same strings as `bars/5` (`"1Day"`, `"1Hour"`,
+  `"15Min"`, etc.). `limit` is per-symbol (max 10000). `loc` defaults to
+  `"us"` (Alpaca's crypto venue).
+  """
+  def crypto_bars(key_id, secret, symbols, timeframe \\ "1Day", limit \\ 50, loc \\ "us")
+      when is_list(symbols) do
+    case clean_crypto_symbols(symbols) do
+      [] ->
+        {:ok, %{}}
+
+      list ->
+        start_iso = bars_start(timeframe, limit)
+
+        path =
+          "/v1beta3/crypto/#{loc}/bars?symbols=#{Enum.join(list, ",")}" <>
+            "&timeframe=#{timeframe}&limit=#{limit}&start=#{start_iso}&sort=asc"
+
+        get_data(
+          key_id,
+          secret,
+          path,
+          fn body ->
+            bars_map = Map.get(body, "bars", %{})
+
+            parsed =
+              Map.new(bars_map, fn {sym, raw_bars} ->
+                {sym, Enum.map(List.wrap(raw_bars), &parse_bar/1)}
+              end)
+
+            {:ok, parsed}
+          end,
+          "crypto_bars"
+        )
+    end
+  end
+
   @doc "GET /v1beta3/crypto/{loc}/latest/quotes — latest crypto bid/ask map."
   def crypto_latest_quotes(key_id, secret, symbols, loc \\ "us") when is_list(symbols) do
     case clean_crypto_symbols(symbols) do

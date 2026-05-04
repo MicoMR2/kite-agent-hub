@@ -104,6 +104,29 @@ defmodule KiteAgentHub.EquityOracle do
   end
 
   @doc """
+  Historical OHLCV bars for one or many crypto symbols via Alpaca's
+  `/v1beta3/crypto/us/bars` endpoint.
+
+  Accepts symbols in slash form (`"BTC/USD"`) or legacy no-slash form
+  (`"BTCUSD"`) — both are normalised before the request. Returns:
+
+      {:ok, %{"BTC/USD" => [%{t: iso8601, o: float, h: float, l: float, c: float, v: float}]}}
+
+  `timeframe` mirrors the strings `EquityOracle.stock_bars/4` accepts
+  (`"1Day"`, `"1Hour"`, `"15Min"`, etc.). `limit` is the per-symbol bar
+  count.
+
+  This replaces the snapshot-bar fallback in `KciSeederWorker` which only
+  returned 1-2 data points (minuteBar/dailyBar). A direct bars call gives
+  a full historical series suitable for the Seeder's backtest walk.
+  """
+  def crypto_bars(org_id, symbols, timeframe \\ "1Day", limit \\ 50) when is_list(symbols) do
+    with_alpaca(org_id, fn key, secret ->
+      AlpacaClient.crypto_bars(key, secret, symbols, timeframe, limit)
+    end)
+  end
+
+  @doc """
   Historical Benzinga news for sentiment analysis. Pair with
   `:symbols`, `:start`, `:end`, and `:limit` (1..50). Returns
   `{:ok, [article]}` with the raw article shape.
