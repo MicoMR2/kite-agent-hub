@@ -232,6 +232,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
   def agent_me(conn, _params) do
     with {:ok, agent} <- authenticate(conn) do
       stats = Trading.agent_pnl_stats(agent.id)
+      kci_enabled? = CollectiveIntelligence.enabled_for_org?(agent.organization_id)
 
       conn
       |> json(%{
@@ -243,11 +244,16 @@ defmodule KiteAgentHubWeb.API.TradesController do
           agent_type: agent.agent_type,
           wallet_address: agent.wallet_address,
           vault_address: agent.vault_address,
+          attestations_enabled: agent.attestations_enabled,
+          markets: agent.markets || [],
           collective_intelligence: %{
-            enabled: CollectiveIntelligence.enabled_for_org?(agent.organization_id),
+            enabled: kci_enabled?,
             name: "Kite Collective Intelligence",
             endpoint: "/api/v1/collective-intelligence",
-            scope: "workspace"
+            scope: "workspace",
+            consent_version: CollectiveIntelligence.consent_version(),
+            reciprocity:
+              "Reading shared insights requires opt-in. By enabling KCI you also contribute every settled-trade outcome (anonymized, bucketed). Opt out in Settings to leave."
           }
         },
         stats: stats

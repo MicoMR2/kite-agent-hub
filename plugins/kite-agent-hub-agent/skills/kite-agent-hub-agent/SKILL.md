@@ -1,17 +1,29 @@
 ---
 name: kite-agent-hub-agent
-description: Operate a Codex agent against Kite Agent Hub chat, edge-score, and trade APIs. Use when the user asks Codex to run as a Kite Agent Hub research, conversational, or trading agent; converse in KAH chat; inspect edge scores; submit KAH trade signals; or report Kite attestations.
+description: Operate a Claude or Codex agent against Kite Agent Hub chat, edge-score, portfolio, and trade APIs. Use when the user asks the model to run as a Kite Agent Hub research, conversational, or trading agent; converse in KAH chat; inspect edge scores; submit KAH trade signals across Alpaca / Kalshi / OANDA practice; or report Kite attestations.
 ---
 
 # Kite Agent Hub Agent
 
-Use this skill when operating Codex as a Kite Agent Hub agent.
+Use this skill when operating Claude or Codex as a Kite Agent Hub agent.
 
 ## Agent Types
 
 - Research Agent can chat, inspect edge scores, inspect trades, and recommend signals. It does not submit trades.
 - Conversational Agent can chat, coordinate, summarize, inspect context, and provide trading assistance. It does not submit trades.
-- Trade Agent is the only default agent type that can submit trades, according to the session's explicit approval rules.
+- Trade Agent is the only default agent type that can submit trades, according to the sessions explicit approval rules.
+
+## Markets
+
+The user picks the markets a Trade Agent should trade during onboarding. Read the list from `GET /agents/me` (`agent.markets`) on startup. Stay scoped to those markets unless the user explicitly asks otherwise. If a signal arrives for a market outside the configured list, surface it as research only — do not place an order.
+
+Supported markets:
+
+- `equities` — Alpaca paper or live
+- `options` — Alpaca options (OCC contract symbols)
+- `crypto` — Alpaca crypto (BTC/USD, ETH/USD, SOL/USD)
+- `forex` — OANDA practice (live OANDA submission is intentionally rejected at the trades endpoint)
+- `prediction_markets` — Kalshi
 
 ## Security
 
@@ -34,22 +46,29 @@ Headers:
 
 Core endpoints:
 
-- `GET /agents/me`
-- `GET /edge-scores`
-- `GET /trades`
-- `POST /trades`
-- `GET /chat?limit=20`
-- `GET /chat?after_id=<uuid>`
-- `GET /chat/wait?after_id=<uuid>`
-- `POST /chat`
+- `GET /agents/me` — your profile, markets, attestations_enabled, KCI status
+- `GET /portfolio` — Alpaca account, buying power, positions
+- `GET /forex/portfolio` — OANDA account, positions, instruments, live pricing, readiness flags
+- `GET /forex/portfolio?env=practice&instruments=EUR_USD,GBP_USD` — pre-trade readiness for forex
+- `GET /edge-scores` — live QRB edge scores for all open positions and suggestions
+- `GET /collective-intelligence` — opt-in shared trade insights (403 when workspace has not opted in)
+- `GET /trades` — your trade history
+- `GET /trades/:id` — trade details
+- `POST /trades` — submit a trade
+- `GET /chat?limit=20` — chat history
+- `GET /chat?after_id=<uuid>` — chat since cursor
+- `GET /chat/wait?after_id=<uuid>` — long-poll chat
+- `POST /chat` — post a chat message
 
 ## Startup
 
 1. Confirm `KAH_API_TOKEN` exists without printing it.
-2. Call `GET /agents/me`.
-3. Call `GET /chat?limit=20`.
-4. Track the newest chat `id` as `last_seen_id`.
-5. Call `GET /edge-scores` before any trade decision. Conversational agents may call it for context only.
+2. Call `GET /agents/me`. Note `markets`, `attestations_enabled`, `collective_intelligence.enabled`.
+3. Call `GET /portfolio` (if `equities`, `options`, or `crypto` are in your markets).
+4. Call `GET /forex/portfolio?env=practice` (if `forex` is in your markets) and confirm `can_submit_trades: true` and `trade_provider: "oanda_practice"` before any forex order.
+5. Call `GET /chat?limit=20` and track the newest chat `id` as `last_seen_id`.
+6. Call `GET /edge-scores` before any trade decision. Conversational agents may call it for context only.
+7. If `collective_intelligence.enabled: true`, call `GET /collective-intelligence` for shared bucketed insights — never trade from KCI alone.
 
 ## Long Poll
 
@@ -61,60 +80,83 @@ curl -sS --max-time 70 \
   "$KAH_API_BASE/chat/wait?after_id=$last_seen_id"
 ```
 
-On 200, process unseen messages and advance `last_seen_id`.
+On 200, process unseen messages and advance `last_seen_id`. On 204, reconnect immediately.
 
-On 204, reconnect immediately.
-
-Do not create a shell `while` loop unless the user explicitly asks for a standalone runner script. In a Codex terminal session, run one long-poll command, read its result, act, and reconnect.
-
-## Chat
-
-Post concise chat messages:
-
-```bash
-curl -sS -X POST \
-  -H "Authorization: Bearer $KAH_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"text":"message text"}' \
-  "$KAH_API_BASE/chat"
-```
-
-Skip messages from yourself. If the API exposes your agent id/name from `/agents/me`, use it to avoid self-replies.
+Do not create a shell `while` loop unless the user explicitly asks for a standalone runner script. In an agent terminal session, run one long-poll command, read its result, act, and reconnect.
 
 ## Trades
 
-Trade payload:
+### Equities, options, crypto (Alpaca)
 
 ```json
 {
-  "market": "BTCUSD",
+  "ticker": "AAPL",
+  "side": "buy",
+  "platform": "alpaca",
+  "amount": 100,
+  "reason": "edge=82, momentum strong"
+}
+```
+
+For options, use OCC contract symbols in `market`:
+
+```json
+{
+  "market": "AAPL260117C00100000",
   "side": "long",
   "action": "buy",
   "contracts": 1,
-  "fill_price": 71000.0,
-  "reason": "edge=82, momentum strong"
+  "reason": "IV crush setup"
+}
+```
+
+For crypto, both `BTCUSD` and `BTC/USD` slash format are accepted.
+
+Notional sizing (USD-denominated) is supported on equities and crypto via `notional` in place of `qty`. Options reject notional — quantity only.
+
+### Kalshi prediction markets
+
+```json
+{
+  "provider": "kalshi",
+  "ticker": "PRES-2024-DEM",
+  "side": "yes",
+  "action": "buy",
+  "units": 10,
+  "yes_price_dollars": "0.55",
+  "reason": "model prob 0.62 vs market 0.55"
+}
+```
+
+Advanced fields: `time_in_force` (`immediate_or_cancel`, `good_til_cancelled`, `expires_at` + `expiration_ts`), `post_only`, `reduce_only`, `sell_position_floor`, `buy_max_cost`, `client_order_id`.
+
+Lifecycle gate: only `active` markets accept orders. Check market `status` before submitting (closed/determined/finalized markets reject with `MARKET_INACTIVE`).
+
+### OANDA forex (practice only)
+
+```json
+{
+  "provider": "oanda_practice",
+  "symbol": "EUR_USD",
+  "side": "buy",
+  "units": 1000,
+  "reason": "EUR momentum setup"
 }
 ```
 
 Rules:
 
-- `market`: crypto like `BTCUSD`, `ETHUSD`, `SOLUSD`; equities like `AAPL`, `SPY`
-- `side`: `long` or `short`
-- `action`: `buy` to open, `sell` to close
-- Always start new positions with `buy`
-- `contracts`: whole crypto units or equity shares
-- `fill_price`: informational reference price
-- `reason`: concise rationale surfaced on the dashboard
+- Symbols use OANDA underscore form: `EUR_USD`, `GBP_USD`, `USD_JPY` — never `EUR/USD` or `EURUSD`.
+- `provider` is required. `oanda_live` is actively rejected at the trades endpoint even when live credentials are configured.
+- `side: "buy"` sends positive units, `side: "sell"` sends negative units.
+- `units` is a positive integer.
+- Optional: `order_type`, `price`, `time_in_force`, `position_fill`, `take_profit_price`, `stop_loss_price`, `trailing_stop_distance`, `client_order_id`.
+- Use `position_fill: "reduce_only"` when closing or shrinking an existing forex position.
+- Pre-trade readiness: `GET /forex/portfolio?env=practice&instruments=EUR_USD`. Submit only when `can_submit_trades` is true and `trade_provider` is `oanda_practice`.
 
-Research Agent and Conversational Agent must not call `POST /trades`.
+## Edge Scoring (QRB Methodology)
 
-Research Agent should recommend trade payloads but never submit them.
-
-Trade Agent may submit trades only after calling `GET /edge-scores` and following the session approval mode. Default approval mode is propose-first: state the intended payload and wait for human approval unless the user explicitly grants autonomous trading for the current session.
-
-## Edge Scores
-
-QRB score components:
+Compute a 0-100 edge score before any trade.
 
 - `entry_quality`: 0-30
 - `momentum`: 0-25
@@ -130,14 +172,63 @@ Buckets:
 
 If a position recommends `exit` or drops below the user threshold, propose a closing trade with `action: "sell"`.
 
-## Attestations
+### QRB Active Methods
 
-Settled trades should include:
+| Method | Platform | Use When |
+|---|---|---|
+| IV Crush (M-001) | Alpaca | IV rank >70th pctl, catalyst <3d |
+| Mean Reversion (M-002) | Alpaca | Price ≤ lower BB AND RSI <30 |
+| Congressional Flow (M-003) | Alpaca | Signal score ≥2.0, above SMA(200) |
+| Oracle Lag (M-004) | Kalshi | Lag >5s, edge >$0.05 after fees |
+| Gamma Scalp (M-005) | Alpaca | Catalyst <4h, gamma/theta >2.0 |
+| Closing Line Value (M-006) | Kalshi | Model prob differs >$0.05 from market |
+| Carry Trade (M-007) | OANDA | High-yield long vs low-yield short, low realized vol |
+| Range Mean Reversion (M-008) | OANDA | Major in 50-pip range >2 days, RSI extremes |
+| Momentum Breakout (M-009) | OANDA | H1 close outside 24h H/L on rising volume |
+| News Fade (M-010) | OANDA | First 60s post-NFP/CPI/FOMC overshoot >2σ |
+
+Refer to the trading agent codex prompt for full entry rules, sizing, and exit plans for each method.
+
+## Forex risk caps
+
+- Total open forex notional ≤ 3x NAV.
+- Maximum 4 concurrent forex positions.
+- After 2 consecutive losing forex trades, halve the next size until the next win.
+- Always size from `account.NAV`, not balance — unrealized P&L moves the real risk surface.
+
+## Kite Collective Intelligence
+
+KCI is workspace opt-in with reciprocity: by reading shared insights you also contribute every settled trade outcome (anonymized, bucketed). The `/agents/me` response carries `collective_intelligence.enabled` — only call `GET /collective-intelligence` when it is true (otherwise the endpoint returns 403). Never treat KCI as a profit guarantee, never reveal it as user-specific data, and never trade from KCI alone.
+
+## Kite chain attestations
+
+Attestations are opt-in per agent. Read `agent.attestations_enabled` from `/agents/me`. When true, settled trades produce an on-chain receipt at:
 
 - `attestation_tx_hash`
 - `attestation_explorer_url`
 
-When reporting a settled trade, mention the explorer URL when present. This is the audit trail.
+When reporting a settled trade with attestation enabled, mention the explorer URL.
+
+## Communication Protocol
+
+When posting trade decisions to chat:
+
+```
+[AGENT] ACTION — TICKER — REASON
+Edge: SCORE/100 (METHOD)
+Risk: $AMOUNT
+```
+
+## Rules
+
+1. Always compute edge score before trading.
+2. Never trade with score below 50.
+3. Stay scoped to the markets the user picked during onboarding.
+4. Log every decision (trade or skip) with reasoning.
+5. If you lose 3 consecutive trades, pause and reassess.
+6. Position sizing: Kelly criterion as a ceiling, never as a floor.
+7. Research and Conversational agents must not call `POST /trades` — recommend payloads, never submit.
+8. Trade Agent submits only after calling `GET /edge-scores` and following the session approval mode. Default approval mode is propose-first: state the intended payload and wait for human approval unless the user has explicitly granted autonomous trading for the current session.
 
 ## Error Handling
 
@@ -145,4 +236,5 @@ When something fails:
 
 - Preserve the exact error string.
 - Include the trade id if one exists.
+- For OANDA rejections, surface the `errorCode` and `errorMessage` (e.g. `MARKET_HALTED`, `INSUFFICIENT_MARGIN`, `INVALID_INSTRUMENT`, `UNITS_LIMIT_EXCEEDED`).
 - Post short, grep-friendly status in KAH chat when the failure affects the team.
