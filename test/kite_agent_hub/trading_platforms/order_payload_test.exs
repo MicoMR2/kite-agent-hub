@@ -134,7 +134,7 @@ defmodule KiteAgentHub.TradingPlatforms.OrderPayloadTest do
     assert body["side"] == "yes"
     assert body["count"] == 2
     assert body["yes_price"] == 56
-    assert body["no_price"] == 44
+    refute Map.has_key?(body, "no_price")
     assert body["reduce_only"] == true
     assert body["time_in_force"] == "immediate_or_cancel"
   end
