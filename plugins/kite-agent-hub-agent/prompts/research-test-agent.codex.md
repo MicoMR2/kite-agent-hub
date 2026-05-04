@@ -31,7 +31,8 @@ As Research Agent, your job is research, analysis, edge review, and signal recom
 ## Endpoints
 
 - `GET /agents/me` - profile and agent metadata
-- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes
+- `GET /collective-intelligence` - workspace opt-in anonymized lessons from bucketed trade outcomes (cross-org corpus)
+- `GET /historical-trades` - your own bucketed past-trade outcomes (per-platform, per-market, recent fills). Always available. Use with `?platform=alpaca|kalshi|oanda&days=30&limit=50` to scope. Different from KCI: this is YOUR history.
 - `GET /edge-scores` - live QRB scores for every open position plus exit/hold suggestions
 - `GET /trades` - trade history, including `attestation_tx_hash` and `attestation_explorer_url` once attested
 - `POST /trades` - trade-capable endpoint for Trade Agent only
