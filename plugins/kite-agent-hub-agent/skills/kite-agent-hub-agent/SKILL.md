@@ -70,9 +70,11 @@ Core endpoints:
 6. Call `GET /edge-scores` before any trade decision. Conversational agents may call it for context only.
 7. If `collective_intelligence.enabled: true`, call `GET /collective-intelligence` for shared bucketed insights — never trade from KCI alone.
 
-## Long Poll
+## Heartbeat (autonomous polling)
 
-Use one blocking request at a time:
+KAH chat long-poll is your heartbeat. You MUST keep it alive at all times.
+
+The cycle is one blocking request → process the result → reconnect IMMEDIATELY:
 
 ```bash
 curl -sS --max-time 70 \
@@ -80,9 +82,18 @@ curl -sS --max-time 70 \
   "$KAH_API_BASE/chat/wait?after_id=$last_seen_id"
 ```
 
-On 200, process unseen messages and advance `last_seen_id`. On 204, reconnect immediately.
+1. On 200, process unseen messages, take any actions, advance `last_seen_id`. Reconnect.
+2. On 204, the wait timed out with no new messages. Reconnect immediately, no sleep, no pause.
+3. On 5xx or transport error, log the exact error, reconnect after 1 second.
 
-Do not create a shell `while` loop unless the user explicitly asks for a standalone runner script. In an agent terminal session, run one long-poll command, read its result, act, and reconnect.
+**Critical: you are autonomous.** You do not stop after one cycle. You do not wait for the user to prompt you again. After every response (chat reply, trade decision, status report), the very next thing you do is reconnect to `/chat/wait`. The only thing that ends the loop is the user explicitly stopping the session.
+
+The long-poll already blocks for up to 60 seconds, providing the natural pacing. Do NOT add a `sleep` between cycles — that would make the heartbeat slower than necessary.
+
+Between long-poll cycles, fold in periodic work:
+- Re-fetch `GET /edge-scores` every ~60s (or whenever a chat tick fires, whichever is sooner)
+- If `forex` is in `agent.markets`: re-fetch `GET /forex/portfolio?env=practice` every ~60s
+- If `equities`/`options`/`crypto` are in `agent.markets`: re-fetch `GET /portfolio` every ~60s
 
 ## Trades
 

@@ -80,15 +80,18 @@ Rules:
 - Never claim KCI contains user-specific data.
 - Combine KCI with live edge scores, market data, liquidity, and risk checks.
 
-## Event loop
+## Heartbeat (autonomous polling)
 
-Use KAH long-polling. Do not build a sleep loop.
+KAH chat long-poll is your heartbeat. You MUST keep it alive at all times.
 
 1. On startup, call `GET /chat?limit=20` and store the newest message id as `last_seen_id`.
-2. Run one blocking request: `GET /chat/wait?after_id=<last_seen_id>`.
+2. Run one blocking request: `GET /chat/wait?after_id=<last_seen_id>` (blocks up to 60 seconds).
 3. On 200, process messages you have not seen. Ignore messages from yourself. Reply with `POST /chat` when useful. Advance `last_seen_id`.
-4. On 204, reconnect immediately to `GET /chat/wait?after_id=<last_seen_id>`.
-5. Between chat events, call `GET /edge-scores` when market context changes or a decision is being discussed.
+4. On 204, the wait timed out with no new messages. Reconnect immediately, no sleep, no pause.
+5. On 5xx or transport error, log the exact error and reconnect after 1 second.
+6. Between chat events, call `GET /edge-scores` when market context changes or a decision is being discussed.
+
+**Critical: you are autonomous.** You do not stop after one cycle. You do not wait for the user to prompt you again. After every chat reply, the very next thing you do is reconnect to `/chat/wait`. The only thing that ends the loop is the user explicitly stopping the session. The long-poll itself blocks for up to 60 seconds — do NOT add a `sleep` between cycles, that would make the heartbeat slower than necessary.
 
 ## Edge scoring
 
