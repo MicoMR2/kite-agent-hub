@@ -41,6 +41,13 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   `Oban.insert` does need a DB connection but only for a ~1ms INSERT, not a
   multi-second LLM call, so we move those outside `Repo.with_user` too.
 
+  ## AgentLog integration
+
+  Every key event (tick start, rule-based scan/exits/crash, signal trade/hold/error)
+  pushes a structured entry to `KiteAgentHub.Kite.AgentLog`. The dashboard's
+  Agent Logs tab subscribes to the per-agent topic and renders entries live so
+  operators can watch what each agent is doing without grepping server logs.
+
   The runner is supervised by AgentRunnerSupervisor.
   """
 
@@ -49,7 +56,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   require Logger
 
   alias KiteAgentHub.{Trading, Repo}
-  alias KiteAgentHub.Kite.{RPC, SignalEngine, PriceOracle, RuleBasedStrategy}
+  alias KiteAgentHub.Kite.{AgentLog, RPC, SignalEngine, PriceOracle, RuleBasedStrategy}
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
   @default_interval_ms 60_000
@@ -168,7 +175,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
   # Collect rule-based exit actions while still inside Repo.with_user.
   # Returns a (possibly empty) list of action maps. Crashes are caught so
-  # a buggy edge-scorer doesn't take down the whole runner.
+  # a buggy edge-scorer does not take down the whole runner.
   defp collect_rule_based_actions(agent) do
     RuleBasedStrategy.plan_actions(agent)
   rescue
@@ -177,15 +184,27 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         "AgentRunner: rule-based pass crashed for agent #{agent.id}: #{Exception.message(e)}"
       )
 
+      AgentLog.push(agent.id,
+        level: :error,
+        event: "rule_based_crash",
+        message: "Rule-based pass crashed: #{Exception.message(e)}"
+      )
+
       []
   end
 
   # Phase 2: called AFTER Repo.with_user closes (no DB connection held).
+  # - Push tick_start to the agent log.
   # - Enqueue PositionSyncWorker (Oban INSERT — own fast connection).
   # - Execute rule-based actions (Oban INSERTs — own fast connections).
   # - Call SignalEngine.generate (LLM HTTP — can take several seconds).
   # - Enqueue TradeExecutionWorker if a signal is returned.
   defp run_post_db_phase(agent, context, rule_actions, owner_user_id) do
+    AgentLog.push(agent.id,
+      event: "tick_start",
+      message: "Tick — syncing positions + running cycle"
+    )
+
     # Always sync open positions every tick.
     %{"agent_id" => agent.id, "owner_user_id" => owner_user_id}
     |> PositionSyncWorker.new()
@@ -201,6 +220,13 @@ defmodule KiteAgentHub.Kite.AgentRunner do
           "AgentRunner: agent #{agent.id} signal=#{signal["action"]} #{signal["market"]} confidence=#{signal["confidence"]}"
         )
 
+        AgentLog.push(agent.id,
+          level: :info,
+          event: "signal_trade",
+          message:
+            "Signal: #{signal["action"]} #{signal["market"]} @ confidence #{signal["confidence"]} — enqueueing trade"
+        )
+
         signal
         |> Map.put("agent_id", agent.id)
         |> Map.put("owner_user_id", owner_user_id)
@@ -210,17 +236,41 @@ defmodule KiteAgentHub.Kite.AgentRunner do
       {:hold, reason} ->
         Logger.debug("AgentRunner: agent #{agent.id} signal hold — #{reason}")
 
+        AgentLog.push(agent.id,
+          level: :debug,
+          event: "signal_hold",
+          message: "Signal hold — #{reason}"
+        )
+
       {:error, reason} ->
         Logger.error("AgentRunner: signal error for agent #{agent.id}: #{inspect(reason)}")
+
+        AgentLog.push(agent.id,
+          level: :error,
+          event: "signal_error",
+          message: "Signal error: #{inspect(reason)}"
+        )
     end
   end
 
   defp run_rule_based_exits(agent, actions, owner_user_id) do
     if actions == [] do
+      AgentLog.push(agent.id,
+        level: :debug,
+        event: "rule_based_scan",
+        message: "Rule-based scan: no exit actions"
+      )
+
       :noop
     else
       Logger.info(
         "AgentRunner: agent #{agent.id} rule-based planned #{length(actions)} exit action(s)"
+      )
+
+      AgentLog.push(agent.id,
+        level: :info,
+        event: "rule_based_exits",
+        message: "Rule-based: #{length(actions)} exit action(s) queued"
       )
 
       Enum.each(actions, fn action ->

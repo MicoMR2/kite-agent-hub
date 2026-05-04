@@ -126,6 +126,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:alpaca_history, [])
       |> assign(:alpaca_period, "1M")
       |> assign(:kalshi_data, nil)
+      |> assign(:agent_log_entries, [])
+      |> assign(:agent_log_subscribed_id, nil)
       |> assign(:wallet_txs, nil)
       |> assign(:wallet_tokens, nil)
       |> assign(:show_agent_context, false)
@@ -182,6 +184,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:alpaca_history, [])
     |> assign(:alpaca_period, "1M")
     |> assign(:kalshi_data, nil)
+    |> assign(:agent_log_entries, [])
+    |> assign(:agent_log_subscribed_id, nil)
     |> assign(:wallet_txs, nil)
     |> assign(:wallet_tokens, nil)
     |> assign(:show_agent_context, false)
@@ -291,6 +295,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp parse_tab("kalshi"), do: :kalshi
   defp parse_tab("polymarket"), do: :polymarket
   defp parse_tab("forex"), do: :forex
+  defp parse_tab("logs"), do: :logs
   defp parse_tab(_), do: :overview
 
   # Shared tab-switch side effects (firing the right loader, scheduling
@@ -333,8 +338,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
           schedule_tab_refresh(:forex)
           assign(socket, :forex_loading, true)
 
+        :logs ->
+          # Load existing log entries from the ring buffer and subscribe
+          # to real-time updates for the selected agent. Track the
+          # subscribed id on the socket so a later tab switch can
+          # unsubscribe (avoids a PubSub leak when the user navigates
+          # to multiple agents during one LiveView session).
+          selected = socket.assigns.selected_agent
+
+          if selected do
+            alias KiteAgentHub.Kite.AgentLog
+            AgentLog.subscribe(selected.id)
+            entries = AgentLog.recent(selected.id)
+
+            socket
+            |> assign(:agent_log_entries, entries)
+            |> assign(:agent_log_subscribed_id, selected.id)
+          else
+            socket
+          end
+
         _ ->
-          socket
+          # Switching AWAY from the logs tab — unsubscribe so we do
+          # not keep receiving events into a tab that is not rendering.
+          case socket.assigns[:agent_log_subscribed_id] do
+            nil ->
+              socket
+
+            id ->
+              KiteAgentHub.Kite.AgentLog.unsubscribe(id)
+              assign(socket, :agent_log_subscribed_id, nil)
+          end
       end
 
     socket
@@ -1946,7 +1980,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
             class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             id="dashboard-tabs"
           >
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}] do %>
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}, {"Agent Logs", "logs"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
@@ -4462,6 +4496,62 @@ defmodule KiteAgentHubWeb.DashboardLive do
               </div>
             </div>
           <% end %>
+
+          <%!-- Agent Logs Tab --%>
+          <%= if @active_tab == :logs do %>
+            <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+              <div class="flex items-center justify-between">
+                <h2 class="text-xs font-black text-white uppercase tracking-widest">
+                  Agent Runtime Log
+                </h2>
+                <%= if @selected_agent do %>
+                  <span class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
+                    {@selected_agent.name} · last 100 events
+                  </span>
+                <% end %>
+              </div>
+
+              <%= if @agent_log_entries == [] do %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-10 text-center">
+                  <p class="text-gray-500 text-sm">No log entries yet.</p>
+                  <p class="text-gray-600 text-xs mt-2">
+                    Entries appear here as the agent ticks. Try activating the agent if it's paused.
+                  </p>
+                </div>
+              <% else %>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+                  <div class="divide-y divide-white/5 font-mono text-xs">
+                    <%= for entry <- @agent_log_entries do %>
+                      <% level_classes =
+                        case entry.level do
+                          :error -> "text-red-400"
+                          :warn -> "text-amber-400"
+                          :debug -> "text-gray-600"
+                          _ -> "text-gray-300"
+                        end %>
+                      <div class="flex items-start gap-3 px-4 py-2 hover:bg-white/[0.02]">
+                        <span class="text-gray-600 shrink-0 tabular-nums">
+                          {Calendar.strftime(entry.ts, "%H:%M:%S")}
+                        </span>
+                        <span class={[
+                          "shrink-0 uppercase text-[9px] font-black w-10 text-right",
+                          level_classes
+                        ]}>
+                          {entry.level}
+                        </span>
+                        <span class="text-indigo-400 shrink-0 text-[10px]">
+                          [{entry.event}]
+                        </span>
+                        <span class={["flex-1 break-words", level_classes]}>
+                          {entry.message}
+                        </span>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
         <% end %>
       </div>
 
@@ -4540,6 +4630,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
     else
       {:noreply, socket}
     end
+  end
+
+  # ── Agent log real-time feed ────────────────────────────────────────────────────
+
+  def handle_info({:agent_log_entry, entry}, socket) do
+    # Prepend newest entry; keep assigns list bounded to 100.
+    entries = [entry | socket.assigns.agent_log_entries] |> Enum.take(100)
+    {:noreply, assign(socket, :agent_log_entries, entries)}
   end
 
   # Safety net: an unmatched handle_info or handle_event crashes the LV
