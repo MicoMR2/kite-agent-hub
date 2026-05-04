@@ -83,6 +83,75 @@ defmodule KiteAgentHub.CollectiveIntelligence do
   """
   def seed_hash(kind, value), do: source_hash(kind, value)
 
+  @doc """
+  Backfill the corpus with every previously-settled trade for an org.
+
+  When a workspace opts in to KCI AFTER they have already settled
+  trades, those rows have not been recorded into the corpus — only
+  trades that flip to a terminal status AFTER opt-in fire the hook.
+  This function walks every settled / cancelled / failed trade for
+  the given org and replays `record_trade_outcome` so the historical
+  contributions get credited.
+
+  Idempotent: every TradeInsight insert already uses
+  `on_conflict: :nothing` against the unique `source_trade_hash`
+  index, so re-running this does not produce duplicates.
+
+  Returns `{:ok, %{processed: n, inserted: m, skipped: k}}` where
+  - `processed` = trades scanned
+  - `inserted`  = new insights actually added (rest were idempotent re-tries)
+  - `skipped`   = trades that record_trade_outcome filtered (open / no-org)
+
+  Op-safe: respects the org's opt-in. If the org is not opted in,
+  returns `{:error, :kci_not_enabled}` instead of silently doing
+  nothing.
+  """
+  def backfill_org(org_id) when is_binary(org_id) do
+    if enabled_for_org?(org_id) do
+      import Ecto.Query
+      alias KiteAgentHub.Trading.KiteAgent
+
+      # Find all trades belonging to agents in this org. We scan
+      # settled/cancelled/failed (the terminal statuses
+      # record_trade_outcome cares about); open rows have no outcome.
+      query =
+        from t in TradeRecord,
+          join: a in KiteAgent,
+          on: a.id == t.kite_agent_id,
+          where: a.organization_id == ^org_id,
+          where: t.status in ["settled", "cancelled", "failed"],
+          order_by: [asc: t.inserted_at]
+
+      trades = Repo.all(query)
+
+      counts =
+        Enum.reduce(trades, %{processed: 0, inserted: 0, skipped: 0}, fn trade, acc ->
+          before_count = Repo.aggregate(TradeInsight, :count)
+
+          case record_trade_outcome(trade) do
+            :ok ->
+              after_count = Repo.aggregate(TradeInsight, :count)
+              new_row? = after_count > before_count
+
+              %{
+                acc
+                | processed: acc.processed + 1,
+                  inserted: acc.inserted + if(new_row?, do: 1, else: 0)
+              }
+
+            _ ->
+              %{acc | processed: acc.processed + 1, skipped: acc.skipped + 1}
+          end
+        end)
+
+      {:ok, counts}
+    else
+      {:error, :kci_not_enabled}
+    end
+  end
+
+  def backfill_org(_org_id), do: {:error, :invalid_org_id}
+
   def purge_org_contributions(org_id) when is_binary(org_id) do
     source_org_hash = source_hash("org", org_id)
 
