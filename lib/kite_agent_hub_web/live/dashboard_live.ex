@@ -1285,6 +1285,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp position_unrealized_pl(_), do: "0"
 
+  # TradeRecord.contracts is :decimal — render without trailing zeros
+  # for whole-unit forex sizes ("1000" rather than "1000.0000000").
+  defp format_units(%Decimal{} = d) do
+    case Decimal.to_integer(d) do
+      n -> Integer.to_string(n)
+    end
+  rescue
+    _ -> Decimal.to_string(d, :normal)
+  end
+
+  defp format_units(n) when is_integer(n), do: Integer.to_string(n)
+  defp format_units(n) when is_float(n), do: Float.to_string(n)
+  defp format_units(s) when is_binary(s), do: s
+  defp format_units(_), do: "—"
+
   # Estimated USD notional for the pending trade modal. Uses the live
   # ASK for buys and BID for sells from the cached pricing payload.
   # Returns nil when we cannot derive a quote so the template hides
@@ -4214,15 +4229,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               {trade.side}
                             </span>
                             <span class="text-xs font-mono text-white truncate">
-                              {trade.market || trade.ticker || "—"}
+                              {trade.market || "—"}
                             </span>
                           </div>
                           <div class="flex items-center gap-3 shrink-0">
                             <span class="text-[11px] font-mono text-gray-300">
-                              {trade.contracts || trade.units || "—"}u
+                              {format_units(trade.contracts)}u
                             </span>
-                            <%= if trade.price do %>
-                              <span class="text-[11px] font-mono text-gray-400">@ {trade.price}</span>
+                            <%= if trade.fill_price do %>
+                              <span class="text-[11px] font-mono text-gray-400">
+                                @ {trade.fill_price}
+                              </span>
                             <% end %>
                             <span class={[
                               "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border",
