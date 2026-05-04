@@ -131,7 +131,11 @@ config :kite_agent_hub, Oban,
        # per seed market (top 10 equities + 3 crypto) so new agents
        # have meaningful baseline win-rate insights from day 1.
        # Idempotent on source_trade_hash — re-runs upsert cleanly.
-       {"0 4 * * 0", KiteAgentHub.Workers.KciSeederWorker}
+       {"0 4 * * 0", KiteAgentHub.Workers.KciSeederWorker},
+       # News-sentiment seeder: seeds KCI with synthetic outcomes derived
+       # from Benzinga headline sentiment. Daily at 05:00 UTC so it runs
+       # after the bar-based seeder and captures the latest news cycle.
+       {"0 5 * * *", KiteAgentHub.Workers.NewsSentimentSeederWorker}
      ]}
   ]
 
