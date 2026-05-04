@@ -1513,6 +1513,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
           _ -> []
         end
 
+      # Resting (pending) limit orders — displayed with cancel buttons.
+      pending_orders =
+        case KalshiClient.list_pending_orders(key_id, pem, env) do
+          {:ok, p} -> p
+          _ -> []
+        end
+
       settlements =
         case KalshiClient.settlements(key_id, pem, 20, env) do
           {:ok, s} -> s
@@ -1535,6 +1542,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
         positions: enriched_positions,
         fills: fills,
         orders: orders,
+        pending_orders: pending_orders,
         settlements: settlements,
         portfolio_value: portfolio_value,
         gross_settled_pnl: gross_settled_pnl,
@@ -3607,6 +3615,87 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
 
+                  <%!-- Pending Orders (resting limit orders with Cancel buttons) --%>
+                  <%= if Map.get(data, :pending_orders, []) != [] do %>
+                    <div class="rounded-2xl border border-amber-500/20 bg-amber-500/5 overflow-x-auto">
+                      <div class="px-6 py-4 border-b border-amber-500/20 flex items-center justify-between">
+                        <h3 class="text-xs font-black text-amber-400 uppercase tracking-widest">
+                          Pending Orders
+                        </h3>
+                        <span class="text-[10px] text-amber-600 uppercase tracking-widest">
+                          {length(data.pending_orders)} resting
+                        </span>
+                      </div>
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="border-b border-white/5">
+                            <%= for h <- ["Market", "Side", "Action", "Qty", "Limit Price", "Created", ""] do %>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                                {h}
+                              </th>
+                            <% end %>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                          <%= for o <- data.pending_orders do %>
+                            <tr class="hover:bg-white/[0.02]">
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-mono text-white text-xs">
+                                {o.ticker}
+                              </td>
+                              <td class="px-4 py-3">
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  o.side == "yes" &&
+                                    "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+                                  o.side == "no" &&
+                                    "text-red-400 border-red-500/20 bg-red-500/10"
+                                ]}>
+                                  {o.side}
+                                </span>
+                              </td>
+                              <td class="px-4 py-3">
+                                <span class={[
+                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  o.action == "buy" &&
+                                    "text-blue-400 border-blue-500/20 bg-blue-500/10",
+                                  o.action == "sell" &&
+                                    "text-orange-400 border-orange-500/20 bg-orange-500/10"
+                                ]}>
+                                  {o.action}
+                                </span>
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300 font-mono">
+                                {o.count}
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
+                                {:erlang.float_to_binary(o.price * 100, decimals: 0)}¢
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-[10px] text-gray-500 font-mono">
+                                <%= if o.created_time do %>
+                                  {String.slice(o.created_time, 0, 16) |> String.replace("T", " ")}
+                                <% else %>
+                                  —
+                                <% end %>
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3">
+                                <%= if o.order_id do %>
+                                  <button
+                                    phx-click="cancel_kalshi_order"
+                                    phx-value-order_id={o.order_id}
+                                    data-confirm={"Cancel order #{o.ticker} #{o.side} #{o.count}?"}
+                                    class="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded hover:bg-red-500/20 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                <% end %>
+                              </td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
+                    </div>
+                  <% end %>
+
                   <%!-- Recent Fills --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                     <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
@@ -4461,6 +4550,47 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # this line it will be unreachable.
   def handle_info(msg, socket) do
     Logger.warning("DashboardLive: unhandled handle_info #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  # ── Kalshi order management ────────────────────────────────────────────────────
+
+  @doc false
+  def handle_event("cancel_kalshi_order", %{"order_id" => order_id}, socket) do
+    require Logger
+    org = socket.assigns.organization
+
+    result =
+      with org when not is_nil(org) <- org,
+           {:ok, credentials} <- credentials_module().fetch_secret_with_env(org.id, :kalshi),
+           {key_id, pem, env} <- credentials,
+           {:ok, outcome} <- KalshiClient.cancel_order(key_id, pem, order_id, env) do
+        {:ok, outcome}
+      else
+        nil -> {:error, :no_org}
+        err -> err
+      end
+
+    socket =
+      case result do
+        {:ok, :cancelled} ->
+          Logger.info("DashboardLive: cancelled Kalshi order #{order_id}")
+          # Reload the Kalshi tab so the pending_orders list refreshes.
+          send(self(), :load_kalshi)
+          put_flash(socket, :info, "Order #{String.slice(order_id, 0, 8)}… cancelled.")
+
+        {:ok, :already_terminal} ->
+          send(self(), :load_kalshi)
+          put_flash(socket, :info, "Order already filled or cancelled — refreshing.")
+
+        {:error, reason} ->
+          Logger.warning(
+            "DashboardLive: cancel_kalshi_order failed for #{order_id}: #{inspect(reason)}"
+          )
+
+          put_flash(socket, :error, "Cancel failed: #{inspect(reason)}")
+      end
+
     {:noreply, socket}
   end
 
