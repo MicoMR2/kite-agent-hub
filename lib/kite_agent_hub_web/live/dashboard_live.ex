@@ -211,93 +211,85 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   @impl true
-  def handle_params(%{"agent_id" => agent_id}, _uri, socket) do
-    # Stale/invalid agent_id in the URL used to raise Ecto.NoResultsError
-    # via Trading.get_agent!/1 and crash-loop the LV. Fall back to the
-    # overview route if the agent is gone.
-    case safe_get_agent(agent_id) do
-      nil ->
-        {:noreply, push_patch(socket, to: ~p"/dashboard")}
-
-      agent ->
-        trades =
-          try do
-            Trading.list_trades(agent.id, limit: 20)
-          rescue
-            _ -> []
-          end
-
-        stats = safe_broker_stats(agent.organization_id, socket.assigns[:pnl_stats])
-
-        if connected?(socket) do
-          if socket.assigns.selected_agent do
-            Phoenix.PubSub.unsubscribe(
-              KiteAgentHub.PubSub,
-              "agent:#{socket.assigns.selected_agent.id}"
-            )
-          end
-
-          Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent.id}")
-          fetch_chain_data(agent)
-        end
-
-        {:noreply,
-         socket
-         |> assign(:selected_agent, agent)
-         |> assign(:pnl_stats, stats)
-         |> assign(:attestation_count, attestation_count(agent))
-         |> assign(:recent_attestations, recent_attestations(agent))
-         |> assign(
-           :all_attestations,
-           if(socket.assigns.active_tab == :attestations, do: all_attestations(agent), else: [])
-         )
-         |> assign(:wallet_balance_eth, nil)
-         |> assign(:block_number, nil)
-         |> stream(:trades, trades, reset: true)}
-    end
-  end
-
-  def handle_params(_params, _uri, socket), do: {:noreply, socket}
-
-  defp safe_get_agent(agent_id) do
-    try do
-      Trading.get_agent!(agent_id)
-    rescue
-      Ecto.NoResultsError -> nil
-      _ -> nil
-    end
-  end
-
-  # Polymarket.mode/0 reads Application env. Wrap anyway so a boot-order
-  # race or config read failure cannot crash mount.
-  defp safe_polymarket_mode do
-    try do
-      Polymarket.mode()
-    rescue
-      e ->
-        require Logger
-        Logger.error("DashboardLive: Polymarket.mode/0 crashed: #{inspect(e)}")
-        :paper
-    end
-  end
-
-  # ── Events ────────────────────────────────────────────────────────────────────
-
-  @impl true
-  def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab_atom =
-      case tab do
-        "overview" -> :overview
-        "attestations" -> :attestations
-        "wallet" -> :wallet
-        "edge_scorer" -> :edge_scorer
-        "alpaca" -> :alpaca
-        "kalshi" -> :kalshi
-        "polymarket" -> :polymarket
-        "forex" -> :forex
-        _ -> :overview
+  def handle_params(params, _uri, socket) do
+    # Two query params we honor:
+    #   - agent_id: which agent the dashboard is viewing
+    #   - tab: which tab is active (preserves state across reloads;
+    #     was previously socket-only so a reload always reset to overview)
+    socket =
+      case params["tab"] do
+        nil -> socket
+        raw -> apply_tab_change(socket, parse_tab(raw))
       end
 
+    case params do
+      %{"agent_id" => agent_id} ->
+        # Stale/invalid agent_id in the URL used to raise Ecto.NoResultsError
+        # via Trading.get_agent!/1 and crash-loop the LV. Fall back to the
+        # overview route if the agent is gone.
+        case safe_get_agent(agent_id) do
+          nil ->
+            {:noreply, push_patch(socket, to: ~p"/dashboard")}
+
+          agent ->
+            trades =
+              try do
+                Trading.list_trades(agent.id, limit: 20)
+              rescue
+                _ -> []
+              end
+
+            stats = safe_broker_stats(agent.organization_id, socket.assigns[:pnl_stats])
+
+            if connected?(socket) do
+              if socket.assigns.selected_agent do
+                Phoenix.PubSub.unsubscribe(
+                  KiteAgentHub.PubSub,
+                  "agent:#{socket.assigns.selected_agent.id}"
+                )
+              end
+
+              Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent.id}")
+              fetch_chain_data(agent)
+            end
+
+            {:noreply,
+             socket
+             |> assign(:selected_agent, agent)
+             |> assign(:pnl_stats, stats)
+             |> assign(:attestation_count, attestation_count(agent))
+             |> assign(:recent_attestations, recent_attestations(agent))
+             |> assign(
+               :all_attestations,
+               if(socket.assigns.active_tab == :attestations,
+                 do: all_attestations(agent),
+                 else: []
+               )
+             )
+             |> assign(:wallet_balance_eth, nil)
+             |> assign(:block_number, nil)
+             |> stream(:trades, trades, reset: true)}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  defp parse_tab("overview"), do: :overview
+  defp parse_tab("attestations"), do: :attestations
+  defp parse_tab("wallet"), do: :wallet
+  defp parse_tab("edge_scorer"), do: :edge_scorer
+  defp parse_tab("alpaca"), do: :alpaca
+  defp parse_tab("kalshi"), do: :kalshi
+  defp parse_tab("polymarket"), do: :polymarket
+  defp parse_tab("forex"), do: :forex
+  defp parse_tab(_), do: :overview
+
+  # Shared tab-switch side effects (firing the right loader, scheduling
+  # tab refreshes). Pulled out so handle_params (URL-driven) and
+  # switch_tab (button-click) both produce the same result.
+  defp apply_tab_change(socket, tab_atom) do
     socket =
       case tab_atom do
         :edge_scorer ->
@@ -331,23 +323,63 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
         :forex ->
           send(self(), :load_forex)
+          schedule_tab_refresh(:forex)
           assign(socket, :forex_loading, true)
 
         _ ->
           socket
       end
 
-    # Always collapse any revealed secrets when the user navigates
-    # away — prevents api_token / prompt text from sitting exposed
-    # on a screen the operator isn't actively looking at.
-    socket =
-      socket
-      |> assign(:show_agent_token, false)
-      |> assign(:show_option_a, false)
-      |> assign(:show_option_b, false)
-      |> assign(:show_option_c, false)
+    socket
+    |> assign(:show_agent_token, false)
+    |> assign(:show_option_a, false)
+    |> assign(:show_option_b, false)
+    |> assign(:show_option_c, false)
+    |> assign(:active_tab, tab_atom)
+  end
 
-    {:noreply, assign(socket, :active_tab, tab_atom)}
+  defp safe_get_agent(agent_id) do
+    try do
+      Trading.get_agent!(agent_id)
+    rescue
+      Ecto.NoResultsError -> nil
+      _ -> nil
+    end
+  end
+
+  # Polymarket.mode/0 reads Application env. Wrap anyway so a boot-order
+  # race or config read failure cannot crash mount.
+  defp safe_polymarket_mode do
+    try do
+      Polymarket.mode()
+    rescue
+      e ->
+        require Logger
+        Logger.error("DashboardLive: Polymarket.mode/0 crashed: #{inspect(e)}")
+        :paper
+    end
+  end
+
+  # ── Events ────────────────────────────────────────────────────────────────────
+
+  # Always collapse any revealed secrets when the user navigates
+  # away — prevents api_token / prompt text from sitting exposed
+  # on a screen the operator is not actively looking at.
+  @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    tab_atom = parse_tab(tab)
+    agent_id = socket.assigns[:selected_agent] && socket.assigns.selected_agent.id
+
+    # push_patch updates the URL; handle_params then runs apply_tab_change.
+    # Persisting tab in the URL means a browser reload keeps the user on
+    # the tab they were on instead of bouncing back to overview.
+    path =
+      case agent_id do
+        nil -> ~p"/dashboard?#{[tab: Atom.to_string(tab_atom)]}"
+        id -> ~p"/dashboard?#{[agent_id: id, tab: Atom.to_string(tab_atom)]}"
+      end
+
+    {:noreply, push_patch(socket, to: path)}
   end
 
   def handle_event("toggle_reveal", %{"target" => target}, socket) do
@@ -370,9 +402,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  # Re-fetches live account data every 30 seconds while the tab is
-  # visible. The tick handler below checks `active_tab` and is a no-op
-  # if the user has moved away, so stale intervals never run forever.
+  # Re-fetches live account data while the tab is visible. The tick
+  # handler below checks `active_tab` and is a no-op if the user has
+  # moved away, so stale intervals never run forever.
+  #
+  # Forex polls faster (10s) because FX prices move every tick. Other
+  # tabs poll at 30s — broker portfolio state does not change as fast
+  # and a tighter cadence would burn the DB pool needlessly.
+  defp schedule_tab_refresh(:forex),
+    do: Process.send_after(self(), {:tab_refresh, :forex}, 10_000)
+
   defp schedule_tab_refresh(tab) do
     Process.send_after(self(), {:tab_refresh, tab}, 30_000)
   end
@@ -746,6 +785,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_info({:tab_refresh, :kalshi}, %{assigns: %{active_tab: :kalshi}} = socket) do
     send(self(), :load_kalshi)
     schedule_tab_refresh(:kalshi)
+    {:noreply, socket}
+  end
+
+  def handle_info({:tab_refresh, :forex}, %{assigns: %{active_tab: :forex}} = socket) do
+    send(self(), :load_forex)
+    schedule_tab_refresh(:forex)
     {:noreply, socket}
   end
 
