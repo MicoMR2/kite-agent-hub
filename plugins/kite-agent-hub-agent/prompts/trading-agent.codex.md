@@ -153,6 +153,74 @@ Failed practice orders return `{:error, {:http, status, %{"errorCode": ..., "err
 | `UNITS_LIMIT_EXCEEDED` | Above account `maximumOrderUnits` | Split into smaller orders |
 | `TAKE_PROFIT_ON_FILL_LOSS` | TP price wrong side of entry for the direction | Re-derive TP from current bid/ask + intended pip target |
 
+## Forex methodology (M-007 through M-010)
+
+Mirror of the QRB framework for forex. Each method has clear entry rules, sizing guidance, and an exit plan. Compute the same edge score (0-100) and apply the same gates: GO at 75+, HOLD at 50-74, NO below 50.
+
+### M-007 — Carry Trade
+
+Long the higher-yielding currency, short the lower-yielding one, collect the interest-rate differential. Works in low-vol regimes; gets shredded in risk-off events.
+
+**Pair selection.** Pick a pair where the rate differential is at least 2.5 percentage points based on the latest central-bank policy rates. Example regimes: long AUD_JPY when AUD cash rate is much higher than JPY policy rate; long USD_JPY in any USD tightening cycle.
+
+**Entry rules.**
+- 30-day realized volatility on the pair below the 40th percentile of its trailing 1-year distribution.
+- VIX (use any equity-vol proxy you can pull) below 18 — high VIX correlates with carry unwinds.
+- Price above the 50-period SMA on H4 candles.
+
+**Sizing.** Half of normal size — carry trades pay slowly and can give back months of gains in a single day. Cap at 0.5% of NAV at entry.
+
+**Exit.** Trail a stop 3 ATR (14-period H4) below entry for longs. Take profit at +1.5x the stop distance, or hold indefinitely while VIX stays below 18 and the pair stays above SMA(50).
+
+### M-008 — Range Mean Reversion
+
+Major pairs spend ~70% of their time in ranges. When price tags an established range edge, fade it back toward the middle.
+
+**Range definition.** A pair has been bounded inside a 50-pip window (for non-JPY majors) or 50-tick window (JPY pairs) for at least 48 hours. Identify high and low of the window from H1 candles.
+
+**Entry rules.**
+- Price within 5 pips of the range edge.
+- RSI(14) on H1 below 30 (buy the floor) or above 70 (sell the ceiling).
+- No high-impact news in the next 4 hours per the economic calendar.
+
+**Sizing.** Standard size. Stop is 15 pips beyond the range edge. Target is the opposite range edge, so R:R is roughly 50/15 = 3.3:1.
+
+**Exit.** Cancel and stand aside if the range breaks before fill. After fill, hard stop 15 pips beyond the entry edge. Take profit at 80% of the way to the opposite edge.
+
+### M-009 — Momentum Breakout
+
+When a major closes outside its 24-hour high or low on rising volume, the breakout direction has positive expectancy for the next 4-12 hours.
+
+**Entry rules.**
+- H1 close strictly outside the trailing 24h high (long) or 24h low (short).
+- The most recent 6 H1 bars have higher average true range than the 24h average — confirms volume is expanding, not contracting.
+- No major news within 30 minutes either side of the close — avoids fade setups.
+
+**Sizing.** Standard size at the breakout close. Add 0.5x size on a successful retest of the breakout level within 4 hours.
+
+**Exit.** Stop just inside the breakout level (5 pips). Trail with a 2-period H1 swing-low (long) or swing-high (short) once the trade is +20 pips. Take partial 50% off at +30 pips.
+
+### M-010 — News Fade
+
+Major scheduled releases (US NFP, CPI, FOMC, ECB, BoE) often produce an initial overshoot in the first 30-60 seconds that mean-reverts within 5 minutes. Trade the fade only when the move is statistically extreme.
+
+**Entry rules.**
+- Wait for the print. Compute the 1-minute candle range immediately after the release.
+- Enter ONLY if the candle range is more than 2 standard deviations above the 30-day average 1-minute range for that release window.
+- Direction: fade — sell the spike high, buy the spike low.
+- Spread guard: do not enter if the live spread is more than 3x the normal spread for that pair. News widens spreads dramatically; entering through a 10-pip spread is a guaranteed loss.
+
+**Sizing.** Quarter of normal size. News fades are high-conviction but tail-risk: a continued move can compound losses fast.
+
+**Exit.** Tight stop at the spike extreme (the high you sold or the low you bought). Target the pre-release price. R:R typically 2:1 if the fade works.
+
+### Cross-method risk caps for forex
+
+- Total open forex exposure cannot exceed 3x NAV in notional terms (roughly 3% margin used at 100:1 leverage). The dashboard ForEx tab Margin Used card surfaces this.
+- Maximum 4 concurrent forex positions across all methods.
+- After 2 consecutive losing forex trades, reduce next trade size to 0.5x until the next win.
+- Always size from current NAV (account.NAV from /forex/portfolio), never from balance — unrealized P&L moves the real risk surface.
+
 ## Alpaca options payload
 
 Alpaca options use OCC option contract symbols through the normal `/trades` payload.
