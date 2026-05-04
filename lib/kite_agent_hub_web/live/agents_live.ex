@@ -38,7 +38,7 @@ defmodule KiteAgentHubWeb.AgentsLive do
     {:noreply, assign(socket, editing_id: nil, form_errors: %{})}
   end
 
-  def handle_event("save", %{"id" => id} = params, socket) do
+  def handle_event("save", %{"agent_id" => id} = params, socket) do
     agent = Enum.find(socket.assigns.agents, &(&1.id == id))
 
     attestations_enabled? = params["attestations_enabled"] in ["true", "on", true]
@@ -208,7 +208,7 @@ defmodule KiteAgentHubWeb.AgentsLive do
           >
             <%= if @editing_id == agent.id do %>
               <form phx-submit="save" class="space-y-4">
-                <input type="hidden" name="id" value={agent.id} />
+                <input type="hidden" name="agent_id" value={agent.id} />
 
                 <div>
                   <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">

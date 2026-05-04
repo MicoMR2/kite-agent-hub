@@ -36,7 +36,6 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   require Logger
 
   alias KiteAgentHub.{Credentials, Repo, Trading, Oanda}
-  alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.TradingPlatforms.KalshiClient
 
   @allowed_providers ~w(oanda_practice kalshi)

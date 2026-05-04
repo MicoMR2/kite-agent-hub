@@ -13,7 +13,7 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
     - Liquidity (0-20): can you exit cleanly
   """
 
-  alias KiteAgentHub.{Credentials, Orgs}
+  alias KiteAgentHub.Credentials
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
   @type recommendation :: :strong_hold | :hold | :watch | :exit
@@ -159,8 +159,6 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   defp generate_suggestions(kalshi_scores, alpaca_scores) do
     all = kalshi_scores ++ alpaca_scores
 
-    suggestions = []
-
     # Suggest exiting weak positions
     weak = Enum.filter(all, &(&1.score < 40))
     exit_suggestions = Enum.map(weak, fn pos ->
@@ -243,7 +241,7 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
     end
   end
 
-  defp score_kalshi_rr(current, entry, side) do
+  defp score_kalshi_rr(current, _entry, side) do
     # For YES: potential = (1.0 - current) if you're long, risk = current
     # For NO: potential = current if you're short, risk = (1.0 - current)
     {potential, risk} = case side do

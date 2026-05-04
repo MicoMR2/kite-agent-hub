@@ -32,7 +32,6 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
   require Logger
 
   alias KiteAgentHub.{Credentials, Repo, Trading}
-  alias KiteAgentHub.Trading.TradeRecord
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
 
   @impl Oban.Worker
@@ -140,16 +139,6 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
     end
   end
 
-  # PR #101: enqueue a Kite chain attestation job for every successfully
-  # settled trade. The KiteAttestationWorker is idempotent (skips on
-  # existing attestation_tx_hash and uses a deterministic nonce derived
-  # from the trade UUID), so re-enqueueing is safe.
-  defp enqueue_attestation(%{id: trade_id}) do
-    %{trade_id: trade_id}
-    |> KiteAgentHub.Workers.KiteAttestationWorker.new()
-    |> Oban.insert()
-  end
-
   # Terminal failure states — flip to cancelled/failed and stop polling.
   # Trading.update_trade/2 broadcasts :trade_updated and records the KCI
   # outcome on the terminal-status transition; we no longer have to do
@@ -183,6 +172,16 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
     Logger.info(
       "AlpacaSettlementWorker: trade #{trade.id} still #{status} — will re-poll next tick"
     )
+  end
+
+  # PR #101: enqueue a Kite chain attestation job for every successfully
+  # settled trade. The KiteAttestationWorker is idempotent (skips on
+  # existing attestation_tx_hash and uses a deterministic nonce derived
+  # from the trade UUID), so re-enqueueing is safe.
+  defp enqueue_attestation(%{id: trade_id}) do
+    %{trade_id: trade_id}
+    |> KiteAgentHub.Workers.KiteAttestationWorker.new()
+    |> Oban.insert()
   end
 
   # No fill data came back — return the original struct so the caller

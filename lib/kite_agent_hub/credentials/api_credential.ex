@@ -21,6 +21,7 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   # renders them as two connector cards so paper and real-money keys
   # are never conflated.
   @valid_providers ~w(alpaca kalshi openai anthropic polymarket oanda oanda_live)
+  @valid_envs ~w(paper live)
 
   schema "api_credentials" do
     field :org_id, :binary_id

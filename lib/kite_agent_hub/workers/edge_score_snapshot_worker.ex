@@ -21,7 +21,6 @@ defmodule KiteAgentHub.Workers.EdgeScoreSnapshotWorker do
 
   alias KiteAgentHub.{Repo, Trading}
   alias KiteAgentHub.Kite.PortfolioEdgeScorer
-  alias KiteAgentHub.Orgs
 
   @impl Oban.Worker
   def perform(_job) do
