@@ -133,9 +133,16 @@ defmodule KiteAgentHub.Oanda do
   Fetch OHLC candles for a single instrument. Returns a list of candle
   maps (as returned by OANDA) or `[]` on any failure.
   """
-  def candles(org_id, instrument, granularity \\ "M5", count \\ 120, env \\ :practice) do
+  def candles(
+        org_id,
+        instrument,
+        granularity \\ "M5",
+        count \\ 120,
+        env \\ :practice,
+        price \\ "M"
+      ) do
     with_token(org_id, env, fn token, _account_id ->
-      case OandaClient.candles(token, instrument, granularity, count, env) do
+      case OandaClient.candles(token, instrument, granularity, count, env, price) do
         {:ok, %{"candles" => list}} when is_list(list) -> list
         _ -> []
       end
@@ -297,7 +304,13 @@ defmodule KiteAgentHub.Oanda do
   def sparkline_points(candles, width, height) when is_list(candles) and candles != [] do
     closes =
       candles
-      |> Enum.map(fn c -> get_in(c, ["mid", "c"]) end)
+      |> Enum.map(fn c ->
+        # OANDA candle rows carry "mid", "bid", and/or "ask" sub-objects
+        # depending on the `price` query param. Fall back through them so
+        # the sparkline still renders no matter which price source the UI
+        # picked.
+        get_in(c, ["mid", "c"]) || get_in(c, ["bid", "c"]) || get_in(c, ["ask", "c"])
+      end)
       |> Enum.map(fn
         s when is_binary(s) ->
           case Float.parse(s) do

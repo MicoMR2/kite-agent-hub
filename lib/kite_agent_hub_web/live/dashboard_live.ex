@@ -150,6 +150,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:forex_quick_trade_units, "1000")
       |> assign(:forex_action_flash, nil)
       |> assign(:forex_pending_trade, nil)
+      |> assign(:forex_chart_price, "M")
       |> assign(:stats_refresh_timer, nil)
       |> assign(:chat_messages, chat_messages)
       |> stream(:trades, trades)
@@ -205,6 +206,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:forex_quick_trade_units, "1000")
     |> assign(:forex_action_flash, nil)
     |> assign(:forex_pending_trade, nil)
+    |> assign(:forex_chart_price, "M")
     |> assign(:stats_refresh_timer, nil)
     |> assign(:chat_messages, [])
     |> stream(:trades, [])
@@ -852,6 +854,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     symbol = socket.assigns[:forex_symbol] || "EUR_USD"
     agent = socket.assigns[:selected_agent]
+    chart_price = socket.assigns[:forex_chart_price] || "M"
 
     {positions, instruments, provider, oanda_env, account, candles, pricing_by_instrument,
      open_trades, recent_trades} =
@@ -872,8 +875,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                 {Oanda.list_positions(org_id, env), instruments, :oanda, env,
                  Oanda.account_summary(org_id, env),
-                 Oanda.candles(org_id, symbol, "M5", 120, env), pricing_by_instrument,
-                 Oanda.list_open_trades(org_id, env), recent_oanda_trades(agent)}
+                 Oanda.candles(org_id, symbol, "M5", 120, env, chart_price),
+                 pricing_by_instrument, Oanda.list_open_trades(org_id, env),
+                 recent_oanda_trades(agent)}
 
               _ ->
                 {[], [], :none, nil, nil, [], %{}, [], []}
@@ -951,6 +955,22 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_loading, true)
      |> assign(:forex_action_flash, nil)}
   end
+
+  # Chart price-source toggle: M (mid) / B (bid) / A (ask). Mid is
+  # the default and most-common chart source. Bid/Ask let traders
+  # see exactly where their fills would land. Re-fetches the candle
+  # series from OANDA against the chosen price.
+  def handle_event("forex_chart_price", %{"price" => price}, socket)
+      when price in ["M", "B", "A"] do
+    send(self(), :load_forex)
+
+    {:noreply,
+     socket
+     |> assign(:forex_chart_price, price)
+     |> assign(:forex_loading, true)}
+  end
+
+  def handle_event("forex_chart_price", _params, socket), do: {:noreply, socket}
 
   # Stage a Quick Trade for review — opens the confirmation modal
   # with the parsed side/units/symbol. The actual order does NOT
@@ -1365,6 +1385,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp estimated_notional(_pending, _pricing), do: nil
+
+  defp chart_caption("M"),
+    do:
+      "Each point is the mid-price (between bid and ask) at the close of a 5-minute window. Shows recent direction at a glance."
+
+  defp chart_caption("B"),
+    do:
+      "Each point is the bid price (what you receive selling) at the close of a 5-minute window. Useful when planning short entries."
+
+  defp chart_caption("A"),
+    do:
+      "Each point is the ask price (what you pay buying) at the close of a 5-minute window. Useful when planning long entries."
+
+  defp chart_caption(_),
+    do: "Each point is the closing price of a 5-minute window."
 
   # Async Kalshi data loading. Wrapped — the with-chain internally uses
   # {:ok, _} / {:error, _} but a raised exception from PEM decode or
@@ -3942,14 +3977,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
                    use OANDAs full charting at trade.oanda.com. --%>
               <%= if @forex_provider == :oanda and @forex_candles != [] do %>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
-                  <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
                     <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
                       {@forex_symbol} — last 10h
                     </p>
-                    <span class="text-[10px] text-gray-600 font-mono">120 × 5-min mid-close</span>
+                    <div class="flex items-center gap-1.5">
+                      <%= for {label, code, hint} <- [
+                        {"Mid", "M", "Midpoint of bid and ask — standard chart view"},
+                        {"Bid", "B", "Sell price — what you receive when going short"},
+                        {"Ask", "A", "Buy price — what you pay when going long"}
+                      ] do %>
+                        <button
+                          type="button"
+                          phx-click="forex_chart_price"
+                          phx-value-price={code}
+                          title={hint}
+                          class={[
+                            "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest transition-colors",
+                            if(@forex_chart_price == code,
+                              do: "bg-emerald-600 text-white border border-emerald-700 shadow-sm",
+                              else:
+                                "bg-black/30 text-gray-400 border border-white/10 hover:text-white hover:border-white/20"
+                            )
+                          ]}
+                        >
+                          {label}
+                        </button>
+                      <% end %>
+                    </div>
                   </div>
                   <p class="text-[10px] text-gray-600 mb-3">
-                    Each point is the mid-price (between bid and ask) at the close of a 5-minute window. Shows recent direction at a glance.
+                    {chart_caption(@forex_chart_price)}
                   </p>
                   <% pts = Oanda.sparkline_points(@forex_candles, 640, 120) %>
                   <%= if pts != "" do %>
