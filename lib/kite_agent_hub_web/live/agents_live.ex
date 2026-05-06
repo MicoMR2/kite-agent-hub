@@ -67,6 +67,56 @@ defmodule KiteAgentHubWeb.AgentsLive do
     end
   end
 
+  def handle_event("save_risk_config", %{"agent_id" => id} = params, socket) do
+    agent = Enum.find(socket.assigns.agents, &(&1.id == id))
+    raw = params["risk_config"] || %{}
+
+    # Strip blank strings so the form's "leave blank to use default"
+    # behavior translates to "no override on this key" rather than
+    # "user explicitly submitted empty".
+    sanitized =
+      raw
+      |> Enum.reject(fn {_k, v} -> v == "" or is_nil(v) end)
+      |> Map.new(fn
+        {k, "true"} -> {k, true}
+        {k, "false"} -> {k, false}
+        {k, "on"} -> {k, true}
+        {k, v} -> {k, v}
+      end)
+
+    actor_id = socket.assigns.current_scope.user.id
+
+    case Repo.with_user(actor_id, fn ->
+           Trading.update_agent_risk_config(agent, %{"risk_config" => sanitized}, actor_id)
+         end) do
+      {:ok, {:ok, updated}} ->
+        :telemetry.execute(
+          [:kah, :risk_config, :saved],
+          %{count: 1},
+          %{agent_id: updated.id, outcome: :ok}
+        )
+
+        {:noreply,
+         socket
+         |> assign(:agents, replace_agent(socket.assigns.agents, updated))
+         |> assign(:editing_id, nil)
+         |> assign(:form_errors, %{})
+         |> put_flash(:info, "Risk limits updated.")}
+
+      {:ok, {:error, %Ecto.Changeset{} = cs}} ->
+        :telemetry.execute(
+          [:kah, :risk_config, :saved],
+          %{count: 1},
+          %{agent_id: agent.id, outcome: :invalid}
+        )
+
+        {:noreply, assign(socket, :form_errors, errors_of(cs))}
+
+      {:ok, {:error, _other}} ->
+        {:noreply, put_flash(socket, :error, "Could not update risk limits.")}
+    end
+  end
+
   def handle_event("rotate_token", %{"id" => id}, socket) do
     agent = Enum.find(socket.assigns.agents, &(&1.id == id))
 
@@ -145,6 +195,114 @@ defmodule KiteAgentHubWeb.AgentsLive do
         opts |> Keyword.get(String.to_existing_atom(k), k) |> to_string()
       end)
     end)
+  end
+
+  # Read the persisted risk_config (string keys) for form pre-fill.
+  # Returns "" for any unset key so the input renders blank — meaning
+  # "use module default", not "force this value".
+  defp risk_value(%{} = cfg, key), do: Map.get(cfg, key, "") |> to_string()
+
+  attr :agent, :map, required: true
+  attr :form_errors, :map, default: %{}
+
+  defp risk_limits_form(assigns) do
+    ~H"""
+    <form phx-submit="save_risk_config" class="mt-6 pt-6 border-t border-white/5 space-y-4">
+      <input type="hidden" name="agent_id" value={@agent.id} />
+
+      <div class="flex items-baseline justify-between">
+        <h4 class="text-[11px] font-black uppercase tracking-widest text-white">Risk Limits</h4>
+        <p class="text-[10px] text-gray-500">Leave blank to use the workspace default.</p>
+      </div>
+
+      <p class="text-[10px] text-amber-400/80">
+        Saved values are persisted but not yet enforced at trade time —
+        runtime gate ships in PR #297. Until then the workspace default
+        is what actually caps trades.
+      </p>
+
+      <p
+        :if={err = get_in(@form_errors, [:risk_config, Access.at(0)])}
+        class="text-xs text-red-400"
+      >
+        {err}
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+            Per-trade notional cap (USD)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="5000"
+            name="risk_config[per_trade_notional_cap_usd]"
+            value={risk_value(@agent.risk_config || %{}, "per_trade_notional_cap_usd")}
+            placeholder="default 5000"
+            class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+          />
+          <p class="text-[10px] text-gray-600 mt-1">Hard server ceiling: $5,000.</p>
+        </div>
+
+        <div>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+            Profit-trim partial (%)
+          </label>
+          <input
+            type="number"
+            step="1"
+            min="0"
+            max="100"
+            name="risk_config[profit_trim_partial_pct]"
+            value={risk_value(@agent.risk_config || %{}, "profit_trim_partial_pct")}
+            placeholder="default 3"
+            class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+          />
+        </div>
+
+        <div>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+            Profit-trim full (%)
+          </label>
+          <input
+            type="number"
+            step="1"
+            min="0"
+            max="100"
+            name="risk_config[profit_trim_full_pct]"
+            value={risk_value(@agent.risk_config || %{}, "profit_trim_full_pct")}
+            placeholder="default 5"
+            class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+          />
+          <p class="text-[10px] text-gray-600 mt-1">Must be greater than partial.</p>
+        </div>
+
+        <div>
+          <label class="flex items-center gap-2 mt-6 sm:mt-7">
+            <input
+              type="checkbox"
+              name="risk_config[market_hours_only]"
+              value="true"
+              checked={
+                Map.get(@agent.risk_config || %{}, "market_hours_only", true) in [true, "true"]
+              }
+              class="h-4 w-4 rounded border-white/20 bg-black/40"
+            />
+            <span class="text-xs text-gray-300">Market-hours only (equities/options)</span>
+          </label>
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        class="px-5 py-2 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100"
+      >
+        Save Risk Limits
+      </button>
+    </form>
+    """
   end
 
   # ── Render ────────────────────────────────────────────────────────────────────
@@ -322,6 +480,11 @@ defmodule KiteAgentHubWeb.AgentsLive do
                   </button>
                 </div>
               </form>
+
+              <.risk_limits_form
+                agent={agent}
+                form_errors={@form_errors}
+              />
             <% else %>
               <div class="space-y-3">
                 <div class="flex items-start justify-between gap-4">

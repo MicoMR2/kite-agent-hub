@@ -1,7 +1,8 @@
 defmodule KiteAgentHub.Trading do
   import Ecto.Query
+  alias Ecto.Multi
   alias KiteAgentHub.{CollectiveIntelligence, Repo}
-  alias KiteAgentHub.Trading.{KiteAgent, TradeRecord}
+  alias KiteAgentHub.Trading.{AgentConfigChange, KiteAgent, TradeRecord}
 
   @pubsub KiteAgentHub.PubSub
 
@@ -78,6 +79,45 @@ defmodule KiteAgentHub.Trading do
 
       err ->
         err
+    end
+  end
+
+  @doc """
+  Update an agent's `risk_config` and write a single
+  `agent_config_changes` audit row in the same Repo.transaction. A
+  failed validate, update, or audit insert rolls the whole thing back —
+  partial saves (config persisted without an audit trail) are not
+  reachable.
+
+  `actor_user_id` is the integer users.id of the human who triggered
+  the change; the form pulls it from the LiveView session, never from
+  client-submitted params.
+  """
+  def update_agent_risk_config(%KiteAgent{} = agent, attrs, actor_user_id)
+      when is_integer(actor_user_id) do
+    changeset = KiteAgent.risk_config_changeset(agent, attrs)
+
+    Multi.new()
+    |> Multi.update(:agent, changeset)
+    |> Multi.insert(:audit, fn %{agent: updated} ->
+      AgentConfigChange.changeset(%AgentConfigChange{}, %{
+        agent_id: updated.id,
+        user_id: actor_user_id,
+        prev_config: agent.risk_config || %{},
+        new_config: updated.risk_config || %{}
+      })
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{agent: updated}} ->
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        {:ok, updated}
+
+      {:error, :agent, %Ecto.Changeset{} = cs, _} ->
+        {:error, cs}
+
+      {:error, _step, reason, _} ->
+        {:error, reason}
     end
   end
 
