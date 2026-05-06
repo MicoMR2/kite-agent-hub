@@ -42,6 +42,10 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :llm_model, :string
     field :llm_endpoint_url, :string
 
+    # Per-agent risk overrides. Empty map = "use module-level defaults
+    # in Trading.Risk". Whitelisted keys only — see risk_config_changeset/2.
+    field :risk_config, :map, default: %{}
+
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     has_many :trade_records, KiteAgentHub.Trading.TradeRecord
 
@@ -131,6 +135,112 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> cast(%{status: "archived"}, [:status])
     |> validate_inclusion(:status, @statuses)
   end
+
+  # Whitelist for risk_config keys + their string equivalents (form
+  # input arrives as string keys; persisted JSONB also has string keys).
+  @risk_keys ~w(
+    per_trade_notional_cap_usd
+    profit_trim_partial_pct
+    profit_trim_full_pct
+    market_hours_only
+  )
+
+  @doc """
+  Schemaless changeset for risk_config edits. The form (or any caller)
+  passes a flat map under `:risk_config`; this enforces the whitelist
+  and bounds, never raw map merge.
+
+  Validations:
+    * per_trade_notional_cap_usd — Decimal, > 0, ≤ 5000 (server hard ceiling).
+    * profit_trim_partial_pct — integer 0..100.
+    * profit_trim_full_pct — integer 0..100, must be greater than partial.
+    * market_hours_only — boolean.
+    * Unknown keys → :unknown_key error on :risk_config.
+
+  An empty / nil submission clears the override and falls back to
+  Trading.Risk defaults at runtime.
+  """
+  def risk_config_changeset(agent, attrs) do
+    raw = Map.get(attrs, "risk_config", Map.get(attrs, :risk_config, %{})) || %{}
+
+    types = %{
+      per_trade_notional_cap_usd: :decimal,
+      profit_trim_partial_pct: :integer,
+      profit_trim_full_pct: :integer,
+      market_hours_only: :boolean
+    }
+
+    inner =
+      {%{}, types}
+      |> cast(stringify_keys(raw), Map.keys(types))
+      |> validate_no_unknown_keys(raw)
+      |> validate_number(:per_trade_notional_cap_usd,
+        greater_than: Decimal.new(0),
+        less_than_or_equal_to: KiteAgentHub.Trading.Risk.notional_ceiling_usd()
+      )
+      |> validate_number(:profit_trim_partial_pct,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 100
+      )
+      |> validate_number(:profit_trim_full_pct,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 100
+      )
+      |> validate_full_above_partial()
+
+    base = change(agent)
+
+    if inner.valid? do
+      sanitized =
+        inner.changes
+        |> Enum.into(%{}, fn {k, v} -> {Atom.to_string(k), serialize(v)} end)
+
+      put_change(base, :risk_config, sanitized)
+    else
+      Enum.reduce(inner.errors, base, fn {field, {msg, opts}}, acc ->
+        add_error(acc, :risk_config, "#{field}: #{msg}", opts)
+      end)
+    end
+  end
+
+  # Form params arrive as string keys; persisted JSONB is also string
+  # keys. Normalize once at the boundary so the schemaless cast can
+  # consume either shape.
+  defp stringify_keys(map) when is_map(map) do
+    Enum.into(map, %{}, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+      {k, v} -> {to_string(k), v}
+    end)
+  end
+
+  defp stringify_keys(_), do: %{}
+
+  defp validate_no_unknown_keys(changeset, raw) when is_map(raw) do
+    raw
+    |> stringify_keys()
+    |> Map.keys()
+    |> Enum.reject(&(&1 in @risk_keys))
+    |> case do
+      [] -> changeset
+      [unknown | _] -> add_error(changeset, :risk_config, "unknown key: #{unknown}")
+    end
+  end
+
+  defp validate_no_unknown_keys(changeset, _), do: changeset
+
+  defp validate_full_above_partial(changeset) do
+    partial = get_field(changeset, :profit_trim_partial_pct)
+    full = get_field(changeset, :profit_trim_full_pct)
+
+    cond do
+      is_nil(partial) or is_nil(full) -> changeset
+      full > partial -> changeset
+      true -> add_error(changeset, :profit_trim_full_pct, "must be greater than partial")
+    end
+  end
+
+  defp serialize(%Decimal{} = d), do: Decimal.to_string(d, :normal)
+  defp serialize(v), do: v
 
   defp validate_markets(changeset) do
     validate_change(changeset, :markets, fn _, markets ->
