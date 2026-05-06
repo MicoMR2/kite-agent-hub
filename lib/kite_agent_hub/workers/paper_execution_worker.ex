@@ -103,6 +103,57 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
     end
   end
 
+  # ── Risk gate (mirrors TradeExecutionWorker) ───────────────────────────────
+
+  # Paper providers compute notional differently per venue (forex
+  # base-units vs Kalshi cents-per-contract), so a cross-provider USD
+  # notional comparison at submit time is non-trivial. We do enforce
+  # the fail-closed `:invalid_risk_config` semantic — a manually
+  # corrupted `risk_config` row stops both live AND paper trading
+  # immediately. The over-cap branch is enforced on the live path
+  # (`TradeExecutionWorker`) where notional is always known in USD;
+  # here we treat it as not-applicable rather than silently approving.
+  defp risk_gate(%{} = agent) do
+    case KiteAgentHub.Trading.Risk.per_trade_notional_cap(agent) do
+      {:error, :invalid_risk_config} ->
+        {:blocked, :invalid,
+         "RC-INVALID: risk_config invalid — edit on agent settings page"}
+
+      {:ok, %Decimal{}, _source} ->
+        :ok
+    end
+  end
+
+  defp record_paper_block(agent, args, platform, reason_category, reason)
+       when reason_category in [:invalid, :over_cap] do
+    Logger.warning(
+      "PaperExecutionWorker: agent #{agent.id} trade BLOCKED by risk gate — #{reason}"
+    )
+
+    :telemetry.execute(
+      [:kah, :risk_config, :blocked_trade],
+      %{count: 1},
+      %{agent_id: agent.id, platform: platform, reason_category: reason_category}
+    )
+
+    units = parse_units!(args["units"] || 0)
+
+    Trading.create_trade(%{
+      kite_agent_id: agent.id,
+      market: args["symbol"],
+      side: if(args["side"] == "sell", do: "short", else: "long"),
+      action: if(args["side"] == "sell", do: "sell", else: "buy"),
+      contracts: units,
+      fill_price: Decimal.new(0),
+      status: "failed",
+      source: "oban",
+      reason: reason,
+      platform: platform
+    })
+
+    {:error, {:risk_gate, reason_category}}
+  end
+
   # ── Dispatch ───────────────────────────────────────────────────────────────
 
   defp dispatch(
@@ -110,6 +161,16 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
          %{"provider" => "oanda_practice"} = args,
          job_id
        ) do
+    case risk_gate(agent) do
+      {:blocked, cat, reason} ->
+        record_paper_block(agent, args, "oanda", cat, reason)
+
+      :ok ->
+        do_dispatch_oanda(agent, args, job_id)
+    end
+  end
+
+  defp do_dispatch_oanda(agent, args, job_id) do
     org_id = args["organization_id"]
     symbol = args["symbol"]
     raw_units = parse_units!(args["units"])
@@ -144,6 +205,16 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   end
 
   defp dispatch(%{agent_type: "trading"} = agent, %{"provider" => "kalshi"} = args, job_id) do
+    case risk_gate(agent) do
+      {:blocked, cat, reason} ->
+        record_paper_block(agent, args, "kalshi", cat, reason)
+
+      :ok ->
+        do_dispatch_kalshi(agent, args, job_id)
+    end
+  end
+
+  defp do_dispatch_kalshi(agent, args, job_id) do
     org_id = args["organization_id"] || agent.organization_id
     symbol = args["symbol"]
     side = args["side"]
