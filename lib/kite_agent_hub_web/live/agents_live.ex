@@ -215,6 +215,12 @@ defmodule KiteAgentHubWeb.AgentsLive do
         <p class="text-[10px] text-gray-500">Leave blank to use the workspace default.</p>
       </div>
 
+      <p class="text-[10px] text-amber-400/80">
+        Saved values are persisted but not yet enforced at trade time —
+        runtime gate ships in PR #297. Until then the workspace default
+        is what actually caps trades.
+      </p>
+
       <p
         :if={err = get_in(@form_errors, [:risk_config, Access.at(0)])}
         class="text-xs text-red-400"
