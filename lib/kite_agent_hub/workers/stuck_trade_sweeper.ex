@@ -46,60 +46,77 @@ defmodule KiteAgentHub.Workers.StuckTradeSweeper do
     Logger.info("StuckTradeSweeper: scanning #{length(agents)} active agent(s)")
 
     Enum.each(agents, fn {agent_id, owner_user_id} ->
-      Repo.with_user(owner_user_id, fn -> sweep_for_agent(agent_id, cutoff) end)
+      run_for_agent(agent_id, owner_user_id, cutoff)
     end)
 
     :ok
   end
 
-  defp sweep_for_agent(agent_id, cutoff) do
-    case Trading.auto_cancel_stuck_trades(cutoff, agent_id: agent_id) do
-      {0, _} ->
+  # Two-phase split (mirrors AlpacaSettlementWorker, PR #301):
+  #   Phase 1 (with_user): auto-cancel stuck rows in DB + load creds.
+  #   Phase 2 (no DB lock): per-trade Alpaca cancel HTTP fan-out.
+  # Broker errors only log a warning, so no Phase 3 DB writes are needed.
+  defp run_for_agent(agent_id, owner_user_id, cutoff) do
+    case sweep_phase1(agent_id, owner_user_id, cutoff) do
+      :noop ->
         :ok
 
-      {count, trades} ->
-        Logger.info(
-          "StuckTradeSweeper: agent #{agent_id} — auto-cancelled #{count} stuck trade(s)"
+      {:no_alpaca_targets, _count} ->
+        :ok
+
+      {:no_creds, reason} ->
+        Logger.warning(
+          "StuckTradeSweeper: agent #{agent_id} — alpaca credentials unavailable, skipping broker cancels: #{inspect(reason)}"
         )
 
-        maybe_cancel_on_broker(trades, agent_id)
+      {:targets, alpaca_trades, {key_id, secret, env}} ->
+        # HTTP fan-out runs after the with_user block closes.
+        Enum.each(alpaca_trades, fn t ->
+          case AlpacaClient.cancel_order(key_id, secret, t.platform_order_id, env) do
+            {:ok, result} ->
+              Logger.info(
+                "StuckTradeSweeper: alpaca cancel #{t.platform_order_id} ok (#{inspect(result)})"
+              )
+
+            {:error, reason} ->
+              Logger.warning(
+                "StuckTradeSweeper: alpaca cancel #{t.platform_order_id} failed: #{inspect(reason)}"
+              )
+          end
+        end)
     end
   end
 
-  defp maybe_cancel_on_broker(trades, agent_id) do
-    alpaca_trades =
-      Enum.filter(trades, fn t ->
-        t.platform == "alpaca" and is_binary(t.platform_order_id) and t.platform_order_id != ""
-      end)
+  defp sweep_phase1(agent_id, owner_user_id, cutoff) do
+    Repo.with_user(owner_user_id, fn ->
+      case Trading.auto_cancel_stuck_trades(cutoff, agent_id: agent_id) do
+        {0, _} ->
+          :noop
 
-    case alpaca_trades do
-      [] ->
-        :ok
+        {count, trades} ->
+          Logger.info(
+            "StuckTradeSweeper: agent #{agent_id} — auto-cancelled #{count} stuck trade(s)"
+          )
 
-      alpaca ->
-        agent = Trading.get_agent!(agent_id)
-
-        case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
-          {:ok, {key_id, secret, env}} ->
-            Enum.each(alpaca, fn t ->
-              case AlpacaClient.cancel_order(key_id, secret, t.platform_order_id, env) do
-                {:ok, result} ->
-                  Logger.info(
-                    "StuckTradeSweeper: alpaca cancel #{t.platform_order_id} ok (#{inspect(result)})"
-                  )
-
-                {:error, reason} ->
-                  Logger.warning(
-                    "StuckTradeSweeper: alpaca cancel #{t.platform_order_id} failed: #{inspect(reason)}"
-                  )
-              end
+          alpaca_trades =
+            Enum.filter(trades, fn t ->
+              t.platform == "alpaca" and is_binary(t.platform_order_id) and
+                t.platform_order_id != ""
             end)
 
-          {:error, reason} ->
-            Logger.warning(
-              "StuckTradeSweeper: agent #{agent_id} — alpaca credentials unavailable, skipping broker cancels: #{inspect(reason)}"
-            )
-        end
-    end
+          case alpaca_trades do
+            [] ->
+              {:no_alpaca_targets, count}
+
+            targets ->
+              agent = Trading.get_agent!(agent_id)
+
+              case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
+                {:ok, creds} -> {:targets, targets, creds}
+                {:error, reason} -> {:no_creds, reason}
+              end
+          end
+      end
+    end)
   end
 end
