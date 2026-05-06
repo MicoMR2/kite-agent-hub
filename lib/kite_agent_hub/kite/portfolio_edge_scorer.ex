@@ -64,6 +64,64 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
     }
   end
 
+  @doc """
+  Three-phase variant of `score_portfolio/1` for hot paths that
+  cannot hold a Repo connection through the broker round-trip.
+
+  Phase 1 (`Repo.with_user`): fetch Alpaca + Kalshi credentials —
+  pure DB.
+  Phase 2 (no Repo connection held): broker `positions` HTTP fan-out.
+  Phase 3 (anywhere): score the positions, generate suggestions.
+
+  Same return shape as `score_portfolio/1`; missing or unfetchable
+  credentials yield empty score lists, identical to the single-phase
+  fallback.
+  """
+  @spec score_portfolio_split(Ecto.UUID.t(), integer()) :: portfolio_scores()
+  def score_portfolio_split(org_id, owner_user_id)
+      when is_integer(owner_user_id) do
+    {alpaca_creds, kalshi_creds} =
+      KiteAgentHub.Repo.with_user(owner_user_id, fn ->
+        {Credentials.fetch_secret_with_env(org_id, :alpaca),
+         Credentials.fetch_secret_with_env(org_id, :kalshi)}
+      end)
+
+    # Phase 2 — Repo connection released; broker HTTP can take its
+    # time without holding a pool slot.
+    alpaca_positions = fetch_alpaca_positions(alpaca_creds)
+    kalshi_positions = fetch_kalshi_positions(kalshi_creds)
+
+    # Phase 3 — pure math; no IO.
+    alpaca_scores = Enum.map(alpaca_positions, &score_alpaca_position/1)
+    kalshi_scores = Enum.map(kalshi_positions, &score_kalshi_position/1)
+    suggestions = generate_suggestions(kalshi_scores, alpaca_scores)
+
+    %{
+      alpaca_scores: alpaca_scores,
+      kalshi_scores: kalshi_scores,
+      suggestions: suggestions,
+      timestamp: DateTime.utc_now()
+    }
+  end
+
+  defp fetch_alpaca_positions({:ok, {key_id, secret, env}}) do
+    case AlpacaClient.positions(key_id, secret, env) do
+      {:ok, positions} -> positions
+      _ -> []
+    end
+  end
+
+  defp fetch_alpaca_positions(_), do: []
+
+  defp fetch_kalshi_positions({:ok, {key_id, pem, env}}) do
+    case KalshiClient.positions(key_id, pem, env) do
+      {:ok, positions} -> positions
+      _ -> []
+    end
+  end
+
+  defp fetch_kalshi_positions(_), do: []
+
   # ── Alpaca Position Scoring ──────────────────────────────────────────────────
 
   defp score_alpaca_positions(org_id) do

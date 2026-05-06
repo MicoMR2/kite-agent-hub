@@ -60,7 +60,18 @@ defmodule KiteAgentHub.Kite.RuleBasedStrategy do
   def plan_actions(agent) do
     threshold = exit_threshold_for(agent)
     scores = PortfolioEdgeScorer.score_portfolio(agent.organization_id)
+    plan_with(agent, scores, threshold)
+  end
 
+  @doc """
+  Pure-data variant of `plan_actions/1`: takes a pre-computed
+  `scores` map and `threshold`. No DB, no HTTP — caller is
+  responsible for fetching both. Hot paths (AgentRunner.tick) use
+  this so the slow scoring + threshold queries don't run inside
+  `Repo.with_user`.
+  """
+  @spec plan_with(KiteAgentHub.Trading.KiteAgent.t(), map(), non_neg_integer()) :: [action()]
+  def plan_with(agent, scores, threshold) when is_map(scores) and is_integer(threshold) do
     all_positions = (scores.alpaca_scores || []) ++ (scores.kalshi_scores || [])
 
     Logger.info(
