@@ -122,9 +122,11 @@ defmodule KiteAgentHub.Kite.AgentRunner do
           else
             # Rule-based exit pass needs the RLS context for edge-score queries.
             rule_actions = collect_rule_based_actions(agent)
-            # Context build reads trade counts / open positions — also needs RLS.
-            context = build_context(agent)
-            {:run, agent, context, rule_actions}
+            # Build only the DB-backed slice of the context inside the
+            # transaction. The HTTP-backed slice (RPC + PriceOracle)
+            # runs in Phase 2 — see build_remote_context/2.
+            db_ctx = build_db_context(agent)
+            {:run, agent, db_ctx, rule_actions}
           end
         end)
       rescue
@@ -147,8 +149,12 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         {:ok, :stop} ->
           {:ok, :stop}
 
-        {:ok, {:run, agent, context, rule_actions}} ->
-          # DB connection is released. Now do the slow I/O.
+        {:ok, {:run, agent, db_ctx, rule_actions}} ->
+          # DB connection is released. Run the slow HTTP calls (RPC,
+          # PriceOracle) and the LLM round-trip in Phase 2 — none of
+          # them holds a Repo connection.
+          remote_ctx = build_remote_context(agent, db_ctx)
+          context = Map.merge(db_ctx, remote_ctx)
           run_post_db_phase(agent, context, rule_actions, owner_user_id)
           {:ok, :continue}
 
@@ -292,9 +298,24 @@ defmodule KiteAgentHub.Kite.AgentRunner do
     end
   end
 
-  defp build_context(agent) do
-    market = "ETH-USDC"
+  # DB-only slice of the tick context. Runs inside Repo.with_user so
+  # the queries inherit RLS scope, then the connection is released
+  # before any HTTP work begins.
+  defp build_db_context(agent) do
+    %{
+      market: "ETH-USDC",
+      open_positions: Trading.count_open_trades(agent.id),
+      recent_trades: Trading.list_open_trades(agent.id) |> Enum.take(5)
+    }
+  end
 
+  # HTTP-only slice — RPC block + vault balance + PriceOracle/CoinGecko.
+  # Each can take seconds (or hit a rate-limit timeout); previously
+  # these ran inside Repo.with_user and held a DB connection through
+  # the wait, which under load drove the recurring DBConnection
+  # checkout-timeout pattern. Mirrors the PR #284 split that did the
+  # same for the LLM round-trip.
+  defp build_remote_context(agent, %{market: market}) do
     block_number =
       case RPC.block_number() do
         {:ok, n} -> n
@@ -311,8 +332,6 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         0
       end
 
-    open_count = Trading.count_open_trades(agent.id)
-
     oracle_data =
       case PriceOracle.get(market) do
         {:ok, data} -> data
@@ -320,15 +339,12 @@ defmodule KiteAgentHub.Kite.AgentRunner do
       end
 
     %{
-      market: market,
       price: oracle_data.price,
       trend: oracle_data.trend,
       rsi: oracle_data.rsi,
       change_24h: oracle_data[:change_24h],
       block_number: block_number,
-      vault_balance_wei: vault_balance_wei,
-      open_positions: open_count,
-      recent_trades: Trading.list_open_trades(agent.id) |> Enum.take(5)
+      vault_balance_wei: vault_balance_wei
     }
   end
 

@@ -26,8 +26,26 @@ defmodule KiteAgentHub.Kite.PriceOracle do
     "KITE-USDC" => "ethereum"
   }
 
+  # CoinGecko free tier: 429s arrive in clusters. Once we've been
+  # told off, every additional request just adds latency and load to
+  # whatever process is calling — and previously, when the call lived
+  # inside `Repo.with_user`, those 8s waits each held a DB connection
+  # and tripped the 15s pool checkout timeout. Cache the rate-limit
+  # window in :persistent_term so all callers short-circuit during
+  # the cooldown without an HTTP round-trip.
+  @rate_limit_cooldown_seconds 60
+  @rate_limit_key {__MODULE__, :rate_limited_until}
+
   @doc "Fetch full market data for a symbol. Returns {:ok, map} or {:error, reason}."
   def get(market) do
+    if rate_limit_active?() do
+      {:error, :rate_limited}
+    else
+      do_fetch(market)
+    end
+  end
+
+  defp do_fetch(market) do
     coin_id = Map.get(@coin_ids, market, "ethereum")
 
     url =
@@ -44,7 +62,8 @@ defmodule KiteAgentHub.Kite.PriceOracle do
         end
 
       {:ok, %{status: 429}} ->
-        Logger.warning("PriceOracle: rate limited by CoinGecko")
+        record_rate_limit()
+        Logger.warning("PriceOracle: rate limited by CoinGecko — cooling down 60s")
         {:error, :rate_limited}
 
       {:ok, %{status: status}} ->
@@ -54,6 +73,23 @@ defmodule KiteAgentHub.Kite.PriceOracle do
         Logger.error("PriceOracle: request failed: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  defp rate_limit_active? do
+    case :persistent_term.get(@rate_limit_key, nil) do
+      nil -> false
+      until when is_integer(until) -> System.system_time(:second) < until
+    end
+  end
+
+  defp record_rate_limit do
+    until = System.system_time(:second) + @rate_limit_cooldown_seconds
+    :persistent_term.put(@rate_limit_key, until)
+  end
+
+  @doc false
+  def reset_rate_limit_cache do
+    :persistent_term.erase(@rate_limit_key)
   end
 
   @doc "Fetch just the price string for a symbol. Returns {:ok, string} or {:error, reason}."
