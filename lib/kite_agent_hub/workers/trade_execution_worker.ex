@@ -98,7 +98,46 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     platform = detect_platform(market, args["provider"])
 
     fill_price = Decimal.new(to_string(args["fill_price"]))
+    notional = notional_for_record(args, fill_price)
 
+    # Risk gate. The agent's per-trade notional cap comes from
+    # Trading.Risk — either the user-defined override on
+    # `agent.risk_config` or the workspace default. A structurally
+    # invalid risk_config row fails closed: the trade is recorded as
+    # failed with an actionable reason, no broker call.
+    case KiteAgentHub.Trading.Risk.per_trade_notional_cap(agent) do
+      {:error, :invalid_risk_config} ->
+        record_blocked_trade(
+          agent,
+          market,
+          platform,
+          args,
+          fill_price,
+          notional,
+          :invalid,
+          "RC-INVALID: risk_config invalid — edit on agent settings page"
+        )
+
+      {:ok, %Decimal{} = cap, _source} ->
+        if Decimal.compare(notional, cap) == :gt do
+          record_blocked_trade(
+            agent,
+            market,
+            platform,
+            args,
+            fill_price,
+            notional,
+            :over_cap,
+            "RC-CAP: notional $#{Decimal.to_string(notional, :normal)} exceeds " <>
+              "per-trade cap $#{Decimal.to_string(cap, :normal)}"
+          )
+        else
+          do_execute_trade(agent, args, owner_user_id, market, platform, fill_price, notional)
+        end
+    end
+  end
+
+  defp do_execute_trade(agent, args, owner_user_id, market, platform, fill_price, notional) do
     trade_attrs = %{
       kite_agent_id: agent.id,
       market: market,
@@ -111,7 +150,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       # reports the actual fill qty.
       contracts: contracts_for_record(args, fill_price),
       fill_price: fill_price,
-      notional_usd: notional_for_record(args, fill_price),
+      notional_usd: notional,
       status: "open",
       source: "oban",
       reason: args["reason"],
@@ -160,6 +199,50 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         Logger.error("TradeExecutionWorker: failed to create trade: #{inspect(changeset.errors)}")
         {:error, "trade insert failed"}
     end
+  end
+
+  # Record a trade that the risk gate refused to send to the broker.
+  # Lands in `trade_records` as status=failed so the agent + UI see
+  # what was rejected and why; no broker call is made.
+  #
+  # Telemetry emits :reason_category (:invalid | :over_cap) so a
+  # dashboard can split "broken agent" from "oversized trade" without
+  # leaking any risk_config values on the wire — only agent_id, the
+  # platform atom, and the category leave the worker.
+  defp record_blocked_trade(
+         agent,
+         market,
+         platform,
+         args,
+         fill_price,
+         notional,
+         reason_category,
+         reason
+       )
+       when reason_category in [:invalid, :over_cap] do
+    Logger.warning(
+      "TradeExecutionWorker: agent #{agent.id} trade BLOCKED by risk gate — #{reason}"
+    )
+
+    :telemetry.execute(
+      [:kah, :risk_config, :blocked_trade],
+      %{count: 1},
+      %{agent_id: agent.id, platform: platform, reason_category: reason_category}
+    )
+
+    Trading.create_trade(%{
+      kite_agent_id: agent.id,
+      market: market,
+      side: args["side"],
+      action: args["action"],
+      contracts: contracts_for_record(args, fill_price),
+      fill_price: fill_price,
+      notional_usd: notional,
+      status: "failed",
+      source: "oban",
+      reason: reason,
+      platform: platform
+    })
   end
 
   defp format_failure_reason(reason) when is_binary(reason), do: String.slice(reason, 0, 4000)
