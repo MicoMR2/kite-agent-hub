@@ -40,48 +40,73 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
     Logger.info("AlpacaSettlementWorker: scanning #{length(agents)} active agent(s)")
 
     Enum.each(agents, fn {agent_id, owner_user_id} ->
-      Repo.with_user(owner_user_id, fn -> settle_for_agent(agent_id) end)
+      run_for_agent(agent_id, owner_user_id)
     end)
 
     :ok
   end
 
-  defp settle_for_agent(agent_id) do
-    open_trades = Trading.list_open_alpaca_trades(agent_id)
-
-    case open_trades do
-      [] ->
+  # Three-phase split (mirrors AgentRunner / PriceOracle lift-out):
+  #   Phase 1 (with_user): fetch open trades + agent + Alpaca creds — DB only.
+  #   Phase 2 (no DB lock): make the per-trade `AlpacaClient.get_order` HTTP
+  #                          calls. Previously these ran inside with_user and
+  #                          held a connection through the Alpaca round-trip,
+  #                          which under load tripped the 15s checkout timeout.
+  #   Phase 3 (with_user): apply each trade's status update / settlement /
+  #                          attestation enqueue — back inside RLS scope.
+  defp run_for_agent(agent_id, owner_user_id) do
+    case fetch_settlement_inputs(agent_id, owner_user_id) do
+      :noop ->
         :ok
-
-      trades ->
-        agent = Trading.get_agent!(agent_id)
-
-        case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
-          {:ok, {key_id, secret, env}} ->
-            Logger.info(
-              "AlpacaSettlementWorker: agent #{agent_id} polling #{length(trades)} open trade(s) (env=#{env})"
-            )
-
-            Enum.each(trades, &poll_and_update(&1, key_id, secret, env))
-
-          {:error, reason} ->
-            Logger.warning(
-              "AlpacaSettlementWorker: skipping agent #{agent_id} — credentials unavailable: #{inspect(reason)}"
-            )
-        end
-    end
-  end
-
-  defp poll_and_update(trade, key_id, secret, env) do
-    case AlpacaClient.get_order(key_id, secret, trade.platform_order_id, env) do
-      {:ok, %{status: status} = order} ->
-        handle_status(trade, status, order)
 
       {:error, reason} ->
         Logger.warning(
-          "AlpacaSettlementWorker: trade #{trade.id} order #{trade.platform_order_id} fetch failed: #{inspect(reason)}"
+          "AlpacaSettlementWorker: skipping agent #{agent_id} — #{inspect(reason)}"
         )
+
+      {:ok, trades, {key_id, secret, env}} ->
+        Logger.info(
+          "AlpacaSettlementWorker: agent #{agent_id} polling #{length(trades)} open trade(s) (env=#{env})"
+        )
+
+        # HTTP fan-out happens here, outside any DB transaction.
+        results =
+          Enum.map(trades, fn trade ->
+            {trade, AlpacaClient.get_order(key_id, secret, trade.platform_order_id, env)}
+          end)
+
+        # Re-enter with_user only for the DB writes.
+        Repo.with_user(owner_user_id, fn ->
+          Enum.each(results, &apply_result/1)
+        end)
     end
+  end
+
+  defp fetch_settlement_inputs(agent_id, owner_user_id) do
+    Repo.with_user(owner_user_id, fn ->
+      case Trading.list_open_alpaca_trades(agent_id) do
+        [] ->
+          :noop
+
+        trades ->
+          agent = Trading.get_agent!(agent_id)
+
+          case Credentials.fetch_secret_with_env(agent.organization_id, :alpaca) do
+            {:ok, creds} -> {:ok, trades, creds}
+            {:error, _} = err -> err
+          end
+      end
+    end)
+  end
+
+  defp apply_result({trade, {:ok, %{status: status} = order}}) do
+    handle_status(trade, status, order)
+  end
+
+  defp apply_result({trade, {:error, reason}}) do
+    Logger.warning(
+      "AlpacaSettlementWorker: trade #{trade.id} order #{trade.platform_order_id} fetch failed: #{inspect(reason)}"
+    )
   end
 
   # Filled — settle with the actual fill price. Update fill_price first
