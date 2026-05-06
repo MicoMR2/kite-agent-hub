@@ -618,17 +618,8 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       |> String.replace("\r\n", "\n")
       |> String.trim()
 
-    has_begin = String.contains?(normalized_pem, "BEGIN")
-    pem_len = String.length(normalized_pem)
-    line_count = normalized_pem |> String.split("\n") |> length()
-
-    Logger.info(
-      "Kalshi: PEM diagnostics — length=#{pem_len}, lines=#{line_count}, has_BEGIN=#{has_begin}"
-    )
-
     try do
       entries = :public_key.pem_decode(normalized_pem)
-      Logger.info("Kalshi: PEM decode returned #{length(entries)} entries")
 
       case entries do
         [] ->
@@ -636,11 +627,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
           {:error, "PEM decode failed: no entries found"}
 
         [pem_entry | _] ->
-          {type, _der, _cipher} = pem_entry
-          Logger.info("Kalshi: PEM entry type: #{type}")
-
           private_key = :public_key.pem_entry_decode(pem_entry)
-          Logger.info("Kalshi: private key decoded successfully")
 
           signature =
             :public_key.sign(

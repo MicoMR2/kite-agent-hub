@@ -57,7 +57,6 @@ defmodule KiteAgentHub.CollectiveIntelligence.Seeder do
     if length(closes) < hold + 1 do
       []
     else
-      indexed = Enum.with_index(closes)
       max_i = length(closes) - hold - 1
 
       Enum.flat_map(0..max_i, fn i ->
