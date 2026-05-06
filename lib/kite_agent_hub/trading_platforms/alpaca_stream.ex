@@ -12,11 +12,12 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaStream do
 
   ## Supported feeds
 
-  | Feed     | URL                                                          |
-  |----------|--------------------------------------------------------------|
-  | `:stocks`| wss://stream.data.alpaca.markets/v2/iex                      |
-  | `:crypto`| wss://stream.data.alpaca.markets/v1beta3/crypto/us           |
-  | `:news`  | wss://stream.data.alpaca.markets/v1beta1/news                |
+  | Feed      | URL                                                          |
+  |-----------|--------------------------------------------------------------|
+  | `:stocks` | wss://stream.data.alpaca.markets/v2/iex                      |
+  | `:crypto` | wss://stream.data.alpaca.markets/v1beta3/crypto/us           |
+  | `:news`   | wss://stream.data.alpaca.markets/v1beta1/news                |
+  | `:options`| wss://stream.data.alpaca.markets/v1beta1/indicative          |
 
   ## Connection state machine
 
@@ -47,7 +48,13 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaStream do
   @feed_urls %{
     stocks: "wss://stream.data.alpaca.markets/v2/iex",
     crypto: "wss://stream.data.alpaca.markets/v1beta3/crypto/us",
-    news: "wss://stream.data.alpaca.markets/v1beta1/news"
+    news: "wss://stream.data.alpaca.markets/v1beta1/news",
+    # Options uses Alpaca's "indicative" SIP-derived feed. The opra
+    # endpoint exists but requires an opra-licensed plan; indicative
+    # is what the standard market-data plan is allowed to consume and
+    # emits the same `{T: t/q}` shape as stocks so dispatch/2 needs no
+    # OCC-specific branch.
+    options: "wss://stream.data.alpaca.markets/v1beta1/indicative"
   }
 
   # ── Public API ────────────────────────────────────────────────────────────────
@@ -56,11 +63,12 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaStream do
   Start an AlpacaStream WebSockex client for one feed.
 
   ## Options
-    * `:feed`    — `:stocks | :crypto | :news` (required)
+    * `:feed`    — `:stocks | :crypto | :news | :options` (required)
     * `:org_id`  — organisation whose Alpaca credentials to use (required)
-    * `:symbols` — list of symbols to subscribe to (e.g. `["AAPL", "SPY"]`).
+    * `:symbols` — list of symbols to subscribe to (e.g. `["AAPL", "SPY"]`,
+                   `["AAPL260117C00100000"]` for options).
                    For `:news` this filters by symbol; pass `["*"]` for all news.
-    * `:topics`  — for stocks/crypto: list of `["trades", "quotes", "bars"]`.
+    * `:topics`  — for stocks/crypto/options: list of `["trades", "quotes", "bars"]`.
                    Defaults to `["trades", "quotes"]`.
   """
   def start_link(opts) do
