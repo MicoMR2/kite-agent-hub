@@ -56,7 +56,14 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   require Logger
 
   alias KiteAgentHub.{Trading, Repo}
-  alias KiteAgentHub.Kite.{AgentLog, RPC, SignalEngine, PriceOracle, RuleBasedStrategy}
+  alias KiteAgentHub.Kite.{
+    AgentLog,
+    RPC,
+    SignalEngine,
+    PriceOracle,
+    RuleBasedStrategy,
+    PortfolioEdgeScorer
+  }
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
   @default_interval_ms 60_000
@@ -120,13 +127,16 @@ defmodule KiteAgentHub.Kite.AgentRunner do
             Logger.info("AgentRunner: agent #{agent_id} is #{agent.status}, stopping runner")
             :stop
           else
-            # Rule-based exit pass needs the RLS context for edge-score queries.
-            rule_actions = collect_rule_based_actions(agent)
             # Build only the DB-backed slice of the context inside the
             # transaction. The HTTP-backed slice (RPC + PriceOracle)
             # runs in Phase 2 — see build_remote_context/2.
             db_ctx = build_db_context(agent)
-            {:run, agent, db_ctx, rule_actions}
+            # Pre-compute the rule-based exit threshold from settled
+            # PnL stats. Pure DB, needs RLS scope; the broker HTTP
+            # scoring that previously wrapped this lives in Phase 2
+            # via PortfolioEdgeScorer.score_portfolio_split/2.
+            threshold = RuleBasedStrategy.exit_threshold_for(agent)
+            {:run, agent, db_ctx, threshold}
           end
         end)
       rescue
@@ -149,12 +159,13 @@ defmodule KiteAgentHub.Kite.AgentRunner do
         {:ok, :stop} ->
           {:ok, :stop}
 
-        {:ok, {:run, agent, db_ctx, rule_actions}} ->
+        {:ok, {:run, agent, db_ctx, threshold}} ->
           # DB connection is released. Run the slow HTTP calls (RPC,
-          # PriceOracle) and the LLM round-trip in Phase 2 — none of
-          # them holds a Repo connection.
+          # PriceOracle, broker positions) and the LLM round-trip in
+          # Phase 2 — none of them holds a Repo connection.
           remote_ctx = build_remote_context(agent, db_ctx)
           context = Map.merge(db_ctx, remote_ctx)
+          rule_actions = build_rule_actions(agent, threshold, owner_user_id)
           run_post_db_phase(agent, context, rule_actions, owner_user_id)
           {:ok, :continue}
 
@@ -179,11 +190,16 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  # Collect rule-based exit actions while still inside Repo.with_user.
-  # Returns a (possibly empty) list of action maps. Crashes are caught so
-  # a buggy edge-scorer does not take down the whole runner.
-  defp collect_rule_based_actions(agent) do
-    RuleBasedStrategy.plan_actions(agent)
+  # Collect rule-based exit actions in Phase 2 (no Repo connection
+  # held). `PortfolioEdgeScorer.score_portfolio_split/2` keeps the
+  # credentials read inside its own brief `with_user`, then runs the
+  # broker HTTP fan-out outside the lock. `RuleBasedStrategy.plan_with/3`
+  # is pure (no DB) — the threshold was pre-computed in Phase 1.
+  # Crashes are caught so a buggy edge-scorer does not take down the
+  # whole runner.
+  defp build_rule_actions(agent, threshold, owner_user_id) do
+    scores = PortfolioEdgeScorer.score_portfolio_split(agent.organization_id, owner_user_id)
+    RuleBasedStrategy.plan_with(agent, scores, threshold)
   rescue
     e ->
       Logger.error(
