@@ -1370,7 +1370,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
           []
       end
 
-    {stock_symbols, crypto_symbols} = partition_by_feed(symbols)
+    {stock_symbols, crypto_symbols, option_symbols} = partition_by_feed(symbols)
 
     cond do
       is_nil(org_id) ->
@@ -1385,10 +1385,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
         |> assign(:alpaca_live_tick_status, :no_symbols)
 
       true ->
-        # Start the stocks + crypto feeds in parallel — each is idempotent
-        # at the supervisor level (returns :already_started if another LV
-        # or agent already opened it). Skip a feed entirely when the
-        # corresponding symbol list is empty.
+        # Start the stocks + crypto + options feeds in parallel — each
+        # is idempotent at the supervisor level (returns :already_started
+        # if another LV or agent already opened it). Skip a feed entirely
+        # when the corresponding symbol list is empty.
         if stock_symbols != [] do
           start_feed_safe(:stocks, org_id, stock_symbols)
           Enum.each(stock_symbols, &AlpacaStream.subscribe(:stocks, &1))
@@ -1399,11 +1399,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
           Enum.each(crypto_symbols, &AlpacaStream.subscribe(:crypto, &1))
         end
 
+        if option_symbols != [] do
+          start_feed_safe(:options, org_id, option_symbols)
+          Enum.each(option_symbols, &AlpacaStream.subscribe(:options, &1))
+        end
+
         # Track every (feed, symbol) pair we subscribed to so disable
         # can release exactly those.
         subscribed =
           Enum.map(stock_symbols, &{:stocks, &1}) ++
-            Enum.map(crypto_symbols, &{:crypto, &1})
+            Enum.map(crypto_symbols, &{:crypto, &1}) ++
+            Enum.map(option_symbols, &{:options, &1})
 
         socket
         |> assign(:alpaca_live_tick_enabled, true)
@@ -1426,21 +1432,29 @@ defmodule KiteAgentHubWeb.DashboardLive do
     end
   end
 
-  # Alpaca symbols come in two shapes for crypto: legacy `BTCUSD` and modern
-  # `BTC/USD`. The slash form is unambiguous; for the legacy form we treat
-  # any 6+ char ticker ending in USD/USDC as crypto so it routes to the
-  # v1beta3 crypto stream instead of the IEX stocks stream. Returns
-  # `{stock_symbols, crypto_symbols}`.
+  # Bucket Alpaca symbols by stream feed. Three categories:
+  #   * options — OCC contract format (`AAPL260117C00100000`), routes to
+  #     the v1beta1/indicative stream
+  #   * crypto  — slash form (`BTC/USD`) or legacy 6+ char ending in USD/USDC,
+  #     routes to v1beta3 crypto
+  #   * stocks  — everything else, routes to v2/iex
+  # Returns `{stock_symbols, crypto_symbols, option_symbols}`.
   @doc false
   def partition_by_feed(symbols) do
-    Enum.split_with(symbols, fn sym ->
-      cond do
-        String.contains?(sym, "/") -> false
-        String.ends_with?(sym, "USDC") -> false
-        String.ends_with?(sym, "USD") and String.length(sym) >= 6 -> false
-        true -> true
-      end
-    end)
+    {options, non_options} =
+      Enum.split_with(symbols, fn sym -> KiteAgentHub.Trading.OccSymbol.match?(sym) end)
+
+    {stocks, crypto} =
+      Enum.split_with(non_options, fn sym ->
+        cond do
+          String.contains?(sym, "/") -> false
+          String.ends_with?(sym, "USDC") -> false
+          String.ends_with?(sym, "USD") and String.length(sym) >= 6 -> false
+          true -> true
+        end
+      end)
+
+    {stocks, crypto, options}
   end
 
   defp disable_alpaca_live_ticks(socket) do
