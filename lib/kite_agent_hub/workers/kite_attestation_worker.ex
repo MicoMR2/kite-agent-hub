@@ -100,8 +100,13 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   # chain-side variance and any future calldata additions.
   @gas_limit 30_000
 
-  # Kite testnet chain id (TxSigner default).
-  @chain_id 2368
+  # Kite chain ids — mainnet uses production explorer + production
+  # treasury; testnet is the default for newly created agents and
+  # remains the fallback when `agent.chain_id` is nil or unrecognized.
+  # Whitelisted to {2366, 2368} so a stale or hand-edited agent row
+  # cannot point this worker at an arbitrary RPC.
+  @testnet_chain_id 2368
+  @mainnet_chain_id 2366
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"trade_id" => trade_id}}) do
@@ -141,10 +146,10 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
 
             :ok
 
-          %KiteAgent{agent_type: "trading", wallet_address: wallet}
+          %KiteAgent{agent_type: "trading", wallet_address: wallet} = agent
           when is_binary(wallet) and wallet != "" ->
             Logger.info("KiteAttestationWorker: trade #{trade.id} starting attestation")
-            attest(trade)
+            attest(trade, agent)
 
           %KiteAgent{} = agent ->
             Logger.info(
@@ -167,7 +172,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   defp agent_for(%TradeRecord{kite_agent_id: nil}), do: nil
   defp agent_for(%TradeRecord{kite_agent_id: id}), do: Repo.get(KiteAgent, id)
 
-  defp attest(trade) do
+  defp attest(trade, agent) do
     # PR #104: removed `fetch_agent` + `ensure_wallet` from the with chain.
     # The from-address is derived from AGENT_PRIVATE_KEY inside TxSigner —
     # the kite_agent.wallet_address DB field is purely a display value
@@ -176,9 +181,11 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     # though AGENT_PRIVATE_KEY env produces a valid 0x4049... address,
     # so the old `ensure_wallet` check was silently dropping every job.
     # CyberSec pre-cleared this removal at msg 5497 (no security impact).
+    chain = chain_atom_for(agent)
+
     with {:ok, private_key} <- fetch_private_key(),
          {:ok, treasury} <- fetch_treasury_address(),
-         {:ok, tx_hash} <- submit_native_transfer(private_key, treasury, trade),
+         {:ok, tx_hash} <- submit_native_transfer(private_key, treasury, trade, chain),
          {:ok, _updated} <- persist_tx_hash(trade, tx_hash) do
       Logger.info(
         "KiteAttestationWorker: trade #{trade.id} attested on Kite chain — tx #{tx_hash}"
@@ -232,10 +239,11 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
   # that pick the same nonce from signing identical raw transactions
   # and producing the same tx hash (which was writing one hash to two
   # trade rows and breaking auditability).
-  defp submit_native_transfer(private_key, treasury, trade) do
+  defp submit_native_transfer(private_key, treasury, trade, chain)
+       when chain in [:testnet, :mainnet] do
     with {:ok, from_address} <- TxSigner.address_from_private_key(private_key),
-         {:ok, nonce} <- RPC.get_transaction_count(from_address, :testnet),
-         {:ok, gas_price} <- RPC.gas_price(:testnet),
+         {:ok, nonce} <- RPC.get_transaction_count(from_address, chain),
+         {:ok, gas_price} <- RPC.gas_price(chain),
          tx <- %{
            nonce: nonce,
            gas_price: gas_price,
@@ -244,11 +252,21 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
            value: @attestation_amount_wei,
            data: trade_id_calldata(trade.id)
          },
-         {:ok, signed_hex} <- TxSigner.sign(tx, private_key, chain_id: @chain_id),
-         {:ok, tx_hash} <- RPC.send_raw_transaction(signed_hex, :testnet) do
+         {:ok, signed_hex} <- TxSigner.sign(tx, private_key, chain_id: chain_id_for(chain)),
+         {:ok, tx_hash} <- RPC.send_raw_transaction(signed_hex, chain) do
       {:ok, tx_hash}
     end
   end
+
+  # Whitelist: only known Kite chain ids route to a real network atom.
+  # Anything else falls back to :testnet so a hand-edited agent row
+  # (e.g. someone setting chain_id = 1 for Ethereum mainnet) can never
+  # trick the worker into signing for an unknown chain.
+  defp chain_atom_for(%KiteAgent{chain_id: @mainnet_chain_id}), do: :mainnet
+  defp chain_atom_for(_), do: :testnet
+
+  defp chain_id_for(:mainnet), do: @mainnet_chain_id
+  defp chain_id_for(:testnet), do: @testnet_chain_id
 
   # Encode the trade UUID as 16 raw bytes of calldata, hex-prefixed.
   # Example: "c4c040af-154f-44fe-8be5-e912228b16b5" →
