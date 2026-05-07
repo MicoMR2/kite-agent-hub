@@ -22,6 +22,10 @@ defmodule KiteAgentHub.Application do
       # No feeds are started at boot; call AlpacaStreamSupervisor.start_feed/3
       # from the dashboard or a background task after resolving credentials.
       KiteAgentHub.TradingPlatforms.AlpacaStreamSupervisor,
+      # Per-symbol ring buffer of recent sanitized news headlines.
+      # Subscribes to the Alpaca news PubSub topic on init; readers
+      # query via `KiteAgentHub.News.Buffer.recent/1`.
+      KiteAgentHub.News.Buffer,
       KiteAgentHub.Kite.AgentRunnerSupervisor,
       KiteAgentHubWeb.Endpoint
     ]
