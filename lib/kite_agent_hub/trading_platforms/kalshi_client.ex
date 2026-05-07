@@ -90,10 +90,14 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   Returns `{:ok, parsed_market}` or `{:error, reason}`.
   """
   def market(key_id, pem, ticker, env \\ "paper") do
-    case get("/markets/#{ticker}", key_id, pem, env) do
-      {:ok, %{"market" => m}} when is_map(m) -> {:ok, parse_market(m)}
-      {:ok, _} -> {:error, "kalshi market response missing market key"}
-      err -> err
+    if not valid_ticker?(ticker) do
+      {:error, "invalid kalshi ticker"}
+    else
+      case get("/markets/#{ticker}", key_id, pem, env) do
+        {:ok, %{"market" => m}} when is_map(m) -> {:ok, parse_market(m)}
+        {:ok, _} -> {:error, "kalshi market response missing market key"}
+        err -> err
+      end
     end
   end
 
@@ -136,10 +140,14 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   best yes ask = 100 - best no bid (reciprocal binary).
   """
   def orderbook(key_id, pem, ticker, env \\ "paper") do
-    case get("/markets/#{ticker}/orderbook", key_id, pem, env) do
-      {:ok, %{"orderbook" => ob}} when is_map(ob) -> {:ok, parse_orderbook(ob)}
-      {:ok, _} -> {:error, "kalshi orderbook response missing orderbook key"}
-      err -> err
+    if not valid_ticker?(ticker) do
+      {:error, "invalid kalshi ticker"}
+    else
+      case get("/markets/#{ticker}/orderbook", key_id, pem, env) do
+        {:ok, %{"orderbook" => ob}} when is_map(ob) -> {:ok, parse_orderbook(ob)}
+        {:ok, _} -> {:error, "kalshi orderbook response missing orderbook key"}
+        err -> err
+      end
     end
   end
 
@@ -170,6 +178,18 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     end
   end
 
+  # Kalshi tickers are uppercase alphanumeric segments separated by
+  # dashes (e.g. "BTCZ-24DEC2031-B80000"). Anchored regex enforced
+  # before any ticker is interpolated into a URL path — guards
+  # against an agent-supplied or downstream-mangled value containing
+  # `..`, `/`, query characters, or anything else that would break
+  # routing or open an SSRF surface.
+  @ticker_regex ~r/\A[A-Z0-9][A-Z0-9-]{0,63}\z/i
+
+  @doc false
+  def valid_ticker?(ticker) when is_binary(ticker), do: Regex.match?(@ticker_regex, ticker)
+  def valid_ticker?(_), do: false
+
   @doc """
   Place a limit order on Kalshi.
 
@@ -179,13 +199,80 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   price   — limit price in cents (integer, 1-99)
   env     — "paper" (demo, default) or "live"
 
+  When the order's `time_in_force` is `"immediate_or_cancel"`, an
+  orderbook pre-flight runs first: the limit price is bumped to
+  `ask + 1c` so the IOC has a realistic chance of crossing the book
+  instead of cancelling unfilled. Pre-flight failures (orderbook
+  unavailable, 429, no ask side) silently fall back to the original
+  limit — the trade is never blocked by a broken pre-flight.
+
   Returns {:ok, %{id, ticker, side, count, status}} or {:error, reason}.
   """
   def place_order(key_id, pem, ticker, side, count, price, env \\ "paper", opts \\ []) do
-    with {:ok, body} <- order_body(ticker, side, count, price, opts) do
+    with :ok <- assert_valid_ticker(ticker),
+         price = maybe_bump_ioc_price(key_id, pem, ticker, side, price, env, opts),
+         {:ok, body} <- order_body(ticker, side, count, price, opts) do
       post("/portfolio/orders", body, key_id, pem, env)
       |> parse_placed_order()
     end
+  end
+
+  defp assert_valid_ticker(ticker) do
+    if valid_ticker?(ticker), do: :ok, else: {:error, "invalid kalshi ticker"}
+  end
+
+  # IOC pre-flight. Returns the (possibly bumped) limit price in
+  # cents. Fail-open: any failure path returns the caller's original
+  # price so a broken orderbook fetch never blocks the order. The
+  # orderbook call uses a bounded `receive_timeout` (3s) so a slow
+  # Kalshi side cannot stall the trade — original limit ships.
+  defp maybe_bump_ioc_price(key_id, pem, ticker, side, price, env, opts) do
+    tif = normalize_time_in_force(opts["time_in_force"])
+
+    if tif == "immediate_or_cancel" do
+      case fetch_orderbook_for_preflight(key_id, pem, ticker, env) do
+        {:ok, ob} ->
+          ask_cents = best_ask_cents(ob, side)
+
+          case ask_cents do
+            nil -> price
+            ask -> bump_to_ask_plus_one(price, ask)
+          end
+
+        _err ->
+          price
+      end
+    else
+      price
+    end
+  end
+
+  # Bounded-timeout orderbook fetch for the IOC pre-flight only.
+  # Routes through the same `get/4` signing path as the public
+  # `orderbook/4`, but with a short `receive_timeout` so a slow
+  # broker can never starve the calling worker.
+  defp fetch_orderbook_for_preflight(key_id, pem, ticker, env) do
+    if not valid_ticker?(ticker) do
+      {:error, "invalid kalshi ticker"}
+    else
+      case get("/markets/#{ticker}/orderbook", key_id, pem, env, receive_timeout: 3_000) do
+        {:ok, %{"orderbook" => ob}} when is_map(ob) -> {:ok, parse_orderbook(ob)}
+        {:ok, _} -> {:error, "kalshi orderbook response missing orderbook key"}
+        err -> err
+      end
+    end
+  end
+
+  defp best_ask_cents(%{yes_ask_cents: cents}, "yes") when is_integer(cents), do: cents
+  defp best_ask_cents(%{no_ask_cents: cents}, "no") when is_integer(cents), do: cents
+  defp best_ask_cents(_, _), do: nil
+
+  # `bumped = max(original, ask + 1)` so we never *lower* a limit the
+  # caller intentionally set higher; clamp into Kalshi's 1..99c band.
+  defp bump_to_ask_plus_one(original, ask_cents) do
+    candidate = ask_cents + 1
+    bumped = max(parse_int(original) || candidate, candidate)
+    bumped |> max(1) |> min(99)
   end
 
   @doc false
@@ -582,7 +669,7 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     end
   end
 
-  defp get(path, key_id, pem, env) do
+  defp get(path, key_id, pem, env, req_opts \\ []) do
     ts_ms = System.os_time(:millisecond)
     full_path = @api_prefix <> path
     clean_path = String.split(full_path, "?") |> List.first()
@@ -596,7 +683,9 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
           {"KALSHI-ACCESS-TIMESTAMP", Integer.to_string(ts_ms)}
         ]
 
-        case Req.get(base_host(env) <> full_path, headers: headers) do
+        opts = Keyword.merge([headers: headers], req_opts)
+
+        case Req.get(base_host(env) <> full_path, opts) do
           {:ok, %{status: 200, body: body}} -> {:ok, body}
           {:ok, %{status: 401, body: body}} -> {:error, "kalshi 401: #{inspect(body)}"}
           {:ok, %{status: status, body: body}} -> {:error, "kalshi #{status}: #{inspect(body)}"}
