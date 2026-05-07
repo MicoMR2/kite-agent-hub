@@ -15,6 +15,10 @@ defmodule KiteAgentHub.Application do
       {Oban, Application.fetch_env!(:kite_agent_hub, Oban)},
       {Registry, keys: :unique, name: KiteAgentHub.AgentRegistry},
       KiteAgentHub.Api.RateLimiter,
+      # Task supervisor for fire-and-forget side effects that must
+      # NOT inherit the caller's Repo connection — see
+      # `KiteAgentHub.Trading.async_record_outcome/1`.
+      {Task.Supervisor, name: KiteAgentHub.TaskSupervisor},
       # In-memory ring-buffer log — must start before AgentRunnerSupervisor
       # so runners can push entries from their first tick.
       KiteAgentHub.Kite.AgentLog,
