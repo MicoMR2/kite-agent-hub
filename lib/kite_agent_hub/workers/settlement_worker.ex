@@ -32,20 +32,86 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"trade_id" => trade_id} = args, attempt: attempt}) do
     # owner_user_id is passed from TradeExecutionWorker to avoid an owner lookup
-    # and to ensure Repo.get! runs inside the correct RLS context from the start
+    # and to ensure Repo.get! runs inside the correct RLS context from the start.
     owner_user_id =
       args["owner_user_id"] ||
         fallback_owner_user_id(trade_id)
 
+    case load_phase(trade_id, owner_user_id, args["tx_hash"]) do
+      {:already_terminal, status} ->
+        Logger.info("SettlementWorker: trade #{trade_id} already #{status}, skipping")
+        :ok
+
+      {:settle_no_tx, trade} ->
+        Repo.with_user(owner_user_id, fn ->
+          Logger.info(
+            "SettlementWorker: trade #{trade.id} has no tx_hash, settling as confirmed"
+          )
+
+          Trading.settle_trade(trade, Decimal.new(0))
+          :ok
+        end)
+
+      {:check_rpc, trade, tx_hash} ->
+        # Phase 2 — RPC call runs WITHOUT a Repo connection held. The
+        # Kite chain JSON-RPC round-trip used to run inside with_user
+        # and starved the pool when the node was slow. Now any DB
+        # writes that follow re-enter with_user explicitly.
+        case RPC.get_transaction_receipt(tx_hash) do
+          {:ok, %{"status" => "0x1"}} ->
+            Repo.with_user(owner_user_id, fn ->
+              Logger.info(
+                "SettlementWorker: tx #{tx_hash} confirmed, settling trade #{trade.id}"
+              )
+
+              Trading.settle_trade(trade, Decimal.new(0))
+              :ok
+            end)
+
+          {:ok, %{"status" => "0x0"}} ->
+            Repo.with_user(owner_user_id, fn ->
+              Logger.warning(
+                "SettlementWorker: tx #{tx_hash} reverted, marking trade #{trade.id} failed"
+              )
+
+              Trading.update_trade(trade, %{status: "failed"})
+              :ok
+            end)
+
+          {:ok, nil} ->
+            backoff = min(30 * attempt, 300)
+
+            Logger.info(
+              "SettlementWorker: tx #{tx_hash} pending (attempt #{attempt}), retry in #{backoff}s"
+            )
+
+            {:snooze, backoff}
+
+          {:error, reason} ->
+            Logger.error("SettlementWorker: RPC error for #{tx_hash}: #{inspect(reason)}")
+            {:error, "rpc error"}
+        end
+    end
+  end
+
+  # Phase 1: load the trade inside Repo.with_user and decide what to
+  # do next. Returns one of:
+  #   {:already_terminal, status}   — nothing to do.
+  #   {:settle_no_tx, trade}        — off-chain row; settle without RPC.
+  #   {:check_rpc, trade, tx_hash}  — caller must do the RPC + Phase 3.
+  defp load_phase(trade_id, owner_user_id, args_tx_hash) do
     Repo.with_user(owner_user_id, fn ->
       trade = Repo.get!(TradeRecord, trade_id)
 
-      if trade.status != "open" do
-        Logger.info("SettlementWorker: trade #{trade_id} already #{trade.status}, skipping")
-        :ok
-      else
-        tx_hash = args["tx_hash"] || trade.tx_hash
-        check_and_settle(trade, tx_hash, attempt)
+      cond do
+        trade.status != "open" ->
+          {:already_terminal, trade.status}
+
+        is_nil(args_tx_hash) and is_nil(trade.tx_hash) ->
+          {:settle_no_tx, trade}
+
+        true ->
+          {:check_rpc, trade, args_tx_hash || trade.tx_hash}
       end
     end)
   end
@@ -67,44 +133,4 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
     |> Repo.one()
   end
 
-  defp check_and_settle(trade, nil, _attempt) do
-    # No tx hash — settle as confirmed (off-chain trade record)
-    Logger.info("SettlementWorker: trade #{trade.id} has no tx_hash, settling as confirmed")
-    Trading.settle_trade(trade, Decimal.new(0))
-    :ok
-  end
-
-  defp check_and_settle(trade, tx_hash, attempt) do
-    case RPC.get_transaction_receipt(tx_hash) do
-      {:ok, %{"status" => "0x1"}} ->
-        # Transaction succeeded on-chain
-        Logger.info("SettlementWorker: tx #{tx_hash} confirmed, settling trade #{trade.id}")
-        Trading.settle_trade(trade, Decimal.new(0))
-        :ok
-
-      {:ok, %{"status" => "0x0"}} ->
-        # Transaction reverted. Trading.update_trade/2 broadcasts the
-        # status change + records to KCI; no need to do either inline.
-        Logger.warning(
-          "SettlementWorker: tx #{tx_hash} reverted, marking trade #{trade.id} failed"
-        )
-
-        Trading.update_trade(trade, %{status: "failed"})
-        :ok
-
-      {:ok, nil} ->
-        # Not mined yet — snooze with exponential backoff
-        backoff = min(30 * attempt, 300)
-
-        Logger.info(
-          "SettlementWorker: tx #{tx_hash} pending (attempt #{attempt}), retry in #{backoff}s"
-        )
-
-        {:snooze, backoff}
-
-      {:error, reason} ->
-        Logger.error("SettlementWorker: RPC error for #{tx_hash}: #{inspect(reason)}")
-        {:error, "rpc error"}
-    end
-  end
 end
