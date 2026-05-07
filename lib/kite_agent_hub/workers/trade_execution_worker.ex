@@ -27,7 +27,19 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   use Oban.Worker,
     queue: :trade_execution,
     max_attempts: 3,
-    unique: [period: 30, fields: [:args]]
+    # Dedup external enqueues from AgentRunner / TradesController on
+    # the same intent within 60s. `keys: [:agent_id, :market, :action]`
+    # excludes per-tick fields like `fill_price` from the match — a
+    # price that drifts a cent between ticks must not defeat dedup.
+    # NOTE: this only blocks duplicate Oban INSERTS. It does not
+    # prevent the same job's `perform/1` from running twice on retry —
+    # `do_execute_trade/7` uses `Trading.find_pending_trade/3` for that.
+    unique: [
+      period: 60,
+      fields: [:args],
+      keys: [:agent_id, :market, :action],
+      states: [:available, :scheduled, :executing, :retryable, :completed]
+    ]
 
   require Logger
 
@@ -170,9 +182,27 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     }
 
     # Phase 1 — with_user. Insert the pending row; release the
-    # connection BEFORE any broker call.
+    # connection BEFORE any broker call. Idempotent on retry: if a
+    # prior attempt of this job already inserted a pending row for
+    # the same (agent, market, action) and the broker hasn't been
+    # called yet (`broker_submitted_at IS NULL`), reuse it instead
+    # of inserting a duplicate. KAH P1 2026-05-07 produced 24
+    # orphan pending rows from this exact retry-without-idempotency
+    # path before this guard existed.
     create_result =
-      Repo.with_user(owner_user_id, fn -> Trading.create_trade(trade_attrs) end)
+      Repo.with_user(owner_user_id, fn ->
+        case Trading.find_pending_trade(agent.id, market, args["action"]) do
+          nil ->
+            Trading.create_trade(trade_attrs)
+
+          existing ->
+            Logger.info(
+              "TradeExecutionWorker: reusing pending trade #{existing.id} for agent #{agent.id} #{market} #{args["action"]} (idempotent retry)"
+            )
+
+            {:ok, existing}
+        end
+      end)
 
     case create_result do
       {:ok, trade} ->

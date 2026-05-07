@@ -332,6 +332,30 @@ defmodule KiteAgentHub.Trading do
     Repo.get_by(TradeRecord, id: trade_id, kite_agent_id: agent_id)
   end
 
+  # Find an unsubmitted pending trade for the same intent within a
+  # short window. Used by `TradeExecutionWorker` to make Phase 1 of
+  # the pending-row pattern idempotent across Oban retries — without a
+  # `oban_job_id` column on the schema. Same (agent, market, action)
+  # within `within_seconds` and still in the pre-broker state means a
+  # prior attempt of the same job already inserted the row; reuse it
+  # rather than inserting a duplicate (KAH P1 2026-05-07: 24 orphaned
+  # pending rows from one agent across 8 symbols, 3x dupes per symbol
+  # = Oban retries hitting unconditional create_trade).
+  def find_pending_trade(agent_id, market, action, within_seconds \\ 300) do
+    cutoff = DateTime.add(DateTime.utc_now(), -within_seconds, :second)
+
+    TradeRecord
+    |> where([t], t.kite_agent_id == ^agent_id)
+    |> where([t], t.market == ^market)
+    |> where([t], t.action == ^action)
+    |> where([t], t.status == "pending")
+    |> where([t], is_nil(t.broker_submitted_at))
+    |> where([t], t.inserted_at >= ^cutoff)
+    |> order_by(desc: :inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
   def count_open_trades(agent_id) do
     TradeRecord
     |> where(kite_agent_id: ^agent_id, status: "open")
