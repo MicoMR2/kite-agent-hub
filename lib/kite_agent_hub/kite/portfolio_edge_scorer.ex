@@ -80,7 +80,18 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   @spec score_portfolio_split(Ecto.UUID.t(), integer()) :: portfolio_scores()
   def score_portfolio_split(org_id, owner_user_id)
       when is_integer(owner_user_id) do
-    {alpaca_creds, kalshi_creds} =
+    # `Repo.with_user/2` wraps `transaction/1`, which always returns
+    # `{:ok, value}` on success — destructure the outer `:ok` tuple
+    # before binding the inner cred pair. Previously we bound directly
+    # to `{alpaca_creds, kalshi_creds}`, which silently set
+    # `alpaca_creds = :ok` and shoved both real creds into
+    # `kalshi_creds`. The downstream `fetch_alpaca_positions(:ok)`
+    # then fell through to the catch-all and returned `[]`, so every
+    # agent's `score_portfolio_split` came back with empty
+    # `alpaca_scores` + `kalshi_scores` regardless of real broker
+    # state. KAH P1 2026-05-07: agent had 14 live Alpaca positions
+    # but `RuleBasedStrategy` saw `scanning=0 positions` for everyone.
+    {:ok, {alpaca_creds, kalshi_creds}} =
       KiteAgentHub.Repo.with_user(owner_user_id, fn ->
         {Credentials.fetch_secret_with_env(org_id, :alpaca),
          Credentials.fetch_secret_with_env(org_id, :kalshi)}
