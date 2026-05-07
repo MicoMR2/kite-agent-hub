@@ -30,13 +30,108 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     |> parse_account()
   end
 
-  @doc "Fetch open positions. Returns list of position maps."
+  # ETS table backing the per-(key_id, env) positions cache. Created
+  # at boot in `KiteAgentHub.Application.start/2`. Public read so
+  # every Phoenix/Oban caller hits it without going through a
+  # GenServer; writes go through `cache_put_positions/3` which is
+  # called from this module only.
+  @positions_cache_table :alpaca_positions_cache
+
+  # Cache TTL. Positions don't change between AgentRunner ticks (~30s)
+  # except when an order fills, and `place_order/7` invalidates the
+  # cache for the affected `(key_id, env)` after a successful POST.
+  # 30s smooths out the per-tick fan-out (5 agents × 1
+  # PortfolyEdgeScorer + N trade attempts × clamp_qty_for_intent each
+  # called `positions/3` at the rate limit; KAH P1 2026-05-07
+  # surfaced the worker timing out before reaching `place_order` from
+  # this exact fan-out).
+  @positions_cache_ttl_seconds 30
+
+  @doc """
+  Fetch open positions. Returns `{:ok, list}` or `{:error, reason}`.
+
+  Backed by an ETS read-through cache keyed on `{key_id, env}` with a
+  #{@positions_cache_ttl_seconds}-second TTL. The cache is invalidated
+  on every successful `place_order/7`, so a sell-then-immediately-clamp
+  loop sees the post-fill quantity instead of the stale pre-fill one.
+
+  Use `positions_uncached/3` when you specifically need a fresh read
+  (e.g. settlement reconciliation or post-fill verification).
+  """
   def positions(key_id, secret, env \\ "paper") do
+    case cache_get_positions(key_id, env) do
+      {:hit, positions} ->
+        {:ok, positions}
+
+      :miss ->
+        case positions_uncached(key_id, secret, env) do
+          {:ok, positions} = ok ->
+            cache_put_positions(key_id, env, positions)
+            ok
+
+          err ->
+            err
+        end
+    end
+  end
+
+  @doc """
+  Bypass the positions cache. Hits Alpaca directly. Reserved for
+  callers that must see post-fill state without waiting on the TTL —
+  e.g. settlement reconciliation or post-trade verification.
+  """
+  def positions_uncached(key_id, secret, env \\ "paper") do
     case get("/v2/positions", key_id, secret, env) do
       {:ok, list} when is_list(list) -> {:ok, Enum.map(list, &parse_position/1)}
       {:ok, _} -> {:ok, []}
       err -> err
     end
+  end
+
+  @doc """
+  Drop the cached positions for the given `(key_id, env)` so the next
+  caller fetches fresh state. Called automatically by `place_order/7`
+  on a successful broker accept; exposed for callers that mutate
+  positions through other paths (e.g. `cancel_order/4` follow-up).
+  """
+  def invalidate_positions_cache(key_id, env) do
+    if positions_cache_table_exists?() do
+      :ets.delete(@positions_cache_table, {key_id, env})
+    end
+
+    :ok
+  end
+
+  defp cache_get_positions(key_id, env) do
+    if positions_cache_table_exists?() do
+      now = System.system_time(:second)
+
+      case :ets.lookup(@positions_cache_table, {key_id, env}) do
+        [{_, positions, expires_at}] when expires_at > now ->
+          {:hit, positions}
+
+        _ ->
+          :miss
+      end
+    else
+      # Table absent (test boot, not started yet) — fall through to
+      # uncached path; never block a real broker call on a missing
+      # cache.
+      :miss
+    end
+  end
+
+  defp cache_put_positions(key_id, env, positions) do
+    if positions_cache_table_exists?() do
+      expires_at = System.system_time(:second) + @positions_cache_ttl_seconds
+      :ets.insert(@positions_cache_table, {{key_id, env}, positions, expires_at})
+    end
+
+    :ok
+  end
+
+  defp positions_cache_table_exists? do
+    :ets.info(@positions_cache_table) != :undefined
   end
 
   @doc """
@@ -597,8 +692,19 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   def place_order(key_id, secret, symbol, qty, side \\ "buy", env \\ "paper", opts \\ []) do
     body = order_body(symbol, qty, side, opts)
 
-    post("/v2/orders", body, key_id, secret, env)
-    |> parse_placed_order()
+    case post("/v2/orders", body, key_id, secret, env) |> parse_placed_order() do
+      {:ok, _} = ok ->
+        # A new fill changes the position set; bust the cache so the
+        # next `clamp_qty_for_intent` (or any other caller) sees the
+        # post-fill state on the very next call instead of waiting
+        # out the 30s TTL. Invalidation is per `(key_id, env)` so it
+        # only affects the org that just traded.
+        invalidate_positions_cache(key_id, env)
+        ok
+
+      err ->
+        err
+    end
   end
 
   @doc """

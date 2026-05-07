@@ -7,6 +7,23 @@ defmodule KiteAgentHub.Application do
 
   @impl true
   def start(_type, _args) do
+    # ETS-backed positions cache for AlpacaClient. Created before any
+    # supervisor child starts so the first AgentRunner tick or
+    # TradeExecutionWorker job sees the table. `:public` so every
+    # process hits it directly (no GenServer hop); writes go through
+    # `AlpacaClient.positions/3` and `invalidate_positions_cache/2`.
+    # KAH P1 2026-05-07 surfaced 5 agents × per-tick
+    # PortfolioEdgeScorer + N trade attempts × clamp_qty_for_intent
+    # each calling `AlpacaClient.positions/3` — that fan-out timed
+    # out the `:trade_execution` Oban worker before it could reach
+    # `place_order`. The cache collapses the redundant GETs.
+    :ets.new(:alpaca_positions_cache, [
+      :set,
+      :public,
+      :named_table,
+      read_concurrency: true
+    ])
+
     children = [
       KiteAgentHubWeb.Telemetry,
       KiteAgentHub.Repo,
