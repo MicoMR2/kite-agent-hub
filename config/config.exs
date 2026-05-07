@@ -76,7 +76,10 @@ config :phoenix, :json_library, Jason
 # Oban trade job queue
 config :kite_agent_hub, Oban,
   engine: Oban.Engines.Basic,
-  repo: KiteAgentHub.Repo,
+  # Dedicated repo so Oban's LISTEN/NOTIFY traffic + per-job
+  # state-transition queries never compete with the main app pool.
+  # Same DATABASE_URL; only the connection fan-in is isolated.
+  repo: KiteAgentHub.ObanRepo,
   queues: [
     trade_execution: 5,
     settlement: 10,
