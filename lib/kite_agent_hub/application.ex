@@ -10,6 +10,12 @@ defmodule KiteAgentHub.Application do
     children = [
       KiteAgentHubWeb.Telemetry,
       KiteAgentHub.Repo,
+      # Dedicated Oban repo. Same DATABASE_URL, isolated connection
+      # pool so Oban LISTEN/NOTIFY traffic + per-job state-transition
+      # queries never compete with the main app pool — closes the
+      # pg_notify-saturation pattern named in DevOps msg 8283. Must
+      # start BEFORE the Oban supervisor below.
+      KiteAgentHub.ObanRepo,
       {DNSCluster, query: Application.get_env(:kite_agent_hub, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: KiteAgentHub.PubSub},
       {Oban, Application.fetch_env!(:kite_agent_hub, Oban)},

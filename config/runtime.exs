@@ -97,6 +97,15 @@ if config_env() == :prod do
     # pool_count: 4,
     socket_options: maybe_ipv6
 
+  # Dedicated Oban pool — see `KiteAgentHub.ObanRepo`. Its size is
+  # bounded (defaults to 10) since Oban's worker needs are fixed.
+  # Same DATABASE_URL as the main Repo; only the connection fan-in
+  # is isolated.
+  config :kite_agent_hub, KiteAgentHub.ObanRepo,
+    url: database_url,
+    pool_size: String.to_integer(System.get_env("OBAN_POOL_SIZE") || "10"),
+    socket_options: maybe_ipv6
+
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want

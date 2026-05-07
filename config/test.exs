@@ -22,6 +22,16 @@ config :kite_agent_hub, KiteAgentHub.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
+# ObanRepo points at the same test database with the SQL Sandbox
+# pool so Oban inline-mode jobs stay inside the test transaction.
+config :kite_agent_hub, KiteAgentHub.ObanRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "kite_agent_hub_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: System.schedulers_online() * 2
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :kite_agent_hub, KiteAgentHubWeb.Endpoint,

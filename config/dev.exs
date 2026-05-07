@@ -10,6 +10,15 @@ config :kite_agent_hub, KiteAgentHub.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# Dedicated Oban pool. Same dev database as the main Repo; only the
+# connection fan-in is isolated.
+config :kite_agent_hub, KiteAgentHub.ObanRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "kite_agent_hub_dev",
+  pool_size: 5
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
