@@ -198,8 +198,20 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   # Crashes are caught so a buggy edge-scorer does not take down the
   # whole runner.
   defp build_rule_actions(agent, threshold, owner_user_id) do
-    scores = PortfolioEdgeScorer.score_portfolio_split(agent.organization_id, owner_user_id)
-    RuleBasedStrategy.plan_with(agent, scores, threshold)
+    if auto_exit_eligible?(agent) do
+      scores = PortfolioEdgeScorer.score_portfolio_split(agent.organization_id, owner_user_id)
+      RuleBasedStrategy.plan_with(agent, scores, threshold)
+    else
+      # Auto-exit opt-in is server-side. Default is `false`, so the
+      # rule-based pass is a no-op unless the user has explicitly
+      # toggled `risk_config.auto_exit_enabled` on (and the agent is
+      # a trading agent — research / conversational agents have no
+      # broker path so the toggle is meaningless and rejected by
+      # `KiteAgent.risk_config_changeset/2`). Skipping the
+      # `score_portfolio_split` call here also saves the broker HTTP
+      # round-trip on agents that don't want auto-exits.
+      []
+    end
   rescue
     e ->
       Logger.error(
@@ -214,6 +226,15 @@ defmodule KiteAgentHub.Kite.AgentRunner do
 
       []
   end
+
+  # Fail-closed: only return true for the exact `(agent_type == "trading"
+  # AND risk_config.auto_exit_enabled == true)` combination. Anything
+  # missing, nil, or otherwise unexpected falls through to `false`.
+  defp auto_exit_eligible?(%{agent_type: "trading", risk_config: %{} = rc}) do
+    Map.get(rc, "auto_exit_enabled") == true
+  end
+
+  defp auto_exit_eligible?(_), do: false
 
   # Phase 2: called AFTER Repo.with_user closes (no DB connection held).
   # - Push tick_start to the agent log.

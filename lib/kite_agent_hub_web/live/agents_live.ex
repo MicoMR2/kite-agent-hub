@@ -308,6 +308,26 @@ defmodule KiteAgentHubWeb.AgentsLive do
         </div>
       </div>
 
+      <div :if={@agent.agent_type == "trading"} class="pt-2">
+        <label class="flex items-start gap-2">
+          <input
+            type="checkbox"
+            name="risk_config[auto_exit_enabled]"
+            value="true"
+            checked={
+              Map.get(@agent.risk_config || %{}, "auto_exit_enabled", false) in [true, "true"]
+            }
+            class="h-4 w-4 mt-0.5 rounded border-white/20 bg-black/40"
+          />
+          <span class="text-xs text-gray-300">
+            Auto-exit on low QRB score (rule-based)
+            <span class="block text-[10px] text-gray-600 mt-0.5">
+              Off by default. When on, the agent automatically issues exits on positions whose composite score falls below the adaptive threshold every tick. Trading agents only.
+            </span>
+          </span>
+        </label>
+      </div>
+
       <button
         type="submit"
         class="px-5 py-2 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100"

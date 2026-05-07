@@ -143,6 +143,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     profit_trim_partial_pct
     profit_trim_full_pct
     market_hours_only
+    auto_exit_enabled
   )
 
   @doc """
@@ -167,7 +168,17 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       per_trade_notional_cap_usd: :decimal,
       profit_trim_partial_pct: :integer,
       profit_trim_full_pct: :integer,
-      market_hours_only: :boolean
+      market_hours_only: :boolean,
+      # Per-agent opt-in for the `RuleBasedStrategy` autonomous
+      # exit loop. Default `false` (off) — agents only auto-trim
+      # when the user explicitly toggles it on. Restricted to
+      # `agent_type == "trading"` server-side; non-trading agents
+      # have no broker-execution path so the field is meaningless
+      # for them and rejected by `validate_auto_exit_agent_type/2`
+      # below. Added 2026-05-07 after KAH P1 — once
+      # `score_portfolio_split` started seeing real positions, the
+      # rule-based exit was firing on every tick uninvited.
+      auto_exit_enabled: :boolean
     }
 
     inner =
@@ -187,6 +198,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
         less_than_or_equal_to: 100
       )
       |> validate_full_above_partial()
+      |> validate_auto_exit_agent_type(agent)
 
     base = change(agent)
 
@@ -236,6 +248,31 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       is_nil(partial) or is_nil(full) -> changeset
       full > partial -> changeset
       true -> add_error(changeset, :profit_trim_full_pct, "must be greater than partial")
+    end
+  end
+
+  # Server-side enforcement: only `agent_type == "trading"` agents can
+  # set `auto_exit_enabled`. Non-trading agents (research,
+  # conversational) have no broker-execution path so the field is
+  # meaningless for them. Fail-closed — any value other than the
+  # exact string "trading" rejects the field. Caller can still pass
+  # the field as `false` to clear it; only `true` on a non-trading
+  # agent is rejected to keep the no-op clearing path open.
+  defp validate_auto_exit_agent_type(changeset, agent) do
+    case get_field(changeset, :auto_exit_enabled) do
+      true ->
+        if agent.agent_type == "trading" do
+          changeset
+        else
+          add_error(
+            changeset,
+            :auto_exit_enabled,
+            "auto_exit_enabled is only available for trading agents"
+          )
+        end
+
+      _ ->
+        changeset
     end
   end
 
