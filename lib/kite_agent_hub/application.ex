@@ -40,6 +40,10 @@ defmodule KiteAgentHub.Application do
 
     with {:ok, pid} <- Supervisor.start_link(children, opts) do
       KiteAgentHub.Kite.AgentRunnerSupervisor.restart_active_agents()
+      # Diagnostic Telemetry: log any Ecto query whose total time
+      # (queue + query + decode) exceeds 100ms so we can name the
+      # holder behind the recurring DB-pool burst pattern.
+      KiteAgentHub.Diagnostics.SlowQueryLogger.attach()
       {:ok, pid}
     end
   end
