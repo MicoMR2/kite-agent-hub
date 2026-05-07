@@ -204,8 +204,18 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         end
       end)
 
+    # `Repo.with_user/2` wraps `transaction/1`, so the success result
+    # is double-wrapped: `{:ok, {:ok, trade}}` (or `{:ok, {:error,
+    # changeset}}` if `create_trade` validates against the schema).
+    # The original case match here was `{:ok, trade}`, which bound
+    # `trade = {:ok, %TradeRecord{}}` and crashed on the very next
+    # line at `trade.id` with KeyError. The crash short-circuited
+    # Phase 2 (`maybe_execute_on_platform`) silently — every job
+    # exhausted its 3 retries and went to `:discarded` without ever
+    # calling Alpaca. Same destructure-trap class as #320 in
+    # `PortfolioEdgeScorer.score_portfolio_split/2`.
     case create_result do
-      {:ok, trade} ->
+      {:ok, {:ok, trade}} ->
         Logger.info(
           "TradeExecutionWorker: trade #{trade.id} pending for agent #{agent.id} on #{platform}"
         )
@@ -251,8 +261,15 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
           maybe_submit_onchain(trade, agent, args, owner_user_id)
         end
 
-      {:error, changeset} ->
+      {:ok, {:error, changeset}} ->
         Logger.error("TradeExecutionWorker: failed to create trade: #{inspect(changeset.errors)}")
+        {:error, "trade insert failed"}
+
+      {:error, reason} ->
+        # Transaction-level failure (e.g. `Repo.rollback` raised
+        # inside `Repo.with_user/2`). Distinct from schema validation
+        # failure above — that lands inside the outer `:ok`.
+        Logger.error("TradeExecutionWorker: with_user failed: #{inspect(reason)}")
         {:error, "trade insert failed"}
     end
   end
