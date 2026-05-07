@@ -57,19 +57,23 @@ defmodule KiteAgentHub.Workers.StuckTradeSweeper do
   #   Phase 2 (no DB lock): per-trade Alpaca cancel HTTP fan-out.
   # Broker errors only log a warning, so no Phase 3 DB writes are needed.
   defp run_for_agent(agent_id, owner_user_id, cutoff) do
+    # `sweep_phase1/3` returns the result of `Repo.with_user/2`,
+    # which wraps the inner value in `{:ok, _}`. Match the wrapped
+    # shapes — same destructure-trap class as #320 / #322 / the
+    # AlpacaSettlementWorker fix in #324.
     case sweep_phase1(agent_id, owner_user_id, cutoff) do
-      :noop ->
+      {:ok, :noop} ->
         :ok
 
-      {:no_alpaca_targets, _count} ->
+      {:ok, {:no_alpaca_targets, _count}} ->
         :ok
 
-      {:no_creds, reason} ->
+      {:ok, {:no_creds, reason}} ->
         Logger.warning(
           "StuckTradeSweeper: agent #{agent_id} — alpaca credentials unavailable, skipping broker cancels: #{inspect(reason)}"
         )
 
-      {:targets, alpaca_trades, {key_id, secret, env}} ->
+      {:ok, {:targets, alpaca_trades, {key_id, secret, env}}} ->
         # HTTP fan-out runs after the with_user block closes.
         Enum.each(alpaca_trades, fn t ->
           case AlpacaClient.cancel_order(key_id, secret, t.platform_order_id, env) do
@@ -84,6 +88,13 @@ defmodule KiteAgentHub.Workers.StuckTradeSweeper do
               )
           end
         end)
+
+      {:error, reason} ->
+        # Transaction-level failure. Distinct from the inner
+        # `{:no_creds, _}` Credentials path matched above.
+        Logger.error(
+          "StuckTradeSweeper: with_user failed for agent #{agent_id}: #{inspect(reason)}"
+        )
     end
   end
 

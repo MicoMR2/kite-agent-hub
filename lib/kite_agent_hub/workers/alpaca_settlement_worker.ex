@@ -55,16 +55,23 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
   #   Phase 3 (with_user): apply each trade's status update / settlement /
   #                          attestation enqueue — back inside RLS scope.
   defp run_for_agent(agent_id, owner_user_id) do
+    # `fetch_settlement_inputs/2` returns the result of
+    # `Repo.with_user/2`, which wraps the inner value in `{:ok, _}`
+    # because `with_user` calls `transaction/1`. Match the wrapped
+    # shapes — same destructure-trap class as #320 / #322. Prior to
+    # this fix every settlement attempt MatchError'd silently inside
+    # `Enum.each(agents, ...)`, so KAH never reconciled fills against
+    # Alpaca even when orders had filled cleanly broker-side.
     case fetch_settlement_inputs(agent_id, owner_user_id) do
-      :noop ->
+      {:ok, :noop} ->
         :ok
 
-      {:error, reason} ->
+      {:ok, {:error, reason}} ->
         Logger.warning(
           "AlpacaSettlementWorker: skipping agent #{agent_id} — #{inspect(reason)}"
         )
 
-      {:ok, trades, {key_id, secret, env}} ->
+      {:ok, {:ok, trades, {key_id, secret, env}}} ->
         Logger.info(
           "AlpacaSettlementWorker: agent #{agent_id} polling #{length(trades)} open trade(s) (env=#{env})"
         )
@@ -79,6 +86,14 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
         Repo.with_user(owner_user_id, fn ->
           Enum.each(results, &apply_result/1)
         end)
+
+      {:error, reason} ->
+        # Transaction-level failure (e.g. `Repo.rollback` raised
+        # inside `Repo.with_user/2`). Distinct from the inner
+        # `{:error, reason}` Credentials path matched above.
+        Logger.error(
+          "AlpacaSettlementWorker: with_user failed for agent #{agent_id}: #{inspect(reason)}"
+        )
     end
   end
 
