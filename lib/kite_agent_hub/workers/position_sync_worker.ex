@@ -33,26 +33,35 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
   def perform(%Oban.Job{args: %{"agent_id" => agent_id} = args}) do
     owner_user_id = args["owner_user_id"] || resolve_owner(agent_id)
 
-    Repo.with_user(owner_user_id, fn ->
-      agent = Trading.get_agent!(agent_id)
+    case Repo.with_user(owner_user_id, fn ->
+           agent = Trading.get_agent!(agent_id)
 
-      if agent.status not in ["active", "paused"] do
-        Logger.info("PositionSyncWorker: agent #{agent_id} is #{agent.status}, skipping sync")
-        {:cancel, "agent not active or paused"}
-      else
-        sync_positions(agent, owner_user_id)
-      end
-    end)
-  end
+           if agent.status not in ["active", "paused"] do
+             Logger.info("PositionSyncWorker: agent #{agent_id} is #{agent.status}, skipping sync")
+             {:cancel, "agent not active or paused"}
+           else
+             open_trades = Trading.list_open_trades(agent.id)
 
-  defp sync_positions(agent, owner_user_id) do
-    open_trades = Trading.list_open_trades(agent.id)
-    Logger.info("PositionSyncWorker: agent #{agent.id} has #{length(open_trades)} open trade(s)")
+             Logger.info(
+               "PositionSyncWorker: agent #{agent.id} has #{length(open_trades)} open trade(s)"
+             )
 
-    enqueue_pending_settlements(open_trades, owner_user_id)
-    log_vault_balance(agent)
+             enqueue_pending_settlements(open_trades, owner_user_id)
+             {:ok, agent}
+           end
+         end) do
+      {:cancel, _reason} = result ->
+        result
 
-    :ok
+      {:ok, agent} ->
+        # Phase 2 — Repo connection released. `log_vault_balance/1`
+        # makes a JSON-RPC HTTP call to the Kite chain; previously
+        # it ran inside the with_user block and held a DB
+        # connection through the round-trip, contributing to the
+        # pool checkout-timeout pattern.
+        log_vault_balance(agent)
+        :ok
+    end
   end
 
   defp enqueue_pending_settlements(open_trades, owner_user_id) do
