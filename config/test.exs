@@ -3,6 +3,12 @@ import Config
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
+# Run `Trading.async_record_outcome/1` synchronously in tests so the
+# CI corpus row lands before the assertion. In dev/prod the work is
+# spawned under `KiteAgentHub.TaskSupervisor` so it does NOT inherit
+# the calling worker's `Repo.with_user` connection.
+config :kite_agent_hub, :sync_record_outcome, true
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

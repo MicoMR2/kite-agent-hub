@@ -386,7 +386,7 @@ defmodule KiteAgentHub.Trading do
               {:trade_updated, updated}
             )
 
-            _ = CollectiveIntelligence.record_trade_outcome(updated)
+            async_record_outcome(updated)
             ok
 
           err ->
@@ -444,7 +444,7 @@ defmodule KiteAgentHub.Trading do
             {:trade_updated, trade}
           )
 
-          _ = CollectiveIntelligence.record_trade_outcome(trade)
+          async_record_outcome(trade)
         end)
 
         {count, updated}
@@ -457,7 +457,7 @@ defmodule KiteAgentHub.Trading do
          |> Repo.update() do
       {:ok, trade} = ok ->
         Phoenix.PubSub.broadcast(@pubsub, "agent:#{trade.kite_agent_id}", {:trade_updated, trade})
-        _ = CollectiveIntelligence.record_trade_outcome(trade)
+        async_record_outcome(trade)
         ok
 
       err ->
@@ -521,10 +521,54 @@ defmodule KiteAgentHub.Trading do
     )
 
     if updated.status in ~w(settled failed cancelled) and prev_record.status != updated.status do
-      _ = CollectiveIntelligence.record_trade_outcome(updated)
+      async_record_outcome(updated)
     end
 
     :ok
+  end
+
+  # Fire-and-forget recording of the trade outcome into the
+  # Collective Intelligence corpus. This used to run synchronously
+  # inside the calling worker's `Repo.with_user` transaction, which
+  # held the parent connection through two extra DB ops per trade
+  # update. Hands off to `KiteAgentHub.TaskSupervisor` so the work
+  # runs after the caller's transaction closes — same RLS scope is
+  # re-established briefly inside the task via `owner_user_id_for_agent`.
+  #
+  # Failure of the insight write does not affect the calling worker;
+  # the trade row stands.
+  defp async_record_outcome(%TradeRecord{} = trade) do
+    if Application.get_env(:kite_agent_hub, :sync_record_outcome, false) do
+      do_record_outcome(trade)
+    else
+      Task.Supervisor.start_child(KiteAgentHub.TaskSupervisor, fn ->
+        do_record_outcome(trade)
+      end)
+    end
+
+    :ok
+  end
+
+  defp do_record_outcome(%TradeRecord{} = trade) do
+    case Repo.owner_user_id_for_agent(trade.kite_agent_id) do
+      nil ->
+        # No owner resolvable (orphaned trade row); record without
+        # RLS scope. CI tables are tenant-keyed by source_org_hash
+        # so this still lands cleanly.
+        _ = CollectiveIntelligence.record_trade_outcome(trade)
+
+      owner_user_id ->
+        Repo.with_user(owner_user_id, fn ->
+          CollectiveIntelligence.record_trade_outcome(trade)
+        end)
+    end
+  rescue
+    e ->
+      require Logger
+
+      Logger.warning(
+        "Trading.async_record_outcome failed for trade #{trade.id}: #{Exception.message(e)}"
+      )
   end
 
   def total_pnl(agent_id) do
