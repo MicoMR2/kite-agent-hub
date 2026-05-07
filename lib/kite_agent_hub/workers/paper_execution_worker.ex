@@ -61,7 +61,20 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
           {:error, :no_owner}
 
         owner_user_id ->
-          Repo.with_user(owner_user_id, fn -> dispatch(agent, args, job_id) end)
+          # `Repo.with_user/2` wraps `transaction/1`, so its return is
+          # always `{:ok, value}` on success — including when the inner
+          # `dispatch/3` returned `{:error, _}`. Returning the raw wrap
+          # to Oban makes EVERY dispatch look like a job success, even
+          # for genuine broker rejects (Kalshi 4xx, OANDA auth fail,
+          # etc.) — Oban never retries and the failure is invisible
+          # above the trade row's inline `Logger.warning`. Same
+          # destructure-trap class as #320 / #322 / #323; this one is
+          # the silent-success variant. Unwrap so Oban sees the actual
+          # `{:ok, _}` / `{:error, _}` shape and retry/discard works.
+          case Repo.with_user(owner_user_id, fn -> dispatch(agent, args, job_id) end) do
+            {:ok, result} -> result
+            {:error, _} = err -> err
+          end
       end
     else
       {:error, reason} = err ->
