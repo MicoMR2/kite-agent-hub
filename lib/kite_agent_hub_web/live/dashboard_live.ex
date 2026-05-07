@@ -126,6 +126,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:alpaca_history, [])
       |> assign(:alpaca_period, "1M")
       |> assign(:kalshi_data, nil)
+      |> assign(:kalshi_quick_trade_ticker, "")
+      |> assign(:kalshi_quick_trade_units, "1")
+      |> assign(:kalshi_quick_trade_side, "yes")
+      |> assign(:kalshi_quick_trade_price, "1")
+      |> assign(:kalshi_action_flash, nil)
       |> assign(:agent_log_entries, [])
       |> assign(:agent_log_subscribed_id, nil)
       |> assign(:alpaca_live_tick_enabled, false)
@@ -189,6 +194,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:alpaca_history, [])
     |> assign(:alpaca_period, "1M")
     |> assign(:kalshi_data, nil)
+    |> assign(:kalshi_quick_trade_ticker, "")
+    |> assign(:kalshi_quick_trade_units, "1")
+    |> assign(:kalshi_quick_trade_side, "yes")
+    |> assign(:kalshi_quick_trade_price, "1")
+    |> assign(:kalshi_action_flash, nil)
     |> assign(:agent_log_entries, [])
     |> assign(:agent_log_subscribed_id, nil)
     |> assign(:alpaca_live_tick_enabled, false)
@@ -1269,6 +1279,112 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, assign(socket, :forex_quick_trade_units, units)}
   end
 
+  # Kalshi quick-trade. Mirrors `forex_quick_trade` but routes through
+  # `provider: "kalshi"` and uses the Kalshi-specific assigns + flash.
+  # Trading-agents only — same fail-closed gate that the agent-API
+  # `POST /api/v1/trades` controller enforces server-side.
+  def handle_event("kalshi_quick_trade", params, socket) do
+    agent = socket.assigns[:selected_agent]
+    org_id = get_in(socket.assigns, [:organization, Access.key(:id)])
+
+    ticker =
+      (params["ticker"] || socket.assigns[:kalshi_quick_trade_ticker] || "")
+      |> String.trim()
+      |> String.upcase()
+
+    side = params["side"] || socket.assigns[:kalshi_quick_trade_side] || "yes"
+    raw_units = parse_positive_int(params["units"] || socket.assigns[:kalshi_quick_trade_units])
+    raw_price = parse_kalshi_price(params["price"] || socket.assigns[:kalshi_quick_trade_price])
+
+    cond do
+      is_nil(agent) ->
+        {:noreply, assign(socket, :kalshi_action_flash, {:error, "Select an agent first."})}
+
+      agent.agent_type != "trading" ->
+        {:noreply,
+         assign(
+           socket,
+           :kalshi_action_flash,
+           {:error, "Selected agent is not a trading agent."}
+         )}
+
+      is_nil(org_id) ->
+        {:noreply, assign(socket, :kalshi_action_flash, {:error, "No workspace."})}
+
+      not KiteAgentHub.TradingPlatforms.KalshiClient.valid_ticker?(ticker) ->
+        {:noreply,
+         assign(
+           socket,
+           :kalshi_action_flash,
+           {:error, "Ticker required (uppercase alphanumeric + dashes, e.g. KXETHD-25NOV30-B3500)."}
+         )}
+
+      side not in ["yes", "no"] ->
+        {:noreply, assign(socket, :kalshi_action_flash, {:error, "Side must be 'yes' or 'no'."})}
+
+      raw_units in [nil, 0] ->
+        {:noreply,
+         assign(socket, :kalshi_action_flash, {:error, "Count must be a positive integer."})}
+
+      is_nil(raw_price) ->
+        {:noreply,
+         assign(
+           socket,
+           :kalshi_action_flash,
+           {:error, "Limit price must be an integer 1..99 cents."}
+         )}
+
+      true ->
+        args = %{
+          "agent_id" => agent.id,
+          "organization_id" => org_id,
+          "provider" => "kalshi",
+          "symbol" => ticker,
+          "side" => side,
+          "units" => raw_units,
+          "price" => raw_price,
+          "client_order_id" => "kah-kalshi-quicktrade-#{Ecto.UUID.generate()}"
+        }
+
+        enqueue_kalshi_trade(
+          args,
+          socket,
+          "#{String.upcase(side)} #{raw_units} #{ticker} @ #{raw_price}c"
+        )
+    end
+  end
+
+  def handle_event("kalshi_quick_trade_ticker", %{"ticker" => ticker}, socket) do
+    {:noreply, assign(socket, :kalshi_quick_trade_ticker, ticker)}
+  end
+
+  def handle_event("kalshi_quick_trade_units", %{"units" => units}, socket) do
+    {:noreply, assign(socket, :kalshi_quick_trade_units, units)}
+  end
+
+  def handle_event("kalshi_quick_trade_side", %{"side" => side}, socket)
+      when side in ["yes", "no"] do
+    {:noreply, assign(socket, :kalshi_quick_trade_side, side)}
+  end
+
+  def handle_event("kalshi_quick_trade_price", %{"price" => price}, socket) do
+    {:noreply, assign(socket, :kalshi_quick_trade_price, price)}
+  end
+
+  # Kalshi limit prices are integer cents 1..99. Returns nil for
+  # anything outside that range so the caller fails closed and
+  # `KalshiClient.place_order` never receives a bogus price.
+  defp parse_kalshi_price(price) when is_integer(price) and price >= 1 and price <= 99, do: price
+
+  defp parse_kalshi_price(price) when is_binary(price) do
+    case Integer.parse(String.trim(price)) do
+      {n, ""} when n >= 1 and n <= 99 -> n
+      _ -> nil
+    end
+  end
+
+  defp parse_kalshi_price(_), do: nil
+
   # ── Paper trade enqueue + close-side resolution ────────────────────
 
   # Insert the Oban job and emit a success/error flash. Pulled out so
@@ -1307,6 +1423,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
            socket,
            :forex_action_flash,
            {:error, "Failed to enqueue trade: #{inspect(reason)}"}
+         )}
+    end
+  end
+
+  # Kalshi-specific enqueue. Same Oban worker as forex (PaperExecutionWorker)
+  # but emits its outcome on `:kalshi_action_flash` and refreshes the
+  # Kalshi tab on success. Kept separate from `enqueue_paper_trade/4`
+  # because the forex helper hard-couples to forex assigns + the
+  # `:load_forex` refresh path.
+  defp enqueue_kalshi_trade(args, socket, action_label) do
+    require Logger
+
+    case args |> KiteAgentHub.Workers.PaperExecutionWorker.new() |> Oban.insert() do
+      {:ok, job} ->
+        send(self(), {:tab_refresh, :kalshi})
+
+        {:noreply,
+         assign(
+           socket,
+           :kalshi_action_flash,
+           {:ok, "#{action_label} queued (job ##{job.id}). Watch the Trades tab for fill."}
+         )}
+
+      {:error, reason} ->
+        Logger.warning("enqueue_kalshi_trade Oban insert failed: #{inspect(reason)}")
+
+        {:noreply,
+         assign(
+           socket,
+           :kalshi_action_flash,
+           {:error, "Failed to enqueue Kalshi trade: #{inspect(reason)}"}
          )}
     end
   end
@@ -3791,6 +3938,98 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </div>
                     <% end %>
                   </div>
+
+                  <%!-- Quick Trade — trading agents only --%>
+                  <%= if @selected_agent && @selected_agent.agent_type == "trading" do %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                      <div class="flex items-center justify-between mb-4">
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                          Quick Trade
+                        </p>
+                        <span class="text-[10px] font-mono text-gray-600">
+                          KalshiClient · {@selected_agent.name}
+                        </span>
+                      </div>
+                      <form phx-submit="kalshi_quick_trade" class="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+                        <div class="sm:col-span-2">
+                          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                            Ticker
+                          </label>
+                          <input
+                            type="text"
+                            name="ticker"
+                            value={@kalshi_quick_trade_ticker}
+                            phx-change="kalshi_quick_trade_ticker"
+                            phx-debounce="300"
+                            placeholder="KXETHD-25NOV30-B3500"
+                            class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono uppercase"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                            Side
+                          </label>
+                          <select
+                            name="side"
+                            phx-change="kalshi_quick_trade_side"
+                            class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+                          >
+                            <option value="yes" selected={@kalshi_quick_trade_side == "yes"}>Yes</option>
+                            <option value="no" selected={@kalshi_quick_trade_side == "no"}>No</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                            Count
+                          </label>
+                          <input
+                            type="number"
+                            name="units"
+                            min="1"
+                            step="1"
+                            value={@kalshi_quick_trade_units}
+                            phx-change="kalshi_quick_trade_units"
+                            phx-debounce="300"
+                            class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 tabular-nums"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                            Limit (¢ 1-99)
+                          </label>
+                          <input
+                            type="number"
+                            name="price"
+                            min="1"
+                            max="99"
+                            step="1"
+                            value={@kalshi_quick_trade_price}
+                            phx-change="kalshi_quick_trade_price"
+                            phx-debounce="300"
+                            class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 tabular-nums"
+                          />
+                        </div>
+                        <div class="sm:col-span-5 flex items-center justify-between gap-3">
+                          <%= case @kalshi_action_flash do %>
+                            <% {:ok, msg} -> %>
+                              <p class="text-xs text-emerald-400">{msg}</p>
+                            <% {:error, msg} -> %>
+                              <p class="text-xs text-red-400">{msg}</p>
+                            <% _ -> %>
+                              <p class="text-[10px] text-gray-600">
+                                Routes through PaperExecutionWorker — same pipeline as agent-API submissions. Every trade lands on /trades.
+                              </p>
+                          <% end %>
+                          <button
+                            type="submit"
+                            class="px-5 py-2 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100"
+                          >
+                            Place Order
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  <% end %>
 
                   <%!-- Trade Activity Chart (from fills) --%>
                   <%= if length(data.fills) > 1 do %>
