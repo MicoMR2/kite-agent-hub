@@ -84,6 +84,14 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # TCP keepalive prevents Fly's edge proxy from reaping idle Postgres
+  # connections. Without this, idle pool members get silently closed
+  # (`tcp recv (idle): closed`) and the next dispatch hits a reconnect
+  # storm — observed 2026-05-07 on ObanRepo where 22 queue producers
+  # contended with 10+ stale Postgrex connections on every tick.
+  # `idle_interval` adds a belt-and-suspenders ping every 30s.
+  pg_socket_options = [keepalive: true] ++ maybe_ipv6
+
   config :kite_agent_hub, KiteAgentHub.Repo,
     # ssl: true,
     url: database_url,
@@ -95,16 +103,18 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "25"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
-    socket_options: maybe_ipv6
+    socket_options: pg_socket_options,
+    idle_interval: 30_000
 
-  # Dedicated Oban pool — see `KiteAgentHub.ObanRepo`. Its size is
-  # bounded (defaults to 10) since Oban's worker needs are fixed.
-  # Same DATABASE_URL as the main Repo; only the connection fan-in
-  # is isolated.
+  # Dedicated Oban pool — see `KiteAgentHub.ObanRepo`. Sized to cover
+  # 22 queue producer slots + Notifier LISTEN + Stager + headroom for
+  # agent enqueue bursts. Same DATABASE_URL as the main Repo; only the
+  # connection fan-in is isolated.
   config :kite_agent_hub, KiteAgentHub.ObanRepo,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("OBAN_POOL_SIZE") || "10"),
-    socket_options: maybe_ipv6
+    pool_size: String.to_integer(System.get_env("OBAN_POOL_SIZE") || "25"),
+    socket_options: pg_socket_options,
+    idle_interval: 30_000
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
