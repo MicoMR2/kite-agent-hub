@@ -1,14 +1,26 @@
 defmodule KiteAgentHubWeb.TradesLive do
   use KiteAgentHubWeb, :live_view
 
+  require Logger
   alias KiteAgentHub.{Trading, Orgs}
 
   @page_size 25
 
   @impl true
   def mount(_params, _session, socket) do
-    org = Orgs.get_org_for_user(socket.assigns.current_scope.user.id)
-    agents = if org, do: Trading.list_agents(org.id), else: []
+    # Mount hardening (kah_lv_rescue): every DB call must rescue, or
+    # a transient `DBConnection.ConnectionError` during a pool burst
+    # crashes the LV process and Phoenix mount-loops the user.
+    {org, agents} =
+      try do
+        org = Orgs.get_org_for_user(socket.assigns.current_scope.user.id)
+        agents = if org, do: Trading.list_agents(org.id), else: []
+        {org, agents}
+      rescue
+        e ->
+          Logger.warning("TradesLive mount DB read failed — #{Exception.message(e)}")
+          {nil, []}
+      end
 
     {:ok,
      socket
@@ -23,24 +35,42 @@ defmodule KiteAgentHubWeb.TradesLive do
 
   @impl true
   def handle_params(%{"agent_id" => agent_id} = params, _uri, socket) do
-    agent = Trading.get_agent!(agent_id)
-    status = params["status"] || "all"
+    case safe_get_agent(agent_id) do
+      nil ->
+        # Stale/invalid agent_id (or DB pool busy). Bounce to /trades
+        # without crashing the LV; user retries when the URL clears.
+        {:noreply, push_patch(socket, to: ~p"/trades")}
 
-    if is_nil(socket.assigns.selected_agent) or socket.assigns.selected_agent.id != agent_id do
-      if connected?(socket) do
-        Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent_id}")
-      end
+      agent ->
+        status = params["status"] || "all"
+
+        if is_nil(socket.assigns.selected_agent) or socket.assigns.selected_agent.id != agent_id do
+          if connected?(socket) do
+            Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{agent_id}")
+          end
+        end
+
+        trades =
+          try do
+            load_trades(agent_id, status, 1)
+          rescue
+            _ -> []
+          end
+
+        {:noreply,
+         socket
+         |> assign(:selected_agent, agent)
+         |> assign(:status_filter, status)
+         |> assign(:trades, trades)
+         |> assign(:page, 1)
+         |> assign(:has_more, length(trades) == @page_size)}
     end
+  end
 
-    trades = load_trades(agent_id, status, 1)
-
-    {:noreply,
-     socket
-     |> assign(:selected_agent, agent)
-     |> assign(:status_filter, status)
-     |> assign(:trades, trades)
-     |> assign(:page, 1)
-     |> assign(:has_more, length(trades) == @page_size)}
+  defp safe_get_agent(agent_id) do
+    Trading.get_agent!(agent_id)
+  rescue
+    _ -> nil
   end
 
   def handle_params(_params, _uri, socket) do

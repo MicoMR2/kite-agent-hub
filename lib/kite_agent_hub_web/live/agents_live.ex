@@ -16,8 +16,21 @@ defmodule KiteAgentHubWeb.AgentsLive do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
-    org = Orgs.get_org_for_user(user.id)
-    agents = if org, do: Trading.list_agents(org.id), else: []
+
+    # Mount hardening (kah_lv_rescue): every DB call must rescue, or
+    # a transient `DBConnection.ConnectionError` during a pool burst
+    # crashes the LV process and Phoenix mount-loops the user.
+    {org, agents} =
+      try do
+        org = Orgs.get_org_for_user(user.id)
+        agents = if org, do: Trading.list_agents(org.id), else: []
+        {org, agents}
+      rescue
+        e ->
+          require Logger
+          Logger.warning("AgentsLive mount DB read failed — #{Exception.message(e)}")
+          {nil, []}
+      end
 
     {:ok,
      socket
