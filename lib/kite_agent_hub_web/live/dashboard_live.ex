@@ -136,6 +136,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:wallet_tokens, nil)
       |> assign(:show_agent_context, false)
       |> assign(:agent_context_text, nil)
+      |> assign(:agent_context_news, [])
       |> assign(:show_agent_token, false)
       |> assign(:show_option_a, false)
       |> assign(:show_option_b, false)
@@ -198,6 +199,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:wallet_tokens, nil)
     |> assign(:show_agent_context, false)
     |> assign(:agent_context_text, nil)
+    |> assign(:agent_context_news, [])
     |> assign(:show_agent_token, false)
     |> assign(:show_option_a, false)
     |> assign(:show_option_b, false)
@@ -565,9 +567,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
     if agent do
       try do
         context = KiteAgentHub.Trading.AgentContext.generate(agent)
+        news = recent_news_for_agent(agent)
 
         {:noreply,
-         socket |> assign(:show_agent_context, true) |> assign(:agent_context_text, context)}
+         socket
+         |> assign(:show_agent_context, true)
+         |> assign(:agent_context_text, context)
+         |> assign(:agent_context_news, news)}
       rescue
         e ->
           Logger.warning("DashboardLive show_agent_context crashed: #{inspect(e)}")
@@ -576,6 +582,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
     else
       {:noreply, put_flash(socket, :error, "No agent selected.")}
     end
+  end
+
+  # Pull the symbols the agent is currently exposed to (open trades)
+  # and ask NewsBuffer for recent sanitized headlines for any of
+  # them. The buffer returns at most 10 items already sanitized
+  # (HTML stripped, control chars stripped, byte-capped); this
+  # function is just the fan-in.
+  defp recent_news_for_agent(agent) do
+    symbols =
+      agent.id
+      |> KiteAgentHub.Trading.list_open_trades()
+      |> Enum.map(& &1.market)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+
+    KiteAgentHub.News.Buffer.recent(symbols)
+  rescue
+    e ->
+      require Logger
+      Logger.warning("DashboardLive: news fetch failed: #{Exception.message(e)}")
+      []
   end
 
   def handle_event("close_agent_context", _params, socket) do
@@ -4885,6 +4912,40 @@ network_access = true</pre>
                 </p>
                 <pre class="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-black/40 rounded-xl p-4 border border-white/5">{@agent_context_text}</pre>
               </div>
+
+              <%!-- ── Recent news for agent's open positions ── --%>
+              <%= if @agent_context_news != [] do %>
+                <div class="space-y-2">
+                  <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                    Recent headlines for open positions
+                  </p>
+                  <p class="text-[10px] text-amber-400/80">
+                    Display only — these headlines are not yet injected into the LLM prompt.
+                  </p>
+                  <ul class="space-y-2">
+                    <li
+                      :for={item <- @agent_context_news}
+                      class="bg-black/40 rounded-xl p-3 border border-white/5"
+                    >
+                      <p class="text-xs text-white font-medium leading-snug">
+                        {item.headline}
+                      </p>
+                      <p
+                        :if={item.summary && item.summary != ""}
+                        class="text-[11px] text-gray-400 mt-1 leading-snug"
+                      >
+                        {item.summary}
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-1">
+                        <%= if item.created_at, do: item.created_at, else: "" %>
+                        <%= if item.symbols != [] do %>
+                          · {Enum.join(item.symbols, ", ")}
+                        <% end %>
+                      </p>
+                    </li>
+                  </ul>
+                </div>
+              <% end %>
             </div>
             <div class="px-6 py-4 border-t border-white/10 flex items-center justify-between">
               <p class="text-[10px] text-gray-600 uppercase tracking-widest">
