@@ -105,13 +105,11 @@ config :kite_agent_hub, Oban,
        # Prune stale chat messages every 6 hours — keeps at least the last
        # 100 per org, deletes anything older than 24h beyond that.
        {"0 */6 * * *", KiteAgentHub.Workers.MessagePrunerWorker},
-       # HOTFIX 2026-05-07 — DISABLED while we hunt the DB-pool
-       # leak. The every-minute Alpaca poll is the highest-cadence
-       # cron driver of pool pressure under the saturating leak;
-       # disabling it keeps the user surface usable until the leak
-       # is identified. Broker fills will lag the next time this
-       # re-enables; restore once the leak is fixed.
-       # {"* * * * *", KiteAgentHub.Workers.AlpacaSettlementWorker},
+       # Every minute, poll Alpaca for fills on open trades.
+       # Re-enabled 2026-05-07 after PR #315 (Oban dedicated repo)
+       # eliminated the pg_notify-driven pool saturation that was
+       # surfacing as 3-minute DBConnection bursts.
+       {"* * * * *", KiteAgentHub.Workers.AlpacaSettlementWorker},
        # PR #105: every 5 minutes, scan for any settled trades that
        # don't yet have an attestation_tx_hash and enqueue attestation
        # jobs for them. Catches trades that settled before the
@@ -125,12 +123,9 @@ config :kite_agent_hub, Oban,
        # can surface momentum inflection trends. Bounded rows-per-
        # tick = num_orgs * num_positions, comfortably small.
        {"*/5 * * * *", KiteAgentHub.Workers.EdgeScoreSnapshotWorker},
-       # HOTFIX 2026-05-07 — DISABLED alongside AlpacaSettlementWorker
-       # above. StuckTradeSweeper also runs every minute against
-       # open trades and contributes to pool pressure. Restore once
-       # the leak is fixed; until then, zombie trades will require
-       # manual cancellation via the broker's UI.
-       # {"* * * * *", KiteAgentHub.Workers.StuckTradeSweeper},
+       # Every minute, sweep zombie/stuck open trades. Re-enabled
+       # 2026-05-07 alongside AlpacaSettlementWorker after PR #315.
+       {"* * * * *", KiteAgentHub.Workers.StuckTradeSweeper},
        # Weekly bootstrap of the Kite Collective Intelligence corpus
        # from public market-data backtests. Synthesizes ~50 outcomes
        # per seed market (top 10 equities + 3 crypto) so new agents
