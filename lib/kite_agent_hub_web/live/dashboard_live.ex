@@ -4031,46 +4031,67 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                   <% end %>
 
-                  <%!-- Trade Activity Chart (from fills) --%>
-                  <%= if length(data.fills) > 1 do %>
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                      <div class="flex items-center justify-between mb-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                          Recent Trade Activity
-                        </p>
-                        <span class="text-xs font-mono text-gray-500">
-                          {length(data.fills)} fills
-                        </span>
-                      </div>
+                  <%!-- Portfolio P&L Curve (cumulative net of fees over settled time) --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                    <div class="flex items-center justify-between mb-4">
+                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                        Portfolio P&L
+                      </p>
+                      <span class={
+                        "text-xs font-mono tabular-nums " <>
+                          if(data.total_settled_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
+                      }>
+                        <%= if data.total_settled_pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(data.total_settled_pnl), decimals: 2)} · {length(data.settlements)} settled
+                      </span>
+                    </div>
+                    <%= if length(data.settlements) > 1 do %>
+                      <% chart_color = if data.total_settled_pnl >= 0, do: "#10b981", else: "#ef4444" %>
+                      <% pnl_points = kalshi_pnl_sparkline(data.settlements, 400, 150) %>
+                      <% zero_y = kalshi_pnl_zero_y(data.settlements, 150) %>
                       <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
                         <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
                         <line x1="0" y1="80" x2="400" y2="80" stroke="white" stroke-opacity="0.05" />
                         <line x1="0" y1="120" x2="400" y2="120" stroke="white" stroke-opacity="0.05" />
+                        <%!-- Break-even reference line at zero P&L --%>
+                        <line
+                          x1="0"
+                          y1={zero_y}
+                          x2="400"
+                          y2={zero_y}
+                          stroke="white"
+                          stroke-opacity="0.15"
+                          stroke-dasharray="3 3"
+                        />
                         <defs>
-                          <linearGradient id="kalshi-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.2" />
-                            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0" />
+                          <linearGradient id="kalshi-pnl-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color={chart_color} stop-opacity="0.25" />
+                            <stop offset="100%" stop-color={chart_color} stop-opacity="0.0" />
                           </linearGradient>
                         </defs>
-                        <% fill_points = kalshi_fill_sparkline(data.fills, 400, 150) %>
                         <polygon
-                          points={"#{fill_points} 400,150 0,150"}
-                          fill="url(#kalshi-fill)"
+                          points={"#{pnl_points} 400,#{zero_y} 0,#{zero_y}"}
+                          fill="url(#kalshi-pnl-fill)"
                         />
                         <polyline
-                          points={fill_points}
+                          points={pnl_points}
                           fill="none"
-                          stroke="#3b82f6"
+                          stroke={chart_color}
                           stroke-width="2"
                           vector-effect="non-scaling-stroke"
                         />
                       </svg>
                       <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
-                        <span>Oldest</span>
-                        <span>Latest</span>
+                        <span>Oldest settled</span>
+                        <span>Latest settled</span>
                       </div>
-                    </div>
-                  <% end %>
+                    <% else %>
+                      <div class="py-10 text-center">
+                        <p class="text-sm text-gray-600">
+                          <%= if data.settlements == [], do: "No settled positions yet.", else: "Need at least 2 settled positions to chart P&L." %>
+                        </p>
+                      </div>
+                    <% end %>
+                  </div>
 
                   <%!-- Open Positions --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
@@ -5368,19 +5389,31 @@ network_access = true</pre>
 
   defp sparkline_points(_, _, _), do: ""
 
-  defp kalshi_fill_sparkline(fills, width, height) when length(fills) > 1 do
-    # Plot cumulative fill value over time (reversed since fills come newest-first)
-    reversed = Enum.reverse(fills)
+  # Cumulative net Kalshi P&L curve. `settlements` come from
+  # `KalshiClient.settlements/4` with `:revenue` (gross payout) and
+  # `:fees` already converted to dollars by `parse_settlement/1`.
+  # Net per settlement = `revenue - fees`; we accumulate
+  # chronologically (sorted ascending by `:settled_time`) so the line
+  # rises when the agent wins and falls when it loses, ending at the
+  # same `total_settled_pnl` shown in the summary card. Empty input
+  # returns "" so the caller can fall back to its empty-state copy.
+  defp kalshi_pnl_sparkline(settlements, width, height) when length(settlements) > 1 do
+    sorted = Enum.sort_by(settlements, & &1.settled_time)
 
     values =
-      reversed
-      |> Enum.scan(0.0, fn f, acc -> acc + f.count * f.price end)
+      sorted
+      |> Enum.scan(0.0, fn s, acc -> acc + (s.revenue - s.fees) end)
 
     min_v = Enum.min(values)
     max_v = Enum.max(values)
     range = max(max_v - min_v, 0.01)
     count = length(values) - 1
 
+    # Reserve a small head/tail margin so the polyline doesn't kiss
+    # the SVG edges; scale the y-axis around `min_v` so a positive
+    # final value rises toward y=0 and a negative final value
+    # collapses toward y=height — same orientation as the existing
+    # Alpaca / forex sparklines.
     values
     |> Enum.with_index()
     |> Enum.map(fn {v, i} ->
@@ -5391,7 +5424,33 @@ network_access = true</pre>
     |> Enum.join(" ")
   end
 
-  defp kalshi_fill_sparkline(_, _, _), do: ""
+  defp kalshi_pnl_sparkline(_, _, _), do: ""
+
+  # Y-coordinate of the break-even (P&L = 0) horizontal reference
+  # line, computed against the same `(min_v, max_v, range)` scale
+  # `kalshi_pnl_sparkline/3` uses. When the entire curve is positive,
+  # the zero line sits at the bottom of the chart; when entirely
+  # negative, at the top; otherwise somewhere in between.
+  defp kalshi_pnl_zero_y(settlements, height) when length(settlements) > 1 do
+    sorted = Enum.sort_by(settlements, & &1.settled_time)
+
+    values =
+      sorted
+      |> Enum.scan(0.0, fn s, acc -> acc + (s.revenue - s.fees) end)
+
+    min_v = Enum.min(values)
+    max_v = Enum.max(values)
+    range = max(max_v - min_v, 0.01)
+
+    cond do
+      min_v >= 0 -> height
+      max_v <= 0 -> 0.0
+      true -> height - (0.0 - min_v) / range * height
+    end
+    |> Float.round(1)
+  end
+
+  defp kalshi_pnl_zero_y(_, height), do: height
 
   # Maps Kalshi's market lifecycle status to a human label + Tailwind
   # badge classes. The dashboard renders this on every position row so
