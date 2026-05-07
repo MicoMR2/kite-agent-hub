@@ -37,12 +37,23 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
       args["owner_user_id"] ||
         fallback_owner_user_id(trade_id)
 
+    # `load_phase/3` returns the result of `Repo.with_user/2`, which
+    # wraps the inner value in `{:ok, _}`. Match the wrapped shapes
+    # — same destructure-trap class as #320 / #322 / the
+    # AlpacaSettlementWorker + StuckTradeSweeper fixes in this PR.
     case load_phase(trade_id, owner_user_id, args["tx_hash"]) do
-      {:already_terminal, status} ->
+      {:ok, {:already_terminal, status}} ->
         Logger.info("SettlementWorker: trade #{trade_id} already #{status}, skipping")
         :ok
 
-      {:settle_no_tx, trade} ->
+      {:error, reason} ->
+        Logger.error(
+          "SettlementWorker: with_user failed for trade #{trade_id}: #{inspect(reason)}"
+        )
+
+        {:error, "with_user failed"}
+
+      {:ok, {:settle_no_tx, trade}} ->
         Repo.with_user(owner_user_id, fn ->
           Logger.info(
             "SettlementWorker: trade #{trade.id} has no tx_hash, settling as confirmed"
@@ -52,7 +63,7 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
           :ok
         end)
 
-      {:check_rpc, trade, tx_hash} ->
+      {:ok, {:check_rpc, trade, tx_hash}} ->
         # Phase 2 — RPC call runs WITHOUT a Repo connection held. The
         # Kite chain JSON-RPC round-trip used to run inside with_user
         # and starved the pool when the node was slow. Now any DB
