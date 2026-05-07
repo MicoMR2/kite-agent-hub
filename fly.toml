@@ -1,7 +1,7 @@
 app = "kite-agent-hub"
 primary_region = "iad"
 kill_signal = "SIGTERM"
-kill_timeout = "5s"
+kill_timeout = "120s"
 
 [build]
 
