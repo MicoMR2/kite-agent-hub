@@ -63,29 +63,43 @@ defmodule KiteAgentHubWeb.API.ChatController do
   # or 204 on timeout (client should reconnect immediately, same as BotFreq).
 
   def wait(conn, params) do
-    with {:ok, agent} <- authenticate(conn) do
-      org_id = agent.organization_id
-      after_id = Map.get(params, "after_id")
+    case authenticate(conn) do
+      {:ok, agent} ->
+        org_id = agent.organization_id
+        after_id = Map.get(params, "after_id")
 
-      # If there are already newer messages, return them immediately.
-      case Chat.list_messages(org_id, limit: 50, after_id: after_id) do
-        [_ | _] = messages ->
-          conn |> json(%{ok: true, messages: Enum.map(messages, &serialize/1)})
+        # If there are already newer messages, return them immediately.
+        # Pool burst → DBConnection.ConnectionError. Treat as a soft
+        # timeout (204) so the browser long-poll loop reconnects
+        # cleanly instead of seeing a 500.
+        case safe_list_messages(org_id, after_id) do
+          {:error, :db_unavailable} ->
+            conn |> send_resp(:no_content, "")
 
-        [] ->
-          Chat.subscribe(org_id)
-          receive do
-            {:chat_message, msg} ->
-              Chat.unsubscribe(org_id)
-              conn |> json(%{ok: true, messages: [serialize(msg)]})
-          after
-            @wait_timeout_ms ->
-              Chat.unsubscribe(org_id)
-              conn |> send_resp(:no_content, "")
-          end
-      end
-    else
-      {:error, :unauthorized} -> unauthorized(conn)
+          [_ | _] = messages ->
+            conn |> json(%{ok: true, messages: Enum.map(messages, &serialize/1)})
+
+          [] ->
+            Chat.subscribe(org_id)
+
+            receive do
+              {:chat_message, msg} ->
+                Chat.unsubscribe(org_id)
+                conn |> json(%{ok: true, messages: [serialize(msg)]})
+            after
+              @wait_timeout_ms ->
+                Chat.unsubscribe(org_id)
+                conn |> send_resp(:no_content, "")
+            end
+        end
+
+      {:error, :unauthorized} ->
+        unauthorized(conn)
+
+      {:error, :db_unavailable} ->
+        # DB pool was saturated mid-auth. Same recovery: soft 204 so
+        # the client reconnects without surfacing a 500.
+        conn |> send_resp(:no_content, "")
     end
   end
 
@@ -94,7 +108,8 @@ defmodule KiteAgentHubWeb.API.ChatController do
   defp authenticate(conn) do
     case get_req_header(conn, "authorization") do
       ["Bearer " <> token] ->
-        case Trading.get_agent_by_token(token) || Trading.get_agent_by_wallet(token) do
+        case safe_lookup_agent(token) do
+          {:error, _} = err -> err
           nil -> {:error, :unauthorized}
           agent -> {:ok, agent}
         end
@@ -102,6 +117,34 @@ defmodule KiteAgentHubWeb.API.ChatController do
       _ ->
         {:error, :unauthorized}
     end
+  end
+
+  defp safe_lookup_agent(token) do
+    Trading.get_agent_by_token(token) || Trading.get_agent_by_wallet(token)
+  rescue
+    _ in DBConnection.ConnectionError ->
+      require Logger
+      Logger.warning("ChatController.authenticate: DB unavailable, treating as soft timeout")
+      {:error, :db_unavailable}
+
+    e ->
+      require Logger
+      Logger.warning("ChatController.authenticate: rescued #{Exception.message(e)}")
+      {:error, :db_unavailable}
+  end
+
+  defp safe_list_messages(org_id, after_id) do
+    Chat.list_messages(org_id, limit: 50, after_id: after_id)
+  rescue
+    _ in DBConnection.ConnectionError ->
+      require Logger
+      Logger.warning("ChatController.wait: DB unavailable, treating as soft timeout")
+      {:error, :db_unavailable}
+
+    e ->
+      require Logger
+      Logger.warning("ChatController.wait: list_messages rescued #{Exception.message(e)}")
+      {:error, :db_unavailable}
   end
 
   defp unauthorized(conn),

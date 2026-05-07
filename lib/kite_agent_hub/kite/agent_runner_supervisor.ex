@@ -32,13 +32,35 @@ defmodule KiteAgentHub.Kite.AgentRunnerSupervisor do
 
   @doc "Start an AgentRunner for the given agent_id with its org owner's user_id."
   def start_agent(agent_id, owner_user_id \\ nil) do
-    if AgentRunner.running?(agent_id) do
-      Logger.info("AgentRunnerSupervisor: runner already running for agent #{agent_id}")
-      {:ok, :already_running}
-    else
-      resolved_owner = owner_user_id || Repo.owner_user_id_for_agent(agent_id)
-      child_spec = {AgentRunner, [agent_id: agent_id, owner_user_id: resolved_owner]}
-      DynamicSupervisor.start_child(__MODULE__, child_spec)
+    cond do
+      runners_disabled?() ->
+        Logger.info(
+          "AgentRunnerSupervisor: KAH_AGENT_RUNNERS_DISABLED set — not starting runner for agent #{agent_id}"
+        )
+
+        {:ok, :disabled}
+
+      AgentRunner.running?(agent_id) ->
+        Logger.info("AgentRunnerSupervisor: runner already running for agent #{agent_id}")
+        {:ok, :already_running}
+
+      true ->
+        resolved_owner = owner_user_id || Repo.owner_user_id_for_agent(agent_id)
+        child_spec = {AgentRunner, [agent_id: agent_id, owner_user_id: resolved_owner]}
+        DynamicSupervisor.start_child(__MODULE__, child_spec)
+    end
+  end
+
+  # Emergency circuit breaker. Set the Fly secret
+  # `KAH_AGENT_RUNNERS_DISABLED=1` and restart the machine to halt
+  # all per-agent ticks (the prime suspect for the residual DB-pool
+  # burst pattern after the every-minute crons were already disabled).
+  # No code redeploy needed to flip — env var only.
+  defp runners_disabled? do
+    case System.get_env("KAH_AGENT_RUNNERS_DISABLED") do
+      "1" -> true
+      "true" -> true
+      _ -> false
     end
   end
 
