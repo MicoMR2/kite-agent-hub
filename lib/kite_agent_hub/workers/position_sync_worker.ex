@@ -33,6 +33,15 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
   def perform(%Oban.Job{args: %{"agent_id" => agent_id} = args}) do
     owner_user_id = args["owner_user_id"] || resolve_owner(agent_id)
 
+    # `Repo.with_user/2` wraps `transaction/1`, so its return is
+    # `{:ok, value}` on success — destructure the outer `:ok` before
+    # binding the inner shape. Same destructure-trap class as #320 /
+    # #322 / the AlpacaSettlementWorker + StuckTradeSweeper +
+    # SettlementWorker fixes in this PR. Pre-fix the case matched
+    # `{:cancel, _}` and `{:ok, agent}` directly — `{:cancel, _}`
+    # never matched, and `{:ok, agent}` accidentally bound `agent`
+    # to the inner `{:cancel, ...}` or `{:ok, agent_struct}` tuple,
+    # then `log_vault_balance/1` crashed silently on `agent.vault_address`.
     case Repo.with_user(owner_user_id, fn ->
            agent = Trading.get_agent!(agent_id)
 
@@ -50,10 +59,10 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
              {:ok, agent}
            end
          end) do
-      {:cancel, _reason} = result ->
+      {:ok, {:cancel, _reason} = result} ->
         result
 
-      {:ok, agent} ->
+      {:ok, {:ok, agent}} ->
         # Phase 2 — Repo connection released. `log_vault_balance/1`
         # makes a JSON-RPC HTTP call to the Kite chain; previously
         # it ran inside the with_user block and held a DB
@@ -61,6 +70,13 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
         # pool checkout-timeout pattern.
         log_vault_balance(agent)
         :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "PositionSyncWorker: with_user failed for agent #{agent_id}: #{inspect(reason)}"
+        )
+
+        {:error, "with_user failed"}
     end
   end
 
