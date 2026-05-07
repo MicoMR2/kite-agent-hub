@@ -84,7 +84,12 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
       true ->
         owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
-        Repo.with_user(owner_user_id, fn -> execute_trade(agent, args, owner_user_id) end)
+        # `execute_trade/3` opens its own brief `with_user` blocks
+        # around each DB phase; the broker HTTP call runs OUTSIDE
+        # the lock. Previously this whole function ran inside one
+        # outer `Repo.with_user` and held a connection through the
+        # broker round-trip.
+        execute_trade(agent, args, owner_user_id)
     end
   end
 
@@ -151,39 +156,60 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       contracts: contracts_for_record(args, fill_price),
       fill_price: fill_price,
       notional_usd: notional,
-      status: "open",
+      # Pending-row pattern: the trade row starts at `:pending` and
+      # is only flipped to `:open` after the broker confirms the
+      # order. If Phase 3 below fails to land the flip (pool burst,
+      # crash), the row stays in `:pending` with a non-null
+      # `broker_submitted_at` if the broker actually saw the order —
+      # StuckTradeSweeper uses that pair to reconcile against the
+      # broker before failing the row.
+      status: "pending",
       source: "oban",
       reason: args["reason"],
       platform: platform
     }
 
-    case Trading.create_trade(trade_attrs) do
+    # Phase 1 — with_user. Insert the pending row; release the
+    # connection BEFORE any broker call.
+    create_result =
+      Repo.with_user(owner_user_id, fn -> Trading.create_trade(trade_attrs) end)
+
+    case create_result do
       {:ok, trade} ->
         Logger.info(
-          "TradeExecutionWorker: trade #{trade.id} created for agent #{agent.id} on #{platform}"
+          "TradeExecutionWorker: trade #{trade.id} pending for agent #{agent.id} on #{platform}"
         )
 
-        case maybe_execute_on_platform(platform, agent, args, owner_user_id) do
-          {:ok, platform_order_id} ->
-            # Broadcast on platform_order_id assignment so the dashboard
-            # picks up the broker confirmation, not just the next mount.
-            Trading.update_trade(trade, %{platform_order_id: platform_order_id})
+        # Phase 2 — broker HTTP. No Repo connection held.
+        broker_result = maybe_execute_on_platform(platform, agent, args, owner_user_id)
 
-          {:error, reason} ->
-            # Alpaca rejected the order (insufficient qty, market closed,
-            # invalid symbol, etc.). Flip the trade to "failed" with the
-            # broker's error stashed in the reason field so the agent can
-            # see what went wrong on the next GET /trades. Routing through
-            # Trading.update_trade/2 fires :trade_updated + the KCI
-            # outcome record so listeners stop showing this row as `open`.
-            Trading.update_trade(trade, %{
-              status: "failed",
-              reason: format_failure_reason(reason)
-            })
+        # Phase 3 — with_user. Flip the row based on what the
+        # broker said. Failures here leave the row at `:pending`
+        # with `broker_submitted_at` set if the broker accepted —
+        # StuckTradeSweeper picks it up for reconciliation.
+        Repo.with_user(owner_user_id, fn ->
+          case broker_result do
+            {:ok, platform_order_id} ->
+              Trading.update_trade(trade, %{
+                status: "open",
+                platform_order_id: platform_order_id,
+                broker_submitted_at: DateTime.utc_now()
+              })
 
-          :noop ->
-            :ok
-        end
+            {:error, reason} ->
+              Trading.update_trade(trade, %{
+                status: "failed",
+                reason: format_failure_reason(reason)
+              })
+
+            :noop ->
+              # Kite-chain trades never go through a broker — the
+              # row was inserted as :pending; flip to :open so the
+              # downstream onchain submit path (next phase) treats
+              # it as a normal in-flight trade.
+              Trading.update_trade(trade, %{status: "open"})
+          end
+        end)
 
         # Kite on-chain settlement proof is only meaningful for trades
         # that were intended to settle on Kite chain. Alpaca trades

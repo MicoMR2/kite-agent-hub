@@ -5,7 +5,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @statuses ~w(open settled cancelled failed)
+  @statuses ~w(pending open settled cancelled failed)
   @sides ~w(yes no long short buy sell)
   @actions ~w(buy sell)
   @platforms ~w(kite alpaca kalshi oanda)
@@ -30,6 +30,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     field :reason, :string
     field :platform, :string, default: "kite"
     field :platform_order_id, :string
+    field :broker_submitted_at, :utc_datetime_usec
     field :attestation_tx_hash, :string
 
     belongs_to :kite_agent, KiteAgentHub.Trading.KiteAgent
@@ -55,6 +56,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
       :reason,
       :platform,
       :platform_order_id,
+      :broker_submitted_at,
       :kite_agent_id
     ])
     |> validate_required([:market, :side, :action, :contracts, :fill_price, :kite_agent_id])
