@@ -316,6 +316,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp parse_tab("polymarket"), do: :polymarket
   defp parse_tab("forex"), do: :forex
   defp parse_tab("logs"), do: :logs
+  defp parse_tab("portfolio"), do: :portfolio
   defp parse_tab(_), do: :overview
 
   # Shared tab-switch side effects (firing the right loader, scheduling
@@ -357,6 +358,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
           send(self(), :load_forex)
           schedule_tab_refresh(:forex)
           assign(socket, :forex_loading, true)
+
+        :portfolio ->
+          # Cross-broker breakdown reads from the existing alpaca_data,
+          # kalshi_data, and forex_account assigns. Each broker's load
+          # already runs inside its own `Repo.with_user` block (RLS
+          # scope preserved). On Portfolio tab entry we eagerly fan-out
+          # all three loads so the pie chart and stats reflect current
+          # state regardless of which broker tabs the user has visited
+          # this session. Loading state for each broker is set so the
+          # render fallbacks display "Loading..." instead of "$0".
+          send(self(), :load_alpaca)
+          send(self(), :load_kalshi)
+          send(self(), :load_forex)
+
+          socket
+          |> assign(:alpaca_data, :loading)
+          |> assign(:kalshi_data, :loading)
+          |> assign(:forex_loading, true)
 
         :logs ->
           # Load existing log entries from the ring buffer and subscribe
@@ -2328,7 +2347,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
             class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             id="dashboard-tabs"
           >
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}, {"Agent Logs", "logs"}] do %>
+            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}, {"Portfolio", "portfolio"}, {"Agent Logs", "logs"}] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
@@ -5008,6 +5027,140 @@ defmodule KiteAgentHubWeb.DashboardLive do
             </div>
           <% end %>
 
+          <%!-- Portfolio Breakdown Tab — cross-broker pie + headline stats --%>
+          <%= if @active_tab == :portfolio do %>
+            <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+              <% breakdown = portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account) %>
+
+              <%!-- Headline stats: total value + combined P&L --%>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                    Total Portfolio Value
+                  </p>
+                  <p class="text-2xl font-black tabular-nums text-white">
+                    ${:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                  </p>
+                  <p class="text-[10px] text-gray-600 mt-1">
+                    Across {Enum.count(breakdown.slices, & &1.value > 0)}/{length(breakdown.slices)} connected brokers
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                    Combined Settled P&L
+                  </p>
+                  <p class={
+                    "text-2xl font-black tabular-nums " <>
+                      if(breakdown.combined_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
+                  }>
+                    <%= if breakdown.combined_pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(breakdown.combined_pnl), decimals: 2)}
+                  </p>
+                  <p class="text-[10px] text-gray-600 mt-1">
+                    Realized (Alpaca) + settled (Kalshi). ForEx P&L lives on the ForEx tab.
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                    Largest Allocation
+                  </p>
+                  <%= case breakdown.largest do %>
+                    <% nil -> %>
+                      <p class="text-2xl font-black tabular-nums text-gray-600">—</p>
+                      <p class="text-[10px] text-gray-600 mt-1">No broker balances loaded yet.</p>
+                    <% slice -> %>
+                      <p class={"text-2xl font-black tabular-nums " <> slice.text_class}>
+                        {slice.label}
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-1">
+                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value, decimals: 2)}
+                      </p>
+                  <% end %>
+                </div>
+              </div>
+
+              <%!-- Allocation pie chart --%>
+              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+                <div class="flex items-center justify-between mb-6">
+                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                    Allocation by Broker
+                  </p>
+                  <span class="text-[10px] font-mono text-gray-600">
+                    {breakdown.loaded_count}/{length(breakdown.slices)} loaded
+                  </span>
+                </div>
+
+                <%= if breakdown.total_value > 0.0 do %>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <%!-- Pie SVG. Each slice is rendered as a circle with stroke-dasharray
+                         offsets so the strokes draw in sequence; transition lets the
+                         animation grow on mount + when slice values change. --%>
+                    <div class="flex justify-center">
+                      <svg
+                        viewBox="-50 -50 100 100"
+                        class="w-56 h-56 -rotate-90"
+                        style="transition: all 600ms ease;"
+                      >
+                        <circle r="40" cx="0" cy="0" fill="#0a0a0f" stroke="#1f1f2e" stroke-width="2" />
+                        <%= for slice <- breakdown.slices, slice.value > 0 do %>
+                          <%
+                            circumference = 2 * 3.141592653589793 * 36
+                            slice_len = circumference * slice.percent / 100
+                            gap_len = circumference - slice_len
+                            offset = -circumference * slice.cumulative_percent / 100
+                          %>
+                          <circle
+                            r="36"
+                            cx="0"
+                            cy="0"
+                            fill="transparent"
+                            stroke={slice.stroke_color}
+                            stroke-width="14"
+                            stroke-dasharray={"#{Float.round(slice_len, 2)} #{Float.round(gap_len, 2)}"}
+                            stroke-dashoffset={Float.round(offset, 2)}
+                            style="transition: stroke-dasharray 600ms ease, stroke-dashoffset 600ms ease;"
+                          />
+                        <% end %>
+                      </svg>
+                    </div>
+
+                    <%!-- Legend with per-broker rows --%>
+                    <div class="space-y-3">
+                      <%= for slice <- breakdown.slices do %>
+                        <div class="flex items-center gap-3">
+                          <span
+                            class="w-3 h-3 rounded-sm shrink-0"
+                            style={"background-color: #{slice.stroke_color};"}
+                          />
+                          <div class="flex-1">
+                            <div class="flex items-baseline justify-between">
+                              <span class="text-sm font-bold text-white">{slice.label}</span>
+                              <span class={"text-sm font-mono tabular-nums " <> slice.text_class}>
+                                {Float.round(slice.percent, 1)}%
+                              </span>
+                            </div>
+                            <div class="flex items-baseline justify-between text-[11px] text-gray-500 font-mono">
+                              <span>{slice.subtitle}</span>
+                              <span>${:erlang.float_to_binary(slice.value, decimals: 2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+                <% else %>
+                  <div class="py-12 text-center">
+                    <p class="text-sm text-gray-600 mb-2">
+                      No connected broker balances yet.
+                    </p>
+                    <p class="text-[11px] text-gray-700">
+                      Add Alpaca, Kalshi, or OANDA credentials in Settings — once a broker tab loads, its slice appears here.
+                    </p>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+
           <%!-- Agent Logs Tab --%>
           <%= if @active_tab == :logs do %>
             <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -5480,6 +5633,145 @@ network_access = true</pre>
   end
 
   defp kalshi_pnl_zero_y(_, height), do: height * 1.0
+
+  # Cross-broker portfolio breakdown. Reads each broker's loaded
+  # data shape from the existing assigns (no new API calls — the
+  # per-broker tabs already populated these via their own
+  # `Repo.with_user`-scoped loads). Returns a struct with:
+  #   * `slices` — one row per broker (Alpaca / Kalshi / ForEx),
+  #     including stroke color, value, allocation %, cumulative %
+  #     for SVG dash offsets, and a small subtitle line.
+  #   * `total_value` — sum of all broker values in dollars.
+  #   * `combined_pnl` — realized (Alpaca) + settled (Kalshi). ForEx
+  #     P&L is provider-shape-dependent; the ForEx tab handles it.
+  #   * `largest` — slice with the biggest allocation, or nil if no
+  #     broker has loaded yet.
+  #   * `loaded_count` — how many brokers contributed a real value
+  #     (used in the header to avoid showing 0/3 when slices are
+  #     just empty).
+  #
+  # Color values match the dashboard's existing per-broker palette:
+  #   * Kalshi — emerald (#22c55e)  — green per Mico's spec (msg 8608).
+  #   * Alpaca — amber (#f59e0b)    — yellow per spec.
+  #   * ForEx  — orange (#f97316)   — orange per spec.
+  defp portfolio_breakdown(alpaca_data, kalshi_data, forex_account) do
+    raw_slices = [
+      %{
+        key: :alpaca,
+        label: "Alpaca",
+        stroke_color: "#f59e0b",
+        text_class: "text-amber-400",
+        value: alpaca_value(alpaca_data),
+        loaded?: alpaca_loaded?(alpaca_data),
+        subtitle: "Equities + options"
+      },
+      %{
+        key: :kalshi,
+        label: "Kalshi",
+        stroke_color: "#22c55e",
+        text_class: "text-emerald-400",
+        value: kalshi_value(kalshi_data),
+        loaded?: kalshi_loaded?(kalshi_data),
+        subtitle: "Prediction markets"
+      },
+      %{
+        key: :forex,
+        label: "ForEx",
+        stroke_color: "#f97316",
+        text_class: "text-orange-400",
+        value: forex_value(forex_account),
+        loaded?: forex_loaded?(forex_account),
+        subtitle: "OANDA practice"
+      }
+    ]
+
+    total_value = Enum.reduce(raw_slices, 0.0, fn s, acc -> acc + s.value end)
+    loaded_count = Enum.count(raw_slices, & &1.loaded?)
+
+    {slices, _} =
+      Enum.map_reduce(raw_slices, 0.0, fn slice, cum_pct ->
+        pct = if total_value > 0.0, do: slice.value / total_value * 100.0, else: 0.0
+
+        slice_with_pct =
+          slice
+          |> Map.put(:percent, pct)
+          |> Map.put(:cumulative_percent, cum_pct)
+
+        {slice_with_pct, cum_pct + pct}
+      end)
+
+    largest =
+      slices
+      |> Enum.filter(& &1.value > 0)
+      |> Enum.max_by(& &1.value, fn -> nil end)
+
+    %{
+      slices: slices,
+      total_value: total_value,
+      combined_pnl: alpaca_realized_pnl(alpaca_data) + kalshi_settled_pnl(kalshi_data),
+      largest: largest,
+      loaded_count: loaded_count
+    }
+  end
+
+  # ── Per-broker value extraction helpers ─────────────────────────
+  # Each helper returns `0.0` when the broker hasn't loaded or the
+  # shape is unexpected, so the breakdown total never crashes. The
+  # `_loaded?/1` siblings let the UI distinguish "no broker
+  # connected" from "broker loaded with $0 balance".
+
+  defp alpaca_value(%{account: %{portfolio_value: pv}}) when is_number(pv), do: pv * 1.0
+  defp alpaca_value(_), do: 0.0
+
+  defp alpaca_loaded?(%{account: _}), do: true
+  defp alpaca_loaded?(_), do: false
+
+  defp alpaca_realized_pnl(%{account: %{realized_pnl: pnl}}) when is_number(pnl), do: pnl * 1.0
+  defp alpaca_realized_pnl(_), do: 0.0
+
+  defp kalshi_value(%{portfolio_value: pv}) when is_number(pv), do: pv * 1.0
+  defp kalshi_value(%{balance: %{available_balance: bal}}) when is_number(bal), do: bal * 1.0
+  defp kalshi_value(_), do: 0.0
+
+  defp kalshi_loaded?(%{balance: _}), do: true
+  defp kalshi_loaded?(_), do: false
+
+  defp kalshi_settled_pnl(%{total_settled_pnl: pnl}) when is_number(pnl), do: pnl * 1.0
+  defp kalshi_settled_pnl(_), do: 0.0
+
+  # OANDA's `account` map varies by API version. Try the common
+  # shapes; default to 0 when nothing matches. NAV is preferred over
+  # balance because it includes unrealized P&L, but either works as
+  # an allocation proxy.
+  defp forex_value(%{} = account) do
+    # OANDA's account map may use atom or string keys depending on
+    # the API response shape; try both. NAV is preferred over
+    # balance because it includes unrealized P&L.
+    nav_val = forex_field(account, :nav) || forex_field(account, "NAV")
+    bal_val = forex_field(account, :balance) || forex_field(account, "balance")
+
+    cond do
+      is_number(nav_val) -> nav_val * 1.0
+      is_binary(nav_val) -> parse_float(nav_val)
+      is_number(bal_val) -> bal_val * 1.0
+      is_binary(bal_val) -> parse_float(bal_val)
+      true -> 0.0
+    end
+  end
+
+  defp forex_value(_), do: 0.0
+
+  defp forex_field(%{} = m, key), do: Map.get(m, key)
+
+  defp forex_loaded?(%{} = _account), do: true
+  defp forex_loaded?(_), do: false
+
+  defp parse_float(s) when is_binary(s) do
+    case Float.parse(s) do
+      {f, _} -> f
+      :error -> 0.0
+    end
+  end
 
   # Maps Kalshi's market lifecycle status to a human label + Tailwind
   # badge classes. The dashboard renders this on every position row so
