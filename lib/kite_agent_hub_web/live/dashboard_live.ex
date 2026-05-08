@@ -5398,30 +5398,41 @@ network_access = true</pre>
   # same `total_settled_pnl` shown in the summary card. Empty input
   # returns "" so the caller can fall back to its empty-state copy.
   defp kalshi_pnl_sparkline(settlements, width, height) when length(settlements) > 1 do
-    sorted = Enum.sort_by(settlements, & &1.settled_time)
+    # Drop settlements without a `settled_time` so `Enum.sort_by/2`
+    # never compares nil keys (raises). Same defensive shape as the
+    # `kalshi_pnl_zero_y/2` fix in this PR.
+    sorted =
+      settlements
+      |> Enum.reject(&is_nil(&1.settled_time))
+      |> Enum.sort_by(& &1.settled_time)
 
     values =
       sorted
       |> Enum.scan(0.0, fn s, acc -> acc + (s.revenue - s.fees) end)
 
-    min_v = Enum.min(values)
-    max_v = Enum.max(values)
-    range = max(max_v - min_v, 0.01)
-    count = length(values) - 1
+    case values do
+      list when length(list) < 2 ->
+        ""
 
-    # Reserve a small head/tail margin so the polyline doesn't kiss
-    # the SVG edges; scale the y-axis around `min_v` so a positive
-    # final value rises toward y=0 and a negative final value
-    # collapses toward y=height — same orientation as the existing
-    # Alpaca / forex sparklines.
-    values
-    |> Enum.with_index()
-    |> Enum.map(fn {v, i} ->
-      x = i / count * width
-      y = height - (v - min_v) / range * height
-      "#{Float.round(x, 1)},#{Float.round(y, 1)}"
-    end)
-    |> Enum.join(" ")
+      _ ->
+        min_v = Enum.min(values)
+        max_v = Enum.max(values)
+        range = max(max_v - min_v, 0.01)
+        count = length(values) - 1
+
+        # Scale the y-axis around `min_v` so a positive final value
+        # rises toward y=0 and a negative final value collapses
+        # toward y=height — same orientation as the Alpaca / forex
+        # sparklines.
+        values
+        |> Enum.with_index()
+        |> Enum.map(fn {v, i} ->
+          x = i / count * width * 1.0
+          y = height - (v - min_v) / range * height
+          "#{Float.round(x, 1)},#{Float.round(y, 1)}"
+        end)
+        |> Enum.join(" ")
+    end
   end
 
   defp kalshi_pnl_sparkline(_, _, _), do: ""
@@ -5432,25 +5443,43 @@ network_access = true</pre>
   # the zero line sits at the bottom of the chart; when entirely
   # negative, at the top; otherwise somewhere in between.
   defp kalshi_pnl_zero_y(settlements, height) when length(settlements) > 1 do
-    sorted = Enum.sort_by(settlements, & &1.settled_time)
+    # `Enum.sort_by/2` crashes on nil sort keys; filter first so a
+    # legacy settlement with a missing `settled_time` doesn't take
+    # the whole LiveView mount down. `Float.round/2` also requires
+    # a float — every branch below explicitly multiplies by 1.0 so
+    # the pipe never receives an integer (KAH P1 2026-05-07: v457
+    # mount-loop because `min_v >= 0` returned the integer
+    # `height` and `Float.round(150, 1)` raised).
+    sorted =
+      settlements
+      |> Enum.reject(&is_nil(&1.settled_time))
+      |> Enum.sort_by(& &1.settled_time)
 
     values =
       sorted
       |> Enum.scan(0.0, fn s, acc -> acc + (s.revenue - s.fees) end)
 
-    min_v = Enum.min(values)
-    max_v = Enum.max(values)
-    range = max(max_v - min_v, 0.01)
+    case values do
+      [] ->
+        height * 1.0
 
-    cond do
-      min_v >= 0 -> height
-      max_v <= 0 -> 0.0
-      true -> height - (0.0 - min_v) / range * height
+      _ ->
+        min_v = Enum.min(values)
+        max_v = Enum.max(values)
+        range = max(max_v - min_v, 0.01)
+
+        zero_y =
+          cond do
+            min_v >= 0 -> height * 1.0
+            max_v <= 0 -> 0.0
+            true -> height - (0.0 - min_v) / range * height
+          end
+
+        Float.round(zero_y, 1)
     end
-    |> Float.round(1)
   end
 
-  defp kalshi_pnl_zero_y(_, height), do: height
+  defp kalshi_pnl_zero_y(_, height), do: height * 1.0
 
   # Maps Kalshi's market lifecycle status to a human label + Tailwind
   # badge classes. The dashboard renders this on every position row so
