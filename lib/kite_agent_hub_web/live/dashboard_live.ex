@@ -5030,7 +5030,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
           <%!-- Portfolio Breakdown Tab — cross-broker pie + headline stats --%>
           <%= if @active_tab == :portfolio do %>
             <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-              <% breakdown = portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account) %>
+              <% breakdown = portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account, @pnl_stats) %>
 
               <%!-- Headline stats: total value + combined P&L --%>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -5047,7 +5047,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                   <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                    Combined Settled P&L
+                    Combined P&L
                   </p>
                   <p class={
                     "text-2xl font-black tabular-nums " <>
@@ -5056,7 +5056,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <%= if breakdown.combined_pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(breakdown.combined_pnl), decimals: 2)}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">
-                    Realized (Alpaca) + settled (Kalshi). ForEx P&L lives on the ForEx tab.
+                    Alpaca realized + Kalshi settled + ForEx unrealized.
                   </p>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
@@ -5141,6 +5141,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             <div class="flex items-baseline justify-between text-[11px] text-gray-500 font-mono">
                               <span>{slice.subtitle}</span>
                               <span>${:erlang.float_to_binary(slice.value, decimals: 2)}</span>
+                            </div>
+                            <div class="flex items-baseline justify-between text-[10px] font-mono mt-0.5">
+                              <span class="text-gray-600">P&L</span>
+                              <span class={
+                                if(slice.pnl >= 0, do: "text-emerald-400", else: "text-red-400")
+                              }>
+                                <%= if slice.pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(slice.pnl), decimals: 2)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -5625,7 +5633,7 @@ network_access = true</pre>
   #   * Kalshi — emerald (#22c55e)  — green per Mico's spec (msg 8608).
   #   * Alpaca — amber (#f59e0b)    — yellow per spec.
   #   * ForEx  — orange (#f97316)   — orange per spec.
-  defp portfolio_breakdown(alpaca_data, kalshi_data, forex_account) do
+  defp portfolio_breakdown(alpaca_data, kalshi_data, forex_account, pnl_stats) do
     raw_slices = [
       %{
         key: :alpaca,
@@ -5634,6 +5642,7 @@ network_access = true</pre>
         text_class: "text-amber-400",
         value: alpaca_value(alpaca_data),
         loaded?: alpaca_loaded?(alpaca_data),
+        pnl: alpaca_pnl(pnl_stats, alpaca_data),
         subtitle: "Equities + options"
       },
       %{
@@ -5643,6 +5652,7 @@ network_access = true</pre>
         text_class: "text-emerald-400",
         value: kalshi_value(kalshi_data),
         loaded?: kalshi_loaded?(kalshi_data),
+        pnl: kalshi_settled_pnl(kalshi_data),
         subtitle: "Prediction markets"
       },
       %{
@@ -5652,6 +5662,7 @@ network_access = true</pre>
         text_class: "text-orange-400",
         value: forex_value(forex_account),
         loaded?: forex_loaded?(forex_account),
+        pnl: forex_unrealized_pnl(forex_account),
         subtitle: "OANDA practice"
       }
     ]
@@ -5676,10 +5687,23 @@ network_access = true</pre>
       |> Enum.filter(& &1.value > 0)
       |> Enum.max_by(& &1.value, fn -> nil end)
 
+    # Combined P&L per Mico's spec: must reflect ALL connected
+    # platforms. Sum is provider-defined per slice — Alpaca takes
+    # the BrokerStats live realized number when available (Decimal
+    # type from `Trading.BrokerStats.live_stats/1`, already
+    # Alpaca-side authoritative); Kalshi reuses
+    # `data.total_settled_pnl` from `load_kalshi_data/1`; ForEx
+    # uses OANDA's `unrealizedPL` field (mark-to-market on open
+    # positions, which is the only OANDA-side number available
+    # without extra calls). All three coerced to float here so
+    # the headline never hits the `Float.round`/`float_to_binary`
+    # crash class from #327.
+    combined_pnl = Enum.reduce(raw_slices, 0.0, fn slice, acc -> acc + slice.pnl end)
+
     %{
       slices: slices,
       total_value: total_value,
-      combined_pnl: alpaca_realized_pnl(alpaca_data) + kalshi_settled_pnl(kalshi_data),
+      combined_pnl: combined_pnl,
       largest: largest,
       loaded_count: loaded_count
     }
@@ -5696,6 +5720,21 @@ network_access = true</pre>
 
   defp alpaca_loaded?(%{account: _}), do: true
   defp alpaca_loaded?(_), do: false
+
+  # Alpaca-side P&L. Prefer the live `Trading.BrokerStats` number
+  # — it queries Alpaca directly for FIFO realized P&L on closed
+  # orders and is the source of truth the dashboard already uses
+  # for `agent_pnl_stats`. `pnl_stats.total_pnl` is a `Decimal`
+  # (Alpaca + Kalshi combined per BrokerStats.merge/2), so we
+  # subtract Kalshi'"'"'s settled side here to get Alpaca-only and
+  # add Kalshi back in its own slice. Falls back to the
+  # `account.realized_pnl` shape when broker_stats hasn'"'"'t loaded.
+  defp alpaca_pnl(%{total_pnl: %Decimal{} = total_pnl}, kalshi_data) do
+    kalshi = kalshi_settled_pnl(kalshi_data)
+    Decimal.to_float(total_pnl) - kalshi
+  end
+
+  defp alpaca_pnl(_, alpaca_data), do: alpaca_realized_pnl(alpaca_data)
 
   defp alpaca_realized_pnl(%{account: %{realized_pnl: pnl}}) when is_number(pnl), do: pnl * 1.0
   defp alpaca_realized_pnl(_), do: 0.0
@@ -5736,6 +5775,26 @@ network_access = true</pre>
 
   defp forex_loaded?(%{} = _account), do: true
   defp forex_loaded?(_), do: false
+
+  # OANDA exposes mark-to-market unrealized P&L as `unrealizedPL`
+  # on the account map (string key — OANDA convention). The same
+  # field is rendered in the existing ForEx tab summary at
+  # dashboard_live.ex line 4593, so this helper just normalizes
+  # to float for the breakdown headline. ForEx settled / realized
+  # P&L would require summing recent_trades — out of scope for
+  # this PR; unrealized is the OANDA-side number Mico's spec
+  # cares about.
+  defp forex_unrealized_pnl(%{} = account) do
+    raw = forex_field(account, :unrealizedPL) || forex_field(account, "unrealizedPL")
+
+    cond do
+      is_number(raw) -> raw * 1.0
+      is_binary(raw) -> parse_float(raw)
+      true -> 0.0
+    end
+  end
+
+  defp forex_unrealized_pnl(_), do: 0.0
 
   defp parse_float(s) when is_binary(s) do
     case Float.parse(s) do
