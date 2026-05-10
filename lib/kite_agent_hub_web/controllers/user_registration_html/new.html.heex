@@ -73,15 +73,32 @@
               <label class="block text-[11px] font-bold text-gray-200 uppercase tracking-wider mb-2">
                 Email
               </label>
-              <.input
-                field={f[:email]}
-                type="email"
-                autocomplete="username"
-                spellcheck="false"
-                required
-                phx-mounted={JS.focus()}
-                class="w-full bg-white/[0.04] border border-white/20 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm outline-none focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20 focus:bg-white/[0.06] transition-all"
-              />
+              <%= if @invite_only? and @invite_status.state == :valid and @invite_status[:email] do %>
+                <%!-- Email-locked invite: pre-fill and freeze the field so the user
+                     can't type a different address than the code was minted for.
+                     Was the failure path that locked miller1997 out (msg 8819). --%>
+                <.input
+                  field={f[:email]}
+                  type="email"
+                  value={@invite_status.email}
+                  readonly
+                  required
+                  class="w-full bg-white/[0.02] border border-white/15 text-gray-300 rounded-xl px-4 py-3 text-sm cursor-not-allowed"
+                />
+                <p class="mt-1.5 text-xs text-gray-400">
+                  This invite is locked to <span class="text-white font-mono">{@invite_status.email}</span>.
+                </p>
+              <% else %>
+                <.input
+                  field={f[:email]}
+                  type="email"
+                  autocomplete="username"
+                  spellcheck="false"
+                  required
+                  phx-mounted={JS.focus()}
+                  class="w-full bg-white/[0.04] border border-white/20 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm outline-none focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20 focus:bg-white/[0.06] transition-all"
+                />
+              <% end %>
             </div>
 
             <div>

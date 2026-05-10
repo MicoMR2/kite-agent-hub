@@ -28,6 +28,10 @@ defmodule KiteAgentHub.Accounts.Invites do
           UserNotifier.deliver_access_request_notification(req)
         end)
 
+        Task.Supervisor.start_child(KiteAgentHub.TaskSupervisor, fn ->
+          UserNotifier.deliver_request_receipt(req)
+        end)
+
         {:ok, req}
 
       {:error, _} = err ->
@@ -92,7 +96,7 @@ defmodule KiteAgentHub.Accounts.Invites do
   before the user fills in the rest of the registration page.
   """
   def peek(plaintext) when is_binary(plaintext) do
-    hash = hash(plaintext)
+    hash = hash(String.trim(plaintext))
     now = DateTime.utc_now()
 
     InviteCode
@@ -114,7 +118,7 @@ defmodule KiteAgentHub.Accounts.Invites do
   signup email. Pass `signup_email` lowercased.
   """
   def consume(plaintext, signup_email, user_id) when is_binary(plaintext) do
-    hash = hash(plaintext)
+    hash = hash(String.trim(plaintext))
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     email = String.downcase(signup_email)
 

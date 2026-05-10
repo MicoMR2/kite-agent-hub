@@ -64,9 +64,18 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
             _ -> "Invalid invite code."
           end
 
+        # Preserve the code on the URL so the user lands back on the same
+        # /users/register?code=… page they came from instead of an empty form.
+        return_to =
+          case code do
+            "" -> ~p"/users/register"
+            nil -> ~p"/users/register"
+            c -> ~p"/users/register?code=#{c}"
+          end
+
         conn
         |> put_flash(:error, msg)
-        |> redirect(to: ~p"/users/register")
+        |> redirect(to: return_to)
 
       {:error, _} ->
         conn
