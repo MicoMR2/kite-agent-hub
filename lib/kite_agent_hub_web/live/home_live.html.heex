@@ -58,7 +58,7 @@
         </h1>
 
         <p class="text-lg sm:text-xl text-gray-300 max-w-2xl mx-auto mb-12 leading-[1.65] font-light">
-          Deploy AI trading agents that execute on Alpaca and Kalshi, scored with Edge Scoring,
+          Deploy AI trading agents that execute on Alpaca and Kalshi, scored with KCI Edge Scoring,
           and settled on Kite chain. Bring your own LLM — Claude Code, Claude Desktop, or any MCP-compatible client.
           <span class="text-white font-medium">Non-custodial by design.</span>
         </p>
@@ -69,7 +69,7 @@
             phx-hook="Magnetic"
             id="hero-cta-primary"
             data-magnetic-strength="14"
-            class="inline-block rounded-xl border border-[#22c55e]/40 bg-gradient-to-b from-[#22c55e]/[0.18] to-[#16a34a]/[0.12] hover:from-[#22c55e]/[0.30] hover:to-[#16a34a]/[0.20] px-4 sm:px-10 py-3 sm:py-4 text-sm sm:text-base font-bold text-[#22c55e] transition-all shadow-[0_0_30px_rgba(34,197,94,0.18)] w-full sm:w-auto text-center backdrop-blur-md"
+            class="inline-block rounded-xl bg-[#16a34a] hover:bg-[#15803d] px-4 sm:px-10 py-3 sm:py-4 text-sm sm:text-base font-bold text-white transition-all shadow-[0_0_35px_rgba(34,197,94,0.25)] w-full sm:w-auto text-center"
           >
             Request access →
           </.link>
@@ -114,7 +114,7 @@
             Edge
           </p>
           <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
-            Edge Scoring
+            KCI Edge Scoring
           </p>
         </div>
         <div class="text-center group">
@@ -138,16 +138,19 @@
         <p class="text-[10px] font-mono uppercase tracking-[0.22em] text-gray-500">
           Wired into
         </p>
-        <div class="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[15px] sm:text-base font-display font-bold tracking-tight text-gray-300/90">
-          <span>Alpaca</span>
+        <%!-- Venue wordmarks tinted to match each platform's in-app pill color
+             (see .kah-platform-* in app.css). Parity with the dashboard so users
+             see the same visual language pre/post sign-in. --%>
+        <div class="flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-[15px] sm:text-base font-display font-bold tracking-tight">
+          <span class="text-[#fde047]">Alpaca</span>
           <span class="text-gray-700">·</span>
-          <span>Kalshi</span>
+          <span class="text-[#4ade80]">Kalshi</span>
           <span class="text-gray-700">·</span>
-          <span>OANDA</span>
+          <span class="text-[#fb923c]">OANDA</span>
           <span class="text-gray-700">·</span>
-          <span>Polymarket</span>
+          <span class="text-[#60a5fa]">Polymarket</span>
           <span class="text-gray-700">·</span>
-          <span class="text-[#22c55e]">Kite Chain</span>
+          <span class="text-[#2dd4bf]">Kite Chain</span>
         </div>
         <p class="text-[10px] font-mono uppercase tracking-[0.22em] text-gray-500">
           Testnet · 2368
@@ -179,7 +182,7 @@
         <%= for {title, desc, icon} <- [
         {"BYO-LLM via MCP", "Connect Claude Code, Claude Desktop, or any MCP-compatible LLM with a single copy-paste block. No platform API charges — you bring the intelligence.", "hero-cpu-chip"},
         {"Bring Your Own Keys", "Connect Alpaca paper trading, Kalshi demo markets — with Webull and Robinhood on the roadmap. Keys are AES-256-GCM encrypted at rest. Never logged.", "hero-arrows-right-left"},
-        {"Edge Scoring", "Every open position is scored 0-100 on entry quality, momentum, risk/reward, and liquidity. Exit suggestions for weak positions, hold signals for strong ones.", "hero-chart-bar-square"},
+        {"KCI Edge Scoring", "Every open position is scored 0-100 on entry quality, momentum, risk/reward, and liquidity. Exit suggestions for weak positions, hold signals for strong ones.", "hero-chart-bar-square"},
         {"Multi-Agent Teams", "Deploy trading agents that execute, research agents that signal, and conversational agents that coordinate. Build a full team — only traders need a wallet.", "hero-user-group"},
         {"Non-Custodial by Design", "Private keys never touch the server. We store only your public wallet address. Your funds, your keys — full stop.", "hero-shield-check"},
         {"Vault-Enforced Limits", "Set daily USD caps, per-trade limits, and max open positions per agent. Limits enforced server-side before any trade queues.", "hero-lock-closed"}
@@ -304,7 +307,7 @@
           phx-hook="Magnetic"
           id="closing-cta"
           data-magnetic-strength="20"
-          class="inline-flex items-center gap-3 rounded-2xl border border-[#22c55e]/40 bg-gradient-to-b from-[#22c55e]/[0.22] to-[#16a34a]/[0.14] hover:from-[#22c55e]/[0.34] hover:to-[#16a34a]/[0.22] px-14 py-6 text-base sm:text-lg font-bold text-[#22c55e] transition-all shadow-[0_0_50px_rgba(34,197,94,0.20)] backdrop-blur-md"
+          class="inline-flex items-center gap-3 rounded-2xl bg-[#16a34a] hover:bg-[#15803d] px-14 py-6 text-base sm:text-lg font-bold text-white transition-all shadow-[0_0_60px_rgba(34,197,94,0.30)]"
         >
           Request your invite →
         </.link>
