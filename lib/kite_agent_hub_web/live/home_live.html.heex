@@ -11,7 +11,7 @@
           <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
             <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
             </span>
-            <span class="text-xs font-mono text-gray-300">Kite Testnet · Chain 2368</span>
+            <span class="text-sm font-mono text-gray-300">Kite Testnet · Chain 2368</span>
           </div>
           <.link
             navigate={~p"/users/log-in"}
@@ -42,7 +42,7 @@
       </div>
 
       <div class="relative">
-        <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-4 py-1.5 text-xs font-semibold text-gray-300 mb-8 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.02)]">
+        <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-4 py-1.5 text-sm font-semibold text-gray-200 mb-8 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.02)]">
           <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
           </span>
           BYO-LLM · Alpaca + Kalshi · Non-custodial · On Kite Chain
@@ -54,10 +54,17 @@
           <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
             Trade while you
           </span>
-          <span class="italic font-serif text-white/95 tracking-tight">sleep.</span>
+          <span
+            id="hero-cycle"
+            phx-hook="WordCycle"
+            phx-update="ignore"
+            data-words="sleep,work,cook,code,chill,live,build,swim,party,run"
+            data-interval="2500"
+            class="italic font-serif tracking-tight kah-glow-accent"
+          >sleep.</span>
         </h1>
 
-        <p class="text-lg sm:text-xl text-gray-300 max-w-2xl mx-auto mb-12 leading-[1.65] font-light">
+        <p class="text-lg sm:text-2xl text-gray-300 max-w-2xl mx-auto mb-12 leading-[1.65] font-light">
           Deploy AI trading agents that execute on Alpaca and Kalshi, scored with KCI Edge Scoring,
           and settled on Kite chain. Bring your own LLM — Claude Code, Claude Desktop, or any MCP-compatible client.
           <span class="text-white font-medium">Non-custodial by design.</span>
@@ -84,7 +91,7 @@
           </.link>
         </div>
 
-        <p class="text-xs text-gray-600 mt-8 font-mono">
+        <p class="text-sm text-gray-500 mt-8 font-mono">
           Free on testnet · No credit card · Keys stay local
         </p>
       </div>
@@ -97,7 +104,7 @@
           <p class="text-2xl sm:text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
             BYO-LLM
           </p>
-          <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          <p class="text-[13px] text-gray-400 mt-3 font-mono uppercase tracking-widest">
             Claude Code · MCP · Any
           </p>
         </div>
@@ -105,7 +112,7 @@
           <p class="text-2xl sm:text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
             BYOK
           </p>
-          <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          <p class="text-[13px] text-gray-400 mt-3 font-mono uppercase tracking-widest">
             Alpaca · Kalshi · More
           </p>
         </div>
@@ -113,7 +120,7 @@
           <p class="text-2xl sm:text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
             Edge
           </p>
-          <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          <p class="text-[13px] text-gray-400 mt-3 font-mono uppercase tracking-widest">
             KCI Edge Scoring
           </p>
         </div>
@@ -121,7 +128,7 @@
           <p class="text-2xl sm:text-4xl font-black text-white tracking-tight group-hover:text-[#22c55e] transition-colors">
             Kite
           </p>
-          <p class="text-xs text-gray-500 mt-2 font-mono uppercase tracking-widest">
+          <p class="text-[13px] text-gray-400 mt-3 font-mono uppercase tracking-widest">
             On-Chain Settlement
           </p>
         </div>
@@ -135,7 +142,7 @@
       class="kah-revealable kah-reveal relative z-10 border-y border-white/10 bg-white/[0.015] backdrop-blur-sm"
     >
       <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-7 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p class="text-[10px] font-mono uppercase tracking-[0.22em] text-gray-500">
+        <p class="text-xs font-mono uppercase tracking-[0.22em] text-gray-400">
           Wired into
         </p>
         <%!-- Venue wordmarks tinted to match each platform's in-app pill color
@@ -152,7 +159,7 @@
           <span class="text-gray-700">·</span>
           <span class="text-[#2dd4bf]">Kite Chain</span>
         </div>
-        <p class="text-[10px] font-mono uppercase tracking-[0.22em] text-gray-500">
+        <p class="text-xs font-mono uppercase tracking-[0.22em] text-gray-400">
           Testnet · 2368
         </p>
       </div>
@@ -170,7 +177,7 @@
         </p>
         <h2 class="font-display text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-6 tracking-[-0.03em] leading-[1.02]">
           Built for the
-          <span class="italic font-serif text-white/95">edge</span>.
+          <span class="italic font-serif kah-glow-accent">edge</span>.
           Engineered for the long game.
         </h2>
         <p class="text-lg text-gray-300 font-light leading-relaxed">
@@ -192,7 +199,7 @@
               <.icon name={icon} class="w-6 h-6 text-white" />
             </div>
             <h3 class="text-lg font-bold text-white mb-3 tracking-tight">{title}</h3>
-            <p class="text-gray-400 text-sm leading-relaxed font-light">
+            <p class="text-gray-300 text-base leading-relaxed font-light">
               {desc}
             </p>
           </div>
@@ -226,10 +233,10 @@
               1
             </div>
             <h3 class="text-base font-bold text-white mb-3">Register & Add Keys</h3>
-            <p class="text-gray-400 text-xs leading-relaxed font-light">
+            <p class="text-gray-300 text-[15px] leading-relaxed font-light">
               Sign up in seconds. Add your Alpaca paper keys and Kalshi demo credentials. AES-256-GCM encrypted at rest — never logged.
             </p>
-            <div class="mt-4 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+            <div class="mt-4 text-[11px] font-mono text-gray-400 uppercase tracking-widest">
               Alpaca · Kalshi · more coming
             </div>
           </div>
@@ -239,10 +246,10 @@
               2
             </div>
             <h3 class="text-base font-bold text-white mb-3">Connect Kite Wallet</h3>
-            <p class="text-gray-400 text-xs leading-relaxed font-light">
+            <p class="text-gray-300 text-[15px] leading-relaxed font-light">
               Paste your Kite testnet wallet address. Deploy a TradingAgentVault to enforce on-chain spend limits. Get testnet tokens at faucet.gokite.ai.
             </p>
-            <div class="mt-4 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+            <div class="mt-4 text-[11px] font-mono text-gray-400 uppercase tracking-widest">
               Required for trading agents only
             </div>
           </div>
@@ -252,10 +259,10 @@
               3
             </div>
             <h3 class="text-base font-bold text-white mb-3">Create Your Agent</h3>
-            <p class="text-gray-400 text-xs leading-relaxed font-light">
+            <p class="text-gray-300 text-[15px] leading-relaxed font-light">
               Choose your agent type: Trading (executes live trades), Research (signals only), or Conversational (analysis & coordination). Each gets a tailored system prompt.
             </p>
-            <div class="mt-4 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+            <div class="mt-4 text-[11px] font-mono text-gray-400 uppercase tracking-widest">
               Trading · Research · Conversational
             </div>
           </div>
@@ -265,7 +272,7 @@
               4
             </div>
             <h3 class="text-base font-bold text-white mb-3">Make Your First Trade</h3>
-            <p class="text-gray-400 text-xs leading-relaxed font-light">
+            <p class="text-gray-300 text-[15px] leading-relaxed font-light">
               Copy your agent's system prompt and paste it into Claude Code, Claude Desktop, or any MCP-compatible LLM. Your agent scores edge, picks a market, and executes.
             </p>
             <div class="mt-4 inline-flex items-center gap-2 text-xs text-[#22c55e] font-semibold tracking-wider uppercase">

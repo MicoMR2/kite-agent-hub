@@ -122,6 +122,31 @@ const QuickTradeConfirm = {
   }
 }
 
+// WordCycle — rotate an element's text through a list with a 200ms fade.
+// Reads `data-words` (comma-separated) and `data-interval` (ms, default 2500).
+// The element renders the word itself; the suffix (e.g. ".") is preserved
+// from the initial textContent so we don't strip punctuation.
+const WordCycle = {
+  mounted() {
+    const words = (this.el.dataset.words || "").split(",").map((s) => s.trim()).filter(Boolean)
+    if (words.length < 2) return
+    const interval = parseInt(this.el.dataset.interval || "2500", 10)
+    const initial = this.el.textContent.trim()
+    const tail = (initial.match(/[\.\!\?,;:…]+$/) || [""])[0]
+    let i = 0
+    this.el.style.transition = "opacity 200ms ease"
+    this._timer = setInterval(() => {
+      this.el.style.opacity = "0"
+      setTimeout(() => {
+        i = (i + 1) % words.length
+        this.el.textContent = words[i] + tail
+        this.el.style.opacity = "1"
+      }, 200)
+    }, interval)
+  },
+  destroyed() { clearInterval(this._timer) }
+}
+
 // Magnetic — subtly translate an element toward the cursor on hover.
 // Used on the landing CTAs to give a premium tactile feel without a JS
 // animation lib. Strength is keyed on `data-magnetic-strength` (default 18px).
@@ -185,7 +210,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
     QuickTradeForm,
     QuickTradeConfirm,
     Magnetic,
-    RevealOnScroll
+    RevealOnScroll,
+    WordCycle
   },
 })
 
