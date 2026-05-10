@@ -30,34 +30,10 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
   def create(conn, %{"user" => user_params} = params) do
     code = params["invite_code"] || user_params["invite_code"] || ""
     invite_only? = Invites.enabled?()
+    code = if invite_only?, do: code, else: nil
 
-    if invite_only? do
-      case Invites.peek(code) do
-        {:ok, invite} ->
-          if invite.email && String.downcase(invite.email) != String.downcase(user_params["email"] || "") do
-            render_error(conn, "This invite code is for a different email address.")
-          else
-            do_register(conn, user_params, code)
-          end
-
-        {:error, _} ->
-          render_error(conn, "Invalid, used, or expired invite code. Request a new one if you need access.")
-      end
-    else
-      do_register(conn, user_params, nil)
-    end
-  end
-
-  defp do_register(conn, user_params, code) do
-    case Accounts.register_user_with_org(user_params) do
+    case Accounts.register_user_with_org(user_params, invite_code: code) do
       {:ok, user} ->
-        if code do
-          # Best-effort consume after register; if the consume races and
-          # loses we still let the registered user through (they got their
-          # invite legitimately at peek time).
-          _ = Invites.consume(code, user.email, user.id)
-        end
-
         {:ok, _} =
           Accounts.deliver_login_instructions(
             user,
@@ -76,23 +52,31 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
         render(conn, :new,
           changeset: changeset,
           invite_code: code || "",
-          invite_status: %{state: :valid},
-          invite_only?: Invites.enabled?()
+          invite_status: %{state: if(invite_only?, do: :valid, else: :disabled)},
+          invite_only?: invite_only?
         )
 
-      {:error, _} ->
-        render_error(conn, "Something went wrong. Please try again.")
-    end
-  end
+      {:error, {:invite, reason}} ->
+        msg =
+          case reason do
+            :code_required -> "An invite code is required to sign up. Request access first."
+            :invalid_or_used -> "Invalid, used, or expired invite code."
+            _ -> "Invalid invite code."
+          end
 
-  defp render_error(conn, msg) do
-    conn
-    |> put_flash(:error, msg)
-    |> render(:new,
-      changeset: Accounts.change_user_registration(%User{}),
-      invite_code: "",
-      invite_status: %{state: :invalid, reason: :rejected},
-      invite_only?: Invites.enabled?()
-    )
+        conn
+        |> put_flash(:error, msg)
+        |> redirect(to: ~p"/users/register")
+
+      {:error, _} ->
+        conn
+        |> put_flash(:error, "Something went wrong. Please try again.")
+        |> render(:new,
+          changeset: Accounts.change_user_registration(%User{}),
+          invite_code: code || "",
+          invite_status: %{state: if(invite_only?, do: :valid, else: :disabled)},
+          invite_only?: invite_only?
+        )
+    end
   end
 end

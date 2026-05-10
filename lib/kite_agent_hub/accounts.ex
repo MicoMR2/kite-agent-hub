@@ -80,10 +80,47 @@ defmodule KiteAgentHub.Accounts do
     |> Repo.insert()
   end
 
-  def register_user_with_org(attrs) do
+  def register_user_with_org(attrs, opts \\ []) do
     alias KiteAgentHub.Orgs.{Organization, Membership}
+    alias KiteAgentHub.Accounts.{Invites, InviteCode}
 
-    Ecto.Multi.new()
+    invite_code = Keyword.get(opts, :invite_code)
+
+    multi = Ecto.Multi.new()
+
+    multi =
+      if invite_code do
+        Ecto.Multi.run(multi, :consume_invite, fn _repo, _ ->
+          # Atomic single-use lock: try to mark this code consumed BEFORE the
+          # user row exists. If two requests race, only one update_all hits 1
+          # row; the other gets 0 and we abort the whole transaction.
+          email = (attrs["email"] || attrs[:email] || "") |> to_string() |> String.downcase()
+          hash = :crypto.hash(:sha256, invite_code)
+          now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+          import Ecto.Query
+
+          query =
+            from c in InviteCode,
+              where: c.code_hash == ^hash,
+              where: is_nil(c.used_at),
+              where: c.expires_at > ^now,
+              where: is_nil(c.email) or c.email == ^email
+
+          case Repo.update_all(query, set: [used_at: now]) do
+            {1, _} -> {:ok, hash}
+            {0, _} -> {:error, :invalid_or_used}
+          end
+        end)
+      else
+        if Invites.enabled?() do
+          Ecto.Multi.run(multi, :consume_invite, fn _, _ -> {:error, :code_required} end)
+        else
+          multi
+        end
+      end
+
+    multi
     |> Ecto.Multi.insert(:user, User.registration_changeset(%User{}, attrs))
     |> Ecto.Multi.run(:set_rls_user, fn _repo, %{user: user} ->
       # Set app.current_user_id LOCAL to this transaction so RLS policies
@@ -114,6 +151,43 @@ defmodule KiteAgentHub.Accounts do
         })
       )
     end)
+    |> Ecto.Multi.run(:link_invite, fn _repo, changes ->
+      # Backfill used_by_user_id on the consumed code now that we have the
+      # user. Approve the access request too. Both are best-effort — the
+      # consume itself was the locking step.
+      case changes do
+        %{consume_invite: hash, user: user} when is_binary(hash) ->
+          import Ecto.Query
+
+          {n, _} =
+            Repo.update_all(
+              from(c in InviteCode, where: c.code_hash == ^hash),
+              set: [used_by_user_id: user.id]
+            )
+
+          if n == 1 do
+            from(c in InviteCode,
+              where: c.code_hash == ^hash,
+              join: r in assoc(c, :access_request),
+              select: r
+            )
+            |> Repo.one()
+            |> case do
+              nil ->
+                :noop
+
+              req ->
+                KiteAgentHub.Accounts.AccessRequest.status_changeset(req, "approved", user.id)
+                |> Repo.update()
+            end
+          end
+
+          {:ok, n}
+
+        _ ->
+          {:ok, :no_invite}
+      end
+    end)
     # Agent, wallet, and vault are NOT provisioned here. They are
     # created lazily on the user's first dashboard mount (see
     # KiteAgentHubWeb.DashboardLive.mount/3) so registrants who never
@@ -122,6 +196,7 @@ defmodule KiteAgentHub.Accounts do
     |> Repo.transaction()
     |> case do
       {:ok, %{user: user}} -> {:ok, user}
+      {:error, :consume_invite, reason, _} -> {:error, {:invite, reason}}
       {:error, :user, changeset, _} -> {:error, changeset}
       {:error, _, _, _} -> {:error, :failed}
     end

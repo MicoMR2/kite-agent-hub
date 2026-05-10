@@ -76,6 +76,59 @@ defmodule KiteAgentHub.Accounts.InvitesTest do
     end
   end
 
+  describe "register_user_with_org/2 invite gate" do
+    setup do
+      {:ok, admin} =
+        KiteAgentHub.Repo.insert(
+          KiteAgentHub.Accounts.User.email_changeset(
+            %KiteAgentHub.Accounts.User{},
+            %{"email" => "admin2@example.com"}
+          )
+        )
+
+      {:ok, req} =
+        Invites.request_access(%{"name" => "Carl", "email" => "carl@example.com"})
+
+      {:ok, _, plaintext} = Invites.generate_code(req, admin)
+      %{plaintext: plaintext, req: req}
+    end
+
+    test "consumes the code atomically inside the registration transaction", %{plaintext: code} do
+      attrs = %{
+        "email" => "carl@example.com",
+        "password" => "supersecretvalue1234",
+        "password_confirmation" => "supersecretvalue1234",
+        "accept_terms" => "true"
+      }
+
+      assert {:ok, user} =
+               KiteAgentHub.Accounts.register_user_with_org(attrs, invite_code: code)
+
+      assert user.email == "carl@example.com"
+
+      # Code is now used — second registration with the same code must fail.
+      attrs2 = %{attrs | "email" => "carl2@example.com"}
+
+      assert {:error, {:invite, :invalid_or_used}} =
+               KiteAgentHub.Accounts.register_user_with_org(attrs2, invite_code: code)
+    end
+
+    test "rejects registration with no code when invite-only is on" do
+      Application.put_env(:kite_agent_hub, :invite_only_signup, true)
+      on_exit(fn -> Application.put_env(:kite_agent_hub, :invite_only_signup, false) end)
+
+      attrs = %{
+        "email" => "nocode@example.com",
+        "password" => "supersecretvalue1234",
+        "password_confirmation" => "supersecretvalue1234",
+        "accept_terms" => "true"
+      }
+
+      assert {:error, {:invite, :code_required}} =
+               KiteAgentHub.Accounts.register_user_with_org(attrs)
+    end
+  end
+
   describe "admin?/1" do
     test "matches case-insensitive against config" do
       assert Invites.admin?(%{email: "Admin@Example.com"})
