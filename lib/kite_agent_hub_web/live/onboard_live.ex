@@ -65,6 +65,12 @@ defmodule KiteAgentHubWeb.OnboardLive do
   @impl true
   def mount(_params, _session, socket) do
     cond do
+      not authenticated?(socket) and KiteAgentHub.Accounts.Invites.enabled?() ->
+        # Invite-only mode: anonymous visitors who land on /onboard can't
+        # self-register here. Funnel them through /request-access so Mico
+        # can vet them before issuing a code.
+        {:ok, push_navigate(socket, to: ~p"/request-access")}
+
       not authenticated?(socket) ->
         {:ok,
          socket

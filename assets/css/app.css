@@ -335,6 +335,20 @@ html[data-theme="light"] [class~="text-gray-700"] {
   color: #64748b !important;
 }
 
+/* Tailwind gradient stops compile to `--tw-gradient-from/to` custom
+   properties. The `from-[#0a0a0f]` stop on the "Live in under 10 minutes"
+   section paints a dark band over the cream canvas in light mode and
+   washes out the section copy. Re-anchor that stop to canvas. */
+html[data-theme="light"] [class~="from-[#0a0a0f]"] {
+  --tw-gradient-from: var(--canvas) !important;
+  --tw-gradient-stops:
+    var(--tw-gradient-from), var(--tw-gradient-to, transparent) !important;
+}
+
+html[data-theme="light"] [class~="to-white/[0.02]"] {
+  --tw-gradient-to: var(--canvas) !important;
+}
+
 .kah-theme-toggle {
   color: var(--fg-2);
   border-color: var(--border-default);
