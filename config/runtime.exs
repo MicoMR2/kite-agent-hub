@@ -183,6 +183,26 @@ if config_env() == :prod do
     config :kite_agent_hub, mailer_from_email: from_email
   end
 
+  # Invite-only signup. ON in prod by default; set INVITE_ONLY_SIGNUP=false
+  # to disable and allow open registration (e.g. during a one-off load test).
+  config :kite_agent_hub,
+    invite_only_signup: System.get_env("INVITE_ONLY_SIGNUP", "true") == "true"
+
+  # Where access-request notifications are sent (admin notifications, NOT
+  # the from-address). Defaults to support@kiteagenthub.com.
+  config :kite_agent_hub,
+    admin_notification_email:
+      System.get_env("ADMIN_NOTIFICATION_EMAIL", "support@kiteagenthub.com")
+
+  # Comma-separated list of admin email addresses (case-insensitive).
+  # Example: ADMIN_EMAILS="damicomartinz@gmail.com,dmartin@developmoore.com"
+  config :kite_agent_hub,
+    admin_emails: System.get_env("ADMIN_EMAILS", "")
+
+  # Public base URL used when rendering links inside emails.
+  config :kite_agent_hub,
+    app_base_url: System.get_env("APP_BASE_URL", "https://kiteagenthub.com")
+
   # Mailer — Resend adapter via Swoosh.
   # Swoosh 1.16 ships Swoosh.Adapters.Resend — no extra dependency.
   # Set RESEND_API_KEY via: fly secrets set RESEND_API_KEY=re_...

@@ -99,3 +99,7 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Invite-only off in dev — devs sign up directly without codes.
+config :kite_agent_hub, invite_only_signup: false
+config :kite_agent_hub, admin_emails: "damicomartinz@gmail.com,dmartin@developmoore.com"

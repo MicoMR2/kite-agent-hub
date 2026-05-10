@@ -61,3 +61,7 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Invite-only off in test — overridden per-test via Application.put_env when needed.
+config :kite_agent_hub, invite_only_signup: false
+config :kite_agent_hub, admin_emails: "admin@example.com"
