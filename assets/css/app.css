@@ -293,6 +293,48 @@ html[data-theme="light"] [class~="text-gray-700"] {
   color: var(--fg-6) !important;
 }
 
+/* Accent color contrast in light mode. Tailwind's vibrant brand greens
+   and reds were tuned for the dark canvas; on the cream canvas they fall
+   below WCAG AA. Map them to the darker shade of the same hue. */
+html[data-theme="light"] [class~="text-[#22c55e]"] {
+  color: #15803d !important; /* green-700, ~5.3:1 on cream */
+}
+
+html[data-theme="light"] [class~="text-[#ef4444]"] {
+  color: #b91c1c !important; /* red-700 */
+}
+
+html[data-theme="light"] [class~="text-violet-300"],
+html[data-theme="light"] [class~="text-violet-400"] {
+  color: #6d28d9 !important; /* violet-700 */
+}
+
+html[data-theme="light"] [class~="text-amber-200"],
+html[data-theme="light"] [class~="text-amber-300/80"] {
+  color: #92400e !important; /* amber-800 */
+}
+
+/* Pre-existing copy uses `from-gray-100 to-gray-500` for gradient text.
+   Both stops are too light on cream. Re-anchor on darker stops. */
+html[data-theme="light"] [class~="from-gray-100"] {
+  --tw-gradient-from: #1f2937 !important;
+}
+html[data-theme="light"] [class~="to-gray-500"] {
+  --tw-gradient-to: #475569 !important;
+}
+html[data-theme="light"] [class~="from-white"] {
+  --tw-gradient-from: #1f2937 !important;
+}
+html[data-theme="light"] [class~="to-gray-300"] {
+  --tw-gradient-to: #4b5563 !important;
+}
+
+/* `text-gray-700` is a faint decorative tone in dark mode (footer blurbs,
+   pipe separators) — invisible on cream without an override. */
+html[data-theme="light"] [class~="text-gray-700"] {
+  color: #64748b !important;
+}
+
 .kah-theme-toggle {
   color: var(--fg-2);
   border-color: var(--border-default);

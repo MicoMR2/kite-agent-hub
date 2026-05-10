@@ -1,19 +1,40 @@
 <Layouts.app flash={@flash} current_scope={@current_scope}>
-  <div class="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-    <div class="w-full max-w-md">
+  <div class="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden relative flex items-center justify-center px-4 py-16">
+    <%!-- Background glow blobs (match HomeLive) --%>
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div class="w-[800px] h-[800px] rounded-full bg-white/[0.02] blur-3xl absolute -top-40 left-1/2 -translate-x-1/2">
+      </div>
+      <div class="w-96 h-96 rounded-full bg-[#22c55e]/[0.04] blur-3xl absolute top-40 left-1/4">
+      </div>
+      <div class="w-96 h-96 rounded-full bg-violet-500/[0.04] blur-3xl absolute top-20 right-1/4">
+      </div>
+    </div>
+
+    <div class="relative w-full max-w-md">
+      <%!-- Header --%>
       <div class="text-center mb-10">
-        <.kah_logo class="w-14 h-14 mx-auto mb-5 drop-shadow-[0_0_20px_rgba(34,197,94,0.45)]" />
-        <h1 class="text-2xl font-black text-white tracking-tight">Request access</h1>
-        <p class="text-sm text-gray-500 mt-1">
+        <.kah_logo class="w-14 h-14 mx-auto mb-6 drop-shadow-[0_0_24px_rgba(34,197,94,0.55)]" />
+        <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-semibold text-gray-200 mb-5 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.02)]">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
+          </span>
+          Invite-only · Early access
+        </div>
+        <h1 class="text-3xl font-black tracking-tight mb-3">
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300">
+            Request access
+          </span>
+        </h1>
+        <p class="text-sm text-gray-300 leading-relaxed">
           Kite Agent Hub is invite-only while we onboard early users. Tell us a bit about you and we'll be in touch.
         </p>
       </div>
 
-      <div class="rounded-2xl bg-gray-900/95 border border-white/20 p-8 shadow-2xl shadow-black/40">
+      <%!-- Card --%>
+      <div class="rounded-2xl bg-white/[0.04] border border-white/15 p-7 shadow-[0_0_30px_rgba(34,197,94,0.05)] backdrop-blur-md">
         <.form :let={f} for={@changeset} action={~p"/request-access"}>
           <div class="space-y-5">
             <div>
-              <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              <label class="block text-[11px] font-bold text-gray-200 uppercase tracking-wider mb-2">
                 Name
               </label>
               <.input
@@ -21,12 +42,12 @@
                 type="text"
                 required
                 phx-mounted={JS.focus()}
-                class="w-full bg-white/[0.07] border border-white/30 text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+                class="w-full bg-white/[0.04] border border-white/20 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#22c55e]/50 focus:ring-2 focus:ring-[#22c55e]/15 focus:bg-white/[0.06] transition-all"
               />
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              <label class="block text-[11px] font-bold text-gray-200 uppercase tracking-wider mb-2">
                 Email
               </label>
               <.input
@@ -34,26 +55,27 @@
                 type="email"
                 autocomplete="email"
                 required
-                class="w-full bg-white/[0.07] border border-white/30 text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+                class="w-full bg-white/[0.04] border border-white/20 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#22c55e]/50 focus:ring-2 focus:ring-[#22c55e]/15 focus:bg-white/[0.06] transition-all"
               />
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                What do you want to build? (optional)
+              <label class="block text-[11px] font-bold text-gray-200 uppercase tracking-wider mb-2">
+                What do you want to build?
+                <span class="text-gray-500 font-medium normal-case">(optional)</span>
               </label>
               <.input
                 field={f[:notes]}
                 type="textarea"
                 rows="4"
-                class="w-full bg-white/[0.07] border border-white/30 text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+                class="w-full bg-white/[0.04] border border-white/20 text-white placeholder-gray-500 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#22c55e]/50 focus:ring-2 focus:ring-[#22c55e]/15 focus:bg-white/[0.06] transition-all resize-none"
               />
             </div>
 
             <button
               type="submit"
               phx-disable-with="Sending..."
-              class="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold text-sm transition-all shadow-xl shadow-violet-500/20 hover:shadow-violet-500/30 mt-2"
+              class="w-full py-3.5 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/[0.10] hover:bg-[#22c55e]/[0.18] text-[#22c55e] font-bold text-sm transition-all shadow-[0_0_25px_rgba(34,197,94,0.15)] hover:-translate-y-0.5 transform mt-2 backdrop-blur-md"
             >
               Request access →
             </button>
@@ -61,11 +83,11 @@
         </.form>
       </div>
 
-      <p class="text-center text-sm text-gray-600 mt-6">
+      <p class="text-center text-sm text-gray-300 mt-6">
         Already have a code?
         <.link
           navigate={~p"/users/register"}
-          class="text-violet-400 hover:text-violet-300 font-semibold transition-colors"
+          class="text-[#22c55e] hover:text-[#16a34a] font-semibold transition-colors"
         >
           Sign up →
         </.link>
