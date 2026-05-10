@@ -95,7 +95,7 @@ defmodule KiteAgentHub.Accounts do
           # user row exists. If two requests race, only one update_all hits 1
           # row; the other gets 0 and we abort the whole transaction.
           email = (attrs["email"] || attrs[:email] || "") |> to_string() |> String.downcase()
-          hash = :crypto.hash(:sha256, invite_code)
+          hash = :crypto.hash(:sha256, String.trim(invite_code))
           now = DateTime.utc_now() |> DateTime.truncate(:second)
 
           import Ecto.Query
