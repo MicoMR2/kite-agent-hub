@@ -3,8 +3,8 @@
 
 /* Design-system fonts are loaded via a Bunny Fonts <link> tag in
    root.html.heex (privacy-preserving Google Fonts mirror) — no Google
-   IP exposure / GDPR friction. Faces: Syne (display), Space Grotesk
-   (sans body), JetBrains Mono (mono). */
+   IP exposure / GDPR friction. Faces: Plus Jakarta Sans (display),
+   Space Grotesk (sans body), JetBrains Mono (mono). */
 
 @import "tailwindcss" source(none);
 @source "../css";
@@ -14,7 +14,7 @@
 @theme {
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Syne", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular,
                Menlo, Monaco, Consolas, "Courier New", monospace;
   --font-serif-italic: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
@@ -119,7 +119,7 @@
   /* ─── FONTS ──────────────────────────────────────────────────────────── */
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Syne", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular,
                Menlo, Monaco, Consolas, "Courier New", monospace;
   --font-serif-italic: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;

@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <link rel="icon" type="image/svg+xml" href={~p"/images/logo-mark.svg"} />
-    <%!-- Type pairing: Syne 700/800 (display), Space Grotesk 400/500/600 (body),
-         JetBrains Mono 400/500 (chain IDs / tickers). Bunny Fonts is a privacy-
-         preserving Google Fonts mirror — same CSS, no Google IP exposure. --%>
+    <%!-- Type pairing: Plus Jakarta Sans 600/700/800 (display — calm-but-premium,
+         Stripe/Linear-adjacent), Space Grotesk 400/500/600 (body), JetBrains Mono
+         400/500 (chain IDs / tickers). Loaded via Bunny Fonts — privacy-preserving
+         Google Fonts mirror. --%>
     <link rel="preconnect" href="https://fonts.bunny.net" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.bunny.net/css?family=syne:700,800|space-grotesk:400,500,600|jetbrains-mono:400,500&display=swap"
+      href="https://fonts.bunny.net/css?family=plus-jakarta-sans:600,700,800|space-grotesk:400,500,600|jetbrains-mono:400,500&display=swap"
     />
     <.live_title>
       {assigns[:page_title] || "Kite Agent Hub"}
