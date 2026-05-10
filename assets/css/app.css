@@ -1,14 +1,24 @@
 /* See the Tailwind configuration guide for advanced usage
    https://tailwindcss.com/docs/configuration */
 
-/* Design system fonts — Inter (sans) + JetBrains Mono (mono).
-   See project/design-system for the canonical token set. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+/* Design-system fonts are loaded via a Bunny Fonts <link> tag in
+   root.html.heex (privacy-preserving Google Fonts mirror) — no Google
+   IP exposure / GDPR friction. Faces: Syne (display), Space Grotesk
+   (sans body), JetBrains Mono (mono). */
 
 @import "tailwindcss" source(none);
 @source "../css";
 @source "../js";
 @source "../../lib/kite_agent_hub_web";
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
+               "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Syne", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular,
+               Menlo, Monaco, Consolas, "Courier New", monospace;
+  --font-serif-italic: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
    The heroicons installation itself is managed by your mix.exs */
@@ -107,10 +117,12 @@
    ========================================================================= */
 :root {
   /* ─── FONTS ──────────────────────────────────────────────────────────── */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system,
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Syne", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular,
                Menlo, Monaco, Consolas, "Courier New", monospace;
+  --font-serif-italic: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
 
   /* ─── BRAND / SURFACE ────────────────────────────────────────────────── */
   --canvas:            #0a0a0f;
@@ -347,6 +359,39 @@ html[data-theme="light"] [class~="from-[#0a0a0f]"] {
 
 html[data-theme="light"] [class~="to-white/[0.02]"] {
   --tw-gradient-to: var(--canvas) !important;
+}
+
+/* Reveal-on-scroll start state. Removed by the RevealOnScroll JS hook
+   once the section enters the viewport. */
+.kah-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.kah-revealable {
+  transition:
+    opacity 700ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Film-grain overlay — fixed-position SVG noise rendered via CSS. ~6%
+   opacity in dark mode, less in light. Adds a cinematic premium feel
+   without bumping page weight (data-uri SVG, ~120 bytes). */
+.kah-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+  mix-blend-mode: overlay;
+}
+
+html[data-theme="light"] .kah-grain::before {
+  opacity: 0.035;
+  mix-blend-mode: multiply;
 }
 
 .kah-theme-toggle {

@@ -122,6 +122,52 @@ const QuickTradeConfirm = {
   }
 }
 
+// Magnetic — subtly translate an element toward the cursor on hover.
+// Used on the landing CTAs to give a premium tactile feel without a JS
+// animation lib. Strength is keyed on `data-magnetic-strength` (default 18px).
+const Magnetic = {
+  mounted() {
+    const max = parseFloat(this.el.dataset.magneticStrength || "18")
+    const reset = () => { this.el.style.transform = "" }
+    this._onMove = (e) => {
+      const r = this.el.getBoundingClientRect()
+      const dx = ((e.clientX - r.left) / r.width  - 0.5) * 2
+      const dy = ((e.clientY - r.top)  / r.height - 0.5) * 2
+      this.el.style.transform = `translate3d(${dx * max}px, ${dy * max}px, 0)`
+    }
+    this._onLeave = reset
+    this.el.addEventListener("mousemove", this._onMove)
+    this.el.addEventListener("mouseleave", this._onLeave)
+    this.el.style.transition = "transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)"
+  },
+  destroyed() {
+    this.el.removeEventListener("mousemove", this._onMove)
+    this.el.removeEventListener("mouseleave", this._onLeave)
+  }
+}
+
+// RevealOnScroll — IntersectionObserver-driven entrance animation.
+// Starts the element with `kah-reveal` (opacity 0, 18px translate-y) and
+// removes the class once 18% of the element is on-screen.
+const RevealOnScroll = {
+  mounted() {
+    if (typeof IntersectionObserver === "undefined") {
+      this.el.classList.remove("kah-reveal")
+      return
+    }
+    this._io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          this.el.classList.remove("kah-reveal")
+          this._io.disconnect()
+        }
+      })
+    }, { threshold: 0.18 })
+    this._io.observe(this.el)
+  },
+  destroyed() { this._io && this._io.disconnect() }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   // 10s gives WebSocket time to handshake on slower connections before
@@ -137,7 +183,9 @@ const liveSocket = new LiveSocket("/live", Socket, {
     LocalTime,
     ChatInputClear,
     QuickTradeForm,
-    QuickTradeConfirm
+    QuickTradeConfirm,
+    Magnetic,
+    RevealOnScroll
   },
 })
 
