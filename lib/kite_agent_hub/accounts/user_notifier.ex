@@ -4,9 +4,9 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
   alias KiteAgentHub.Mailer
   alias KiteAgentHub.Accounts.User
 
-  # Default from-address. If MAILER_FROM_EMAIL is unset (or set to a custom
-  # domain that hasn't been verified in Resend yet) we fall back to Resend's
-  # always-deliverable sandbox sender so signup emails don't silently fail.
+  # Default from-address. If MAILER_FROM_EMAIL is unset we fall back to
+  # Resend's always-deliverable sandbox sender so signup emails don't
+  # silently fail on an unverified custom domain.
   @sandbox_from "Kite Agent Hub <onboarding@resend.dev>"
 
   defp mailer_from do
@@ -29,37 +29,58 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
 
   ## ────── HTML shell ──────────────────────────────────────────────────────
 
-  # Single shared template — dark canvas (#0a0a0f), green accent border, KAH
-  # wordmark + chain pill, big content panel. `headline` is the visible H1,
-  # `body` is the inner HTML chunk supplied by each notifier function.
-  defp shell(headline, body_html) do
+  # Inline SVG kite mark. 4 brand circles — blue / purple / white / green.
+  # Inline so it renders without a remote-image fetch (Gmail/Outlook block
+  # those by default).
+  @logo_svg ~s|<svg width="36" height="36" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" style="display:block;"><circle cx="24" cy="30" r="26" fill="#60a5fa"/><circle cx="156" cy="30" r="26" fill="#c084fc"/><circle cx="90" cy="168" r="26" fill="#ffffff"/><circle cx="90" cy="90" r="34" fill="#22c55e"/></svg>|
+
+  # `eyebrow` — short uppercase mono label above the headline (e.g. "INVITED")
+  # `headline` — already-built HTML string for the H1 (allows <em> serif accent)
+  # `body` — inner content HTML
+  defp shell(eyebrow, headline, body) do
     """
     <!DOCTYPE html>
-    <html><head><meta charset="utf-8"><title>#{headline}</title></head>
-    <body style="margin:0;padding:0;background:#0a0a0f;font-family:'Helvetica Neue',Arial,sans-serif;color:#e5e7eb;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0a0a0f;padding:32px 0;">
+    <html><head><meta charset="utf-8"><title>Kite Agent Hub</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    </head>
+    <body style="margin:0;padding:0;background:#0a0a0f;font-family:'Helvetica Neue','Inter',Arial,sans-serif;color:#e5e7eb;-webkit-font-smoothing:antialiased;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:linear-gradient(180deg,#0a0a0f 0%,#0d100e 60%,#0a0a0f 100%);padding:40px 16px;">
         <tr><td align="center">
-          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="background:#0d0d12;border:1px solid rgba(255,255,255,0.10);border-radius:16px;overflow:hidden;max-width:560px;">
-            <tr><td style="padding:28px 32px 0 32px;">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background:#0d0d12;border:1px solid rgba(255,255,255,0.08);border-radius:20px;overflow:hidden;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,0.50);">
+            <tr><td style="padding:30px 40px 0 40px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td align="left">
-                    <span style="display:inline-block;font-weight:800;letter-spacing:-0.01em;color:#ffffff;font-size:18px;">Kite Agent Hub</span>
+                  <td align="left" valign="middle">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                      <td valign="middle" style="padding-right:10px;">#{@logo_svg}</td>
+                      <td valign="middle" style="font-weight:800;letter-spacing:-0.015em;color:#ffffff;font-size:18px;line-height:1;">Kite Agent Hub</td>
+                    </tr></table>
                   </td>
                   <td align="right">
-                    <span style="display:inline-block;padding:4px 10px;border-radius:9999px;border:1px solid rgba(34,197,94,0.30);background:rgba(34,197,94,0.10);color:#4ade80;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">Testnet · 2368</span>
+                    <span style="display:inline-block;padding:5px 11px;border-radius:9999px;border:1px solid rgba(34,197,94,0.30);background:rgba(34,197,94,0.10);color:#4ade80;font-size:11px;font-weight:600;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">Testnet · 2368</span>
                   </td>
                 </tr>
               </table>
             </td></tr>
-            <tr><td style="padding:24px 32px 8px 32px;">
-              <h1 style="margin:0;color:#ffffff;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">#{headline}</h1>
+            <tr><td style="padding:36px 40px 6px 40px;">
+              <p style="margin:0 0 14px 0;color:#4ade80;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;">#{escape(eyebrow)}</p>
+              <h1 style="margin:0;color:#ffffff;font-size:34px;line-height:1.05;font-weight:800;letter-spacing:-0.025em;">#{headline}</h1>
             </td></tr>
-            <tr><td style="padding:8px 32px 28px 32px;color:#cbd5e1;font-size:15px;line-height:1.6;">
-              #{body_html}
+            <tr><td style="padding:18px 40px 8px 40px;">
+              <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(34,197,94,0.30),transparent);font-size:0;line-height:0;">&nbsp;</div>
             </td></tr>
-            <tr><td style="padding:18px 32px 28px 32px;border-top:1px solid rgba(255,255,255,0.06);color:#6b7280;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">
-              Kite Agent Hub · Non-custodial AI trading · kiteagenthub.com
+            <tr><td style="padding:8px 40px 36px 40px;color:#cbd5e1;font-size:16px;line-height:1.65;">
+              #{body}
+            </td></tr>
+            <tr><td style="padding:20px 40px 26px 40px;border-top:1px solid rgba(255,255,255,0.06);">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td align="left" style="color:#6b7280;font-size:11px;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">
+                  Apache 2.0 · Non-custodial
+                </td>
+                <td align="right" style="color:#6b7280;font-size:11px;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">
+                  kiteagenthub.com
+                </td>
+              </tr></table>
             </td></tr>
           </table>
         </td></tr>
@@ -70,10 +91,36 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
 
   defp button(label, href) do
     """
-    <p style="margin:24px 0 8px 0;">
-      <a href="#{href}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:13px 22px;border-radius:12px;box-shadow:0 0 30px rgba(34,197,94,0.25);">#{label}</a>
-    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 8px 0;">
+      <tr><td style="border-radius:14px;background:#16a34a;box-shadow:0 0 40px rgba(34,197,94,0.30);">
+        <a href="#{href}" style="display:inline-block;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:-0.01em;padding:15px 26px;border-radius:14px;">#{label}</a>
+      </td></tr>
+    </table>
     """
+  end
+
+  # Italic-serif accent — same move as the landing italic-serif treatment
+  # but keyed on font-family system serifs so it renders consistently in
+  # email clients that won't load a custom font.
+  defp accent(word) do
+    ~s|<em style="font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:600;color:#ffffff;letter-spacing:-0.01em;">#{escape(word)}</em>|
+  end
+
+  defp steps(items) do
+    rows =
+      items
+      |> Enum.with_index(1)
+      |> Enum.map(fn {text, n} ->
+        ~s|<tr>
+          <td valign="top" width="38" style="padding:10px 14px 10px 0;">
+            <span style="display:inline-block;width:28px;height:28px;border-radius:9999px;border:1px solid rgba(34,197,94,0.40);background:rgba(34,197,94,0.10);color:#4ade80;font-family:'JetBrains Mono','Courier New',monospace;font-size:12px;font-weight:600;line-height:28px;text-align:center;">#{n}</span>
+          </td>
+          <td valign="middle" style="padding:10px 0;color:#cbd5e1;font-size:14px;line-height:1.55;">#{text}</td>
+        </tr>|
+      end)
+      |> Enum.join("")
+
+    ~s|<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0 6px 0;border-top:1px solid rgba(255,255,255,0.06);">#{rows}</table>|
   end
 
   defp escape(nil), do: ""
@@ -99,12 +146,15 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """
 
     html =
-      shell("Update your email", """
-      <p>Hi #{escape(user.email)},</p>
-      <p>You requested an email-address change on your Kite Agent Hub account. Confirm the new address with the button below — the link is single-use and expires shortly.</p>
-      #{button("Confirm new email →", url)}
-      <p style="color:#94a3b8;font-size:13px;">If you didn't request this, ignore this email — your existing address stays in place.</p>
-      """)
+      shell(
+        "Email change",
+        "Confirm your #{accent("new")} address.",
+        """
+        <p>You requested an email-address change on your Kite Agent Hub account. Confirm the new address below — the link is single-use and expires shortly.</p>
+        #{button("Confirm new email →", url)}
+        <p style="color:#94a3b8;font-size:13px;margin-top:18px;">Didn't request this? Ignore — your existing address stays in place.</p>
+        """
+      )
 
     deliver(user.email, "Update email instructions", html, text)
   end
@@ -128,12 +178,15 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """
 
     html =
-      shell("Sign in to Kite Agent Hub", """
-      <p>Hi #{escape(user.email)},</p>
-      <p>Use the button below to sign in. The link is single-use and expires shortly.</p>
-      #{button("Sign in →", url)}
-      <p style="color:#94a3b8;font-size:13px;">If this wasn't you, ignore this email — your account stays where it is.</p>
-      """)
+      shell(
+        "Sign in",
+        "Welcome #{accent("back")}.",
+        """
+        <p>Use the button below to sign in. The link is single-use and expires shortly.</p>
+        #{button("Sign in →", url)}
+        <p style="color:#94a3b8;font-size:13px;margin-top:18px;">Didn't request this? Ignore — your account stays where it is.</p>
+        """
+      )
 
     deliver(user.email, "Sign in to Kite Agent Hub", html, text)
   end
@@ -150,12 +203,15 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """
 
     html =
-      shell("Confirm your account", """
-      <p>Hi #{escape(user.email)},</p>
-      <p>Welcome aboard. Confirm your account to finish onboarding — the link is single-use and expires shortly.</p>
-      #{button("Confirm account →", url)}
-      <p style="color:#94a3b8;font-size:13px;">Didn't sign up? Ignore this email.</p>
-      """)
+      shell(
+        "Welcome",
+        "One #{accent("click")} to finish.",
+        """
+        <p>Welcome aboard. Confirm your account to finish onboarding — the link is single-use and expires shortly.</p>
+        #{button("Confirm account →", url)}
+        <p style="color:#94a3b8;font-size:13px;margin-top:18px;">Didn't sign up? Ignore this email.</p>
+        """
+      )
 
     deliver(user.email, "Confirm your Kite Agent Hub account", html, text)
   end
@@ -173,7 +229,7 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
 
     notes_block_html =
       if req.notes && req.notes != "" do
-        ~s|<p style="margin:18px 0 0 0;padding:14px 16px;border-left:2px solid rgba(34,197,94,0.50);background:rgba(34,197,94,0.05);color:#cbd5e1;font-size:14px;line-height:1.6;white-space:pre-wrap;">#{escape(req.notes)}</p>|
+        ~s|<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0 0 0;"><tr><td style="padding:14px 16px;border-left:3px solid rgba(34,197,94,0.55);background:rgba(34,197,94,0.05);color:#cbd5e1;font-size:14px;line-height:1.6;white-space:pre-wrap;">#{escape(req.notes)}</td></tr></table>|
       else
         ""
       end
@@ -189,29 +245,31 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """
 
     html =
-      shell("New access request", """
-      <p>Someone wants in.</p>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 10px 0;">
-        <tr>
-          <td style="padding:6px 0;color:#94a3b8;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Name</td>
-          <td style="padding:6px 0 6px 18px;color:#ffffff;font-weight:600;font-size:15px;">#{escape(req.name)}</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0;color:#94a3b8;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Email</td>
-          <td style="padding:6px 0 6px 18px;color:#ffffff;font-family:'JetBrains Mono',monospace;font-size:14px;">#{escape(req.email)}</td>
-        </tr>
-      </table>
-      #{notes_block_html}
-      #{button("Review in admin →", review_url)}
-      """)
+      shell(
+        "New request",
+        "Someone wants #{accent("in")}.",
+        """
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 4px 0;">
+          <tr>
+            <td style="padding:6px 0;color:#94a3b8;font-size:11px;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">Name</td>
+            <td style="padding:6px 0 6px 22px;color:#ffffff;font-weight:600;font-size:16px;">#{escape(req.name)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#94a3b8;font-size:11px;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">Email</td>
+            <td style="padding:6px 0 6px 22px;color:#ffffff;font-family:'JetBrains Mono','Courier New',monospace;font-size:14px;">#{escape(req.email)}</td>
+          </tr>
+        </table>
+        #{notes_block_html}
+        #{button("Review in admin →", review_url)}
+        """
+      )
 
     deliver(to, "New access request — #{req.email}", html, text)
   end
 
   @doc """
   Confirmation email sent to the requester right after they submit
-  /request-access. Sets expectations: we got it, we'll review, you'll
-  hear back.
+  /request-access.
   """
   def deliver_request_receipt(req) do
     text = """
@@ -225,12 +283,19 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """
 
     html =
-      shell("We got your request", """
-      <p>Hi #{escape(req.name)},</p>
-      <p>Thanks for your interest in Kite Agent Hub. We've received your request and will review it manually — usually within a day.</p>
-      <p>Once approved, you'll get a follow-up email with a one-time invite code locked to <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(req.email)}</span>. The code is good for 14 days.</p>
-      <p style="color:#94a3b8;font-size:13px;">Nothing to do right now — sit tight.</p>
-      """)
+      shell(
+        "Received",
+        "We've got #{accent("you")}. Hang tight.",
+        """
+        <p>Hi #{escape(req.name)} — thanks for your interest in Kite Agent Hub. We received your access request and will review it personally, usually within a day.</p>
+        #{steps([
+          "We review your request and confirm fit.",
+          ~s|You receive a follow-up email with a one-time invite code locked to <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(req.email)}</span>.|,
+          "You finish signing up and deploy your first agent."
+        ])}
+        <p style="color:#94a3b8;font-size:13px;margin-top:22px;">Nothing to do right now — sit tight.</p>
+        """
+      )
 
     deliver(req.email, "Your Kite Agent Hub access request", html, text)
   end
@@ -255,12 +320,23 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """
 
     html =
-      shell("You're in.", """
-      <p>Your access has been approved. Use the code below to finish signing up — it's good for 14 days and locked to this email address.</p>
-      <p style="margin:22px 0;padding:18px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.35);border-radius:12px;text-align:center;font-family:'JetBrains Mono','Courier New',monospace;font-size:20px;letter-spacing:0.08em;color:#4ade80;">#{escape(plaintext_code)}</p>
-      #{button("Sign up with this code →", register_url)}
-      <p style="color:#94a3b8;font-size:13px;">If this wasn't you, ignore this email — the code is bound to <span style="color:#cbd5e1;font-family:'JetBrains Mono',monospace;">#{escape(email)}</span>.</p>
-      """)
+      shell(
+        "Invited",
+        "You're #{accent("in")}.",
+        """
+        <p style="font-size:17px;color:#e5e7eb;">Welcome to Kite Agent Hub. Your access is approved — use the code below to finish signing up.</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 22px 0;">
+          <tr><td style="padding:22px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.40);border-radius:14px;text-align:center;font-family:'JetBrains Mono','Courier New',monospace;font-size:22px;letter-spacing:0.16em;color:#4ade80;font-weight:600;">#{escape(plaintext_code)}</td></tr>
+        </table>
+        #{button("Sign up with this code →", register_url)}
+        #{steps([
+          "Click the button above (or paste the code on the signup page).",
+          ~s|We pre-fill your email as <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(email)}</span> — set a password.|,
+          "Confirm via the email we send you, then deploy your first agent."
+        ])}
+        <p style="color:#94a3b8;font-size:13px;margin-top:22px;">14-day expiry. Single-use. Locked to this address — if it wasn't you, ignore.</p>
+        """
+      )
 
     deliver(email, "You're invited to Kite Agent Hub", html, text)
   end
