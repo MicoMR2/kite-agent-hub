@@ -2,22 +2,38 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
   use KiteAgentHubWeb, :controller
 
   alias KiteAgentHub.Accounts
-  alias KiteAgentHub.Accounts.User
+  alias KiteAgentHub.Accounts.{Invites, User}
 
-  def new(conn, _params) do
+  def new(conn, params) do
+    code = params["code"] || ""
     changeset = Accounts.change_user_registration(%User{})
-    render(conn, :new, changeset: changeset)
+
+    code_status =
+      if Invites.enabled?() do
+        case Invites.peek(code) do
+          {:ok, invite} -> %{state: :valid, email: invite.email}
+          {:error, :invalid} when code == "" -> %{state: :missing}
+          {:error, reason} -> %{state: :invalid, reason: reason}
+        end
+      else
+        %{state: :disabled}
+      end
+
+    render(conn, :new,
+      changeset: changeset,
+      invite_code: code,
+      invite_status: code_status,
+      invite_only?: Invites.enabled?()
+    )
   end
 
-  def create(conn, %{"user" => user_params}) do
-    case Accounts.register_user_with_org(user_params) do
+  def create(conn, %{"user" => user_params} = params) do
+    code = params["invite_code"] || user_params["invite_code"] || ""
+    invite_only? = Invites.enabled?()
+    code = if invite_only?, do: code, else: nil
+
+    case Accounts.register_user_with_org(user_params, invite_code: code) do
       {:ok, user} ->
-        # Mico (msg 7676) wants the email-confirmation gate preserved:
-        # "a small bit of friction where it matters adds a feeling of
-        # security." Deliver the verification email and redirect to
-        # /users/log-in. After the user clicks the link and logs in,
-        # signed_in_path/1 sends them to /onboard to continue onboarding
-        # if they still need venues/agent, or /dashboard if already set.
         {:ok, _} =
           Accounts.deliver_login_instructions(
             user,
@@ -33,12 +49,34 @@ defmodule KiteAgentHubWeb.UserRegistrationController do
         |> redirect(to: ~p"/users/log-in")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :new, changeset: changeset)
+        render(conn, :new,
+          changeset: changeset,
+          invite_code: code || "",
+          invite_status: %{state: if(invite_only?, do: :valid, else: :disabled)},
+          invite_only?: invite_only?
+        )
+
+      {:error, {:invite, reason}} ->
+        msg =
+          case reason do
+            :code_required -> "An invite code is required to sign up. Request access first."
+            :invalid_or_used -> "Invalid, used, or expired invite code."
+            _ -> "Invalid invite code."
+          end
+
+        conn
+        |> put_flash(:error, msg)
+        |> redirect(to: ~p"/users/register")
 
       {:error, _} ->
         conn
         |> put_flash(:error, "Something went wrong. Please try again.")
-        |> render(:new, changeset: Accounts.change_user_registration(%User{}))
+        |> render(:new,
+          changeset: Accounts.change_user_registration(%User{}),
+          invite_code: code || "",
+          invite_status: %{state: if(invite_only?, do: :valid, else: :disabled)},
+          invite_only?: invite_only?
+        )
     end
   end
 end

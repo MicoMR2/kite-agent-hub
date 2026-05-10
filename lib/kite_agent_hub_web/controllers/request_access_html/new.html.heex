@@ -1,0 +1,75 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <div class="min-h-screen bg-gray-950 flex items-center justify-center px-4">
+    <div class="w-full max-w-md">
+      <div class="text-center mb-10">
+        <.kah_logo class="w-14 h-14 mx-auto mb-5 drop-shadow-[0_0_20px_rgba(34,197,94,0.45)]" />
+        <h1 class="text-2xl font-black text-white tracking-tight">Request access</h1>
+        <p class="text-sm text-gray-500 mt-1">
+          Kite Agent Hub is invite-only while we onboard early users. Tell us a bit about you and we'll be in touch.
+        </p>
+      </div>
+
+      <div class="rounded-2xl bg-gray-900/95 border border-white/20 p-8 shadow-2xl shadow-black/40">
+        <.form :let={f} for={@changeset} action={~p"/request-access"}>
+          <div class="space-y-5">
+            <div>
+              <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Name
+              </label>
+              <.input
+                field={f[:name]}
+                type="text"
+                required
+                phx-mounted={JS.focus()}
+                class="w-full bg-white/[0.07] border border-white/30 text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Email
+              </label>
+              <.input
+                field={f[:email]}
+                type="email"
+                autocomplete="email"
+                required
+                class="w-full bg-white/[0.07] border border-white/30 text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                What do you want to build? (optional)
+              </label>
+              <.input
+                field={f[:notes]}
+                type="textarea"
+                rows="4"
+                class="w-full bg-white/[0.07] border border-white/30 text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              phx-disable-with="Sending..."
+              class="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold text-sm transition-all shadow-xl shadow-violet-500/20 hover:shadow-violet-500/30 mt-2"
+            >
+              Request access →
+            </button>
+          </div>
+        </.form>
+      </div>
+
+      <p class="text-center text-sm text-gray-600 mt-6">
+        Already have a code?
+        <.link
+          navigate={~p"/users/register"}
+          class="text-violet-400 hover:text-violet-300 font-semibold transition-colors"
+        >
+          Sign up →
+        </.link>
+      </p>
+    </div>
+  </div>
+</Layouts.app>

@@ -29,6 +29,11 @@ defmodule KiteAgentHubWeb.Router do
     get "/terms", LegalController, :terms
     get "/privacy", LegalController, :privacy
     get "/disclaimer", LegalController, :disclaimer
+
+    # Invite-only signup gate — public request form.
+    get "/request-access", RequestAccessController, :new
+    post "/request-access", RequestAccessController, :create
+    get "/request-access/thanks", RequestAccessController, :thanks
   end
 
   # External agent API — stateless JSON, auth via Bearer wallet_address
@@ -119,6 +124,11 @@ defmodule KiteAgentHubWeb.Router do
       live "/users/settings/agents", AgentsLive
       live "/users/settings/api-keys", ApiKeysLive, :settings
       live "/users/settings/workspace", WorkspaceLive
+    end
+
+    live_session :admin,
+      on_mount: [{KiteAgentHubWeb.UserAuth, :require_admin}] do
+      live "/admin/access-requests", Admin.AccessRequestsLive
     end
   end
 

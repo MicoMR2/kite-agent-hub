@@ -73,6 +73,56 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
     """)
   end
 
+  @doc """
+  Notify the admin that a new access request has been submitted.
+  """
+  def deliver_access_request_notification(req) do
+    to = Application.get_env(:kite_agent_hub, :admin_notification_email, "support@kiteagenthub.com")
+    base_url = Application.get_env(:kite_agent_hub, :app_base_url, "https://kiteagenthub.com")
+    review_url = base_url <> "/admin/access-requests"
+    notes = if req.notes && req.notes != "", do: "Notes: #{req.notes}\n\n", else: ""
+
+    deliver(to, "New access request — #{req.email}", """
+
+    ==============================
+
+    A new user has requested access to Kite Agent Hub.
+
+    Name:  #{req.name}
+    Email: #{req.email}
+
+    #{notes}Review and generate an invite code:
+    #{review_url}
+
+    ==============================
+    """)
+  end
+
+  @doc """
+  Deliver an invite code to the requester after admin approval.
+  """
+  def deliver_invite_code(email, plaintext_code, base_url) do
+    register_url = "#{base_url}/users/register?code=#{plaintext_code}"
+
+    deliver(email, "You're invited to Kite Agent Hub", """
+
+    ==============================
+
+    Your access to Kite Agent Hub has been approved.
+
+    Use this one-time code to finish signing up — it expires in 14 days.
+
+    Code: #{plaintext_code}
+
+    Or click directly:
+    #{register_url}
+
+    If this wasn't you, ignore this email — the code is bound to this address.
+
+    ==============================
+    """)
+  end
+
   defp deliver_confirmation_instructions(user, url) do
     deliver(user.email, "Confirmation instructions", """
 
