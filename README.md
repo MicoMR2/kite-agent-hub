@@ -26,10 +26,12 @@ One chat. Multiple agents. One human at the helm.
 6. **Orchestrate from one chat** — All agents and the user share a single workspace chat. Direct an agent, watch agents coordinate with each other, or let the team run autonomously. Jump in anytime to override.
 7. **EdgeScorer signals** — The EdgeScorer tab scores open positions 0–100 on trend, signal quality, liquidity, and risk/reward (QRB methodology). Scores ≥ 75 → GO, 50–74 → HOLD, < 50 → NO. Historical snapshots taken every 5 minutes.
 8. **Autonomous trading** — Paste your agent's system prompt into Claude Code, Codex Terminal, or any MCP-compatible LLM. The agent scores edge, picks a market, and executes — every trade attested on Kite chain.
-9. **Real-time dashboard** — 8 live tabs: Overview, Attestations, Kite Wallet, EdgeScorer, Alpaca, Kalshi, Polymarket, and ForEx. All update live via Phoenix LiveView + PubSub with 30-second auto-refresh.
+9. **Real-time dashboard** — 10 live tabs: Overview, Attestations, Kite Wallet, EdgeScorer, Alpaca, Kalshi, Polymarket, ForEx, Portfolio, and Logs. The Portfolio tab gives a cross-broker breakdown (Alpaca + Kalshi + ForEx) with a unified P&L curve and pie chart. Logs surface live agent runner activity. All tabs update via Phoenix LiveView + PubSub with 30-second auto-refresh.
 10. **Trade history** — Filter by status (open / settled / failed / cancelled), paginate, see the AI's reasoning for each trade. Cancel stuck orders directly from the UI.
 11. **On-chain attestation** — Every settled trade triggers an attestation transfer to the Kite treasury. The trade UUID is embedded in the tx calldata so each payment is traceable on-chain.
 12. **Collective Intelligence** — Opt-in, privacy-preserving shared trade learning across the workspace. Anonymized and bucketed — no raw IDs, no identifying information. Agents learn from aggregate outcomes.
+13. **Manual quick-trade** — Place Kalshi orders directly from the dashboard without going through the agent loop. Useful for hedging an open position by hand or correcting a fill without restarting the agent.
+14. **Per-agent auto-exit** — Opt-in risk toggle (off by default). When enabled, the agent's `RiskConfig` will close losing positions at user-set thresholds without waiting on the LLM loop. Each agent has independent settings.
 
 ---
 
@@ -61,7 +63,7 @@ All platforms use a BYOK (Bring Your Own Keys) model. Credentials are encrypted 
 3. Copy your agent's system prompt → paste into Claude Code or Codex Terminal
 4. Check the **Dashboard → Overview** — see quick stats, recent trades, agent status
 5. Switch to **EdgeScorer tab** — live 0–100 scores with GO/HOLD/NO badges per position
-6. Switch to **Alpaca / Kalshi / Polymarket / ForEx tabs** — live portfolio data, positions, order history
+6. Switch to **Alpaca / Kalshi / Polymarket / ForEx tabs** — live portfolio data, positions, order history. The **Portfolio tab** rolls them all up into one cross-broker breakdown.
 7. Open the **chat** (bottom right) — talk to your agents, watch them coordinate
 8. Visit **Trade History** — each trade shows market, action, fill price, P&L, and the AI's signal reasoning
 9. Click any Kitescan link → on-chain proof of every settlement
@@ -74,7 +76,7 @@ All platforms use a BYOK (Bring Your Own Keys) model. Credentials are encrypted 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Phoenix / LiveView                          │
-│  /dashboard (8 tabs) /trades /agents /onboard /api-keys          │
+│  /dashboard (10 tabs) /trades /agents /onboard /api-keys         │
 │  /api/v1/trades  /api/v1/agents  /api/v1/portfolio               │
 │  /api/v1/edge-scores  /api/v1/collective-intelligence            │
 └───────────────────────────┬──────────────────────────────────────┘
