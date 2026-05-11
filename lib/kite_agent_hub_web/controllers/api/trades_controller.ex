@@ -57,6 +57,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
     with {:ok, agent} <- authenticate(conn),
          :ok <- require_trading_agent(agent),
          :ok <- RateLimiter.check(agent.id),
+         {:cont, conn} <- maybe_enforce_x402(conn, agent),
          {:ok, job_args, worker} <- build_job(params, agent) do
       case job_args |> worker.new() |> Oban.insert() do
         {:ok, job} ->
@@ -89,8 +90,119 @@ defmodule KiteAgentHubWeb.API.TradesController do
         |> put_status(:too_many_requests)
         |> json(%{ok: false, error: "rate limited"})
 
+      # Halt branches from `maybe_enforce_x402/2`: status + body are
+      # already written on the conn. Hand it back unchanged so Phoenix
+      # sends the response.
+      {:halt, halted_conn} ->
+        halted_conn
+
       {:error, message} when is_binary(message) ->
         conn |> put_status(:bad_request) |> json(%{ok: false, error: message})
+    end
+  end
+
+  # x402 fee gate for Rail B (`payment_rail == "per_trade"`). Per
+  # passport-handoff §2 and the PR-4 plan (msg 9075/9077), when a
+  # per_trade agent posts a trade without a valid X-Payment-Receipt
+  # header we return 402 with the payment-required envelope; with a
+  # valid receipt we record a FeeAccrual row and continue the normal
+  # trade flow. `none`/`subscription` rails skip the gate entirely
+  # (zero-regression for existing agents).
+  defp maybe_enforce_x402(conn, %{payment_rail: "per_trade"} = agent) do
+    receipt = get_payment_receipt_header(conn)
+
+    case receipt do
+      nil ->
+        respond_402(conn, agent)
+
+      _ ->
+        case KiteAgentHub.Passport.X402.verify_receipt(receipt) do
+          {:ok, parsed} ->
+            case record_fee_accrual(agent, parsed) do
+              {:ok, _accrual} ->
+                {:cont, conn}
+
+              {:error, :duplicate} ->
+                {:halt,
+                 conn
+                 |> put_status(:conflict)
+                 |> json(%{ok: false, error: "x402 receipt already used"})}
+
+              {:error, _reason} ->
+                {:halt,
+                 conn
+                 |> put_status(:unprocessable_entity)
+                 |> json(%{ok: false, error: "fee accrual failed"})}
+            end
+
+          {:error, :missing} ->
+            respond_402(conn, agent)
+
+          {:error, reason} ->
+            {:halt,
+             conn
+             |> put_status(:unprocessable_entity)
+             |> json(%{ok: false, error: "invalid x402 receipt: #{reason}"})}
+        end
+    end
+  end
+
+  defp maybe_enforce_x402(conn, _agent), do: {:cont, conn}
+
+  defp respond_402(conn, agent) do
+    case KiteAgentHub.Passport.X402.payment_required_response(agent) do
+      nil ->
+        {:halt,
+         conn
+         |> put_status(:service_unavailable)
+         |> json(%{ok: false, error: "Passport vault not configured on this instance"})}
+
+      body ->
+        {:halt,
+         conn
+         |> put_status(:payment_required)
+         |> json(body)}
+    end
+  end
+
+  # CyberSec ask #5 (msg 9076): cap raw header at 4096 bytes BEFORE
+  # parse so a malformed multi-megabyte receipt can't burn memory.
+  @max_receipt_header_bytes 4096
+  defp get_payment_receipt_header(conn) do
+    case Plug.Conn.get_req_header(conn, "x-payment-receipt") do
+      [value | _] when is_binary(value) ->
+        if byte_size(value) > @max_receipt_header_bytes do
+          # Truncate intentionally to keep verify_receipt's
+          # :too_large branch in charge of the rejection path.
+          String.slice(value, 0, @max_receipt_header_bytes + 1)
+        else
+          value
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp record_fee_accrual(agent, %{receipt: receipt, amount: amount}) do
+    %{
+      agent_id: agent.id,
+      x402_receipt: receipt,
+      amount_usdc: amount
+    }
+    |> KiteAgentHub.Passport.FeeAccrual.insert_changeset()
+    |> KiteAgentHub.Repo.insert()
+    |> case do
+      {:ok, accrual} ->
+        {:ok, accrual}
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        if Keyword.has_key?(errors, :x402_receipt) and
+             match?({_, [constraint: :unique, constraint_name: _]}, errors[:x402_receipt]) do
+          {:error, :duplicate}
+        else
+          {:error, :invalid}
+        end
     end
   end
 
