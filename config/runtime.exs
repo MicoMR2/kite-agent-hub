@@ -213,6 +213,15 @@ if config_env() == :prod do
     kite_chain_id:
       System.get_env("KITE_CHAIN_ID", "2368") |> String.to_integer()
 
+  # KAH ops-owned vault Passport address (passport-handoff §3).
+  # Receives Rail B (per-trade x402 fee) payments. Loaded from
+  # the KAH_VAULT_ADDRESS env (set via `fly secrets set ...`); the
+  # literal is NEVER committed to repo per the CyberSec gate on PR-2.
+  # Unset env → `KiteAgentHub.Kite.VaultConfig.address/0` returns nil
+  # and Rail B flows treat fee accrual as disabled.
+  config :kite_agent_hub,
+    kah_vault_address: System.get_env("KAH_VAULT_ADDRESS")
+
   # Mailer — Resend adapter via Swoosh.
   # Swoosh 1.16 ships Swoosh.Adapters.Resend — no extra dependency.
   # Set RESEND_API_KEY via: fly secrets set RESEND_API_KEY=re_...
