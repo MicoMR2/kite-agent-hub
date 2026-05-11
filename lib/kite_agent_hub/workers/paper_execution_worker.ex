@@ -272,13 +272,14 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
                ) do
           handle_kalshi_response(trade, order, job_id)
         else
-          {:error, reason} = err ->
+          {:error, reason} ->
             Logger.warning(
               "PaperExecutionWorker job=#{job_id} provider=kalshi failed: #{inspect(reason)}"
             )
 
-            mark_trade_failed(trade, "kalshi error: #{inspect(reason)}")
-            err
+            friendly = humanize_kalshi_error(reason, symbol)
+            mark_trade_failed(trade, friendly)
+            {:error, friendly}
         end
 
       {:error, changeset} ->
@@ -438,6 +439,37 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   defp maybe_put_order_id(attrs, nil), do: attrs
   defp maybe_put_order_id(attrs, id), do: Map.put(attrs, :platform_order_id, to_string(id))
+
+  # Turn a raw Kalshi error term/string into an actionable agent-facing
+  # reason. Mico flagged 2026-05-11 (msg 9001) that agents were getting
+  # raw `kalshi error: ...` strings for resolved/expired markets and
+  # had no way to tell whether the market was wrong or the contract
+  # was just dead. Match the common "not found / expired / closed"
+  # shapes against the response body and surface a clear message.
+  defp humanize_kalshi_error(reason, ticker) when is_binary(ticker) do
+    text = reason |> inspect() |> String.downcase()
+
+    cond do
+      String.contains?(text, "market_not_found") or
+        String.contains?(text, "market not found") or
+          String.contains?(text, "not_found") ->
+        "Kalshi market #{ticker} is no longer active (expired or resolved). " <>
+          "Use Kalshi's API or UI to find a current contract."
+
+      String.contains?(text, "expired") or
+        String.contains?(text, "settled") or
+          String.contains?(text, "closed") or
+            String.contains?(text, "inactive") ->
+        "Kalshi market #{ticker} is closed for trading (expired, settled, or inactive). " <>
+          "Pick a current contract before retrying."
+
+      true ->
+        "kalshi error: #{inspect(reason)}"
+    end
+  end
+
+  defp humanize_kalshi_error(reason, _ticker),
+    do: "kalshi error: #{inspect(reason)}"
 
   # USD notional for an OANDA fill. The unit-price math depends on
   # which currency in the pair is USD:
