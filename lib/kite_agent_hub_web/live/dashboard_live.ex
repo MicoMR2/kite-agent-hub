@@ -2231,11 +2231,39 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp empty_broker_stats do
     %{
       total_pnl: Decimal.new(0),
+      total_notional: Decimal.new(0),
       win_count: 0,
       loss_count: 0,
       trade_count: 0,
       open_count: 0
     }
+  end
+
+  # Realized return as a percentage of capital deployed across settled
+  # trades. Mico (msg 8986): "we don't use percentages in many places".
+  # Returns nil when no capital has been deployed yet — template falls
+  # back to a — placeholder so we never show a 0% derived from a 0/0.
+  defp realized_return_pct(%{total_pnl: pnl, total_notional: notional})
+       when not is_nil(pnl) and not is_nil(notional) do
+    cond do
+      Decimal.eq?(notional, 0) ->
+        nil
+
+      true ->
+        Decimal.div(pnl, notional)
+        |> Decimal.mult(Decimal.new(100))
+        |> Decimal.to_float()
+        |> Float.round(2)
+    end
+  end
+
+  defp realized_return_pct(_), do: nil
+
+  defp fmt_signed_pct(nil), do: "—"
+
+  defp fmt_signed_pct(v) when is_number(v) do
+    sign = if v >= 0, do: "+", else: "−"
+    sign <> :erlang.float_to_binary(abs(v) * 1.0, decimals: 2) <> "%"
   end
 
   # Comma-separated, no decimals for whole-dollar account-summary values.
@@ -2699,19 +2727,33 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Realized P&L
                       </p>
                       <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                        <p class={[
-                          "text-2xl sm:text-3xl font-black tracking-tight break-all transition-all duration-300",
-                          Decimal.gt?(@pnl_stats.total_pnl, 0) &&
-                            "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
-                          Decimal.lt?(@pnl_stats.total_pnl, 0) &&
-                            "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
-                          Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
-                        ]}>
-                          {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(
-                            @pnl_stats.total_pnl,
-                            4
-                          )}
-                        </p>
+                        <% return_pct = realized_return_pct(@pnl_stats) %>
+                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                          <p class={[
+                            "text-2xl sm:text-3xl font-black tracking-tight break-all transition-all duration-300",
+                            Decimal.gt?(@pnl_stats.total_pnl, 0) &&
+                              "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
+                            Decimal.lt?(@pnl_stats.total_pnl, 0) &&
+                              "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
+                            Decimal.eq?(@pnl_stats.total_pnl, 0) && "text-gray-300"
+                          ]}>
+                            {if Decimal.gt?(@pnl_stats.total_pnl, 0), do: "+"}${Decimal.round(
+                              @pnl_stats.total_pnl,
+                              4
+                            )}
+                          </p>
+                          <%= if return_pct do %>
+                            <% pct_chip_cls =
+                              cond do
+                                return_pct > 0 -> "text-[#22c55e] bg-[#22c55e]/[0.10] border-[#22c55e]/40"
+                                return_pct < 0 -> "text-[#ef4444] bg-[#ef4444]/[0.10] border-[#ef4444]/40"
+                                true -> "text-gray-300 bg-white/[0.04] border-white/15"
+                              end %>
+                            <span class={"px-2 py-0.5 rounded-full text-xs font-mono font-bold border " <> pct_chip_cls}>
+                              {fmt_signed_pct(return_pct)}
+                            </span>
+                          <% end %>
+                        </div>
                         <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
                           {@pnl_stats.trade_count} Settled Trades
                         </p>
@@ -2725,25 +2767,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <% end %>
                     </div>
 
-                    <%!-- Win Rate --%>
+                    <%!-- Return % — replaces the old Win Rate card.
+                         Total realized P&L as a percentage of capital
+                         deployed (fill_price × contracts summed across
+                         settled rows). Mico flagged 2026-05-11 (msg 8986)
+                         that win/loss reads less natural than %. --%>
                     <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
                       <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest font-bold">
-                        Win Rate
+                        Return %
                       </p>
-                      <%= if @pnl_stats && @pnl_stats.trade_count > 0 do %>
-                        <p class="text-2xl sm:text-3xl font-black text-white tracking-tight break-all">
-                          {win_rate(@pnl_stats.win_count, @pnl_stats.trade_count)}
-                        </p>
-                        <p class="text-[10px] text-gray-400 mt-2 font-mono tracking-widest">
-                          <span class="text-[#22c55e]">{@pnl_stats.win_count}W</span>
-                          <span class="mx-1 text-gray-700">/</span>
-                          <span class="text-[#ef4444]">{@pnl_stats.loss_count}L</span>
-                        </p>
-                      <% else %>
-                        <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">—</p>
-                        <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
-                          No Data
-                        </p>
+                      <% return_pct = @pnl_stats && realized_return_pct(@pnl_stats) %>
+                      <%= cond do %>
+                        <% @pnl_stats && @pnl_stats.trade_count > 0 && return_pct -> %>
+                          <p class={[
+                            "text-2xl sm:text-3xl font-black tracking-tight break-all",
+                            return_pct > 0 && "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
+                            return_pct < 0 && "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
+                            return_pct == 0.0 && "text-gray-300"
+                          ]}>
+                            {fmt_signed_pct(return_pct)}
+                          </p>
+                          <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
+                            on ${Decimal.round(@pnl_stats.total_notional, 2)} traded
+                          </p>
+                        <% true -> %>
+                          <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">—</p>
+                          <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
+                            No Data
+                          </p>
                       <% end %>
                     </div>
 
