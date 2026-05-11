@@ -31,7 +31,22 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   use Oban.Worker,
     queue: :paper_execution,
-    max_attempts: 3
+    max_attempts: 3,
+    # Dedup external enqueues of the same intent within 60s — mirrors
+    # the TradeExecutionWorker pattern. Mico flagged Kalshi duplicate
+    # fills (msg 8846) when the same intent re-entered the queue
+    # (controller retry, AgentRunner re-tick, or Oban retry resurrecting
+    # a job after a transient broker error). The args dict for this
+    # worker contains agent_id / organization_id / provider / symbol /
+    # side / units — agent_id+provider+symbol+side is the natural
+    # identity tuple. `period: 60` lets a legitimate re-entry land
+    # after the platform call resolves on the original.
+    unique: [
+      period: 60,
+      fields: [:args],
+      keys: [:agent_id, :provider, :symbol, :side],
+      states: [:available, :scheduled, :executing, :retryable, :completed]
+    ]
 
   require Logger
 
@@ -289,6 +304,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   end
 
   defp parse_units!(n) when is_integer(n), do: n
+  defp parse_units!(n) when is_float(n), do: trunc(n)
   defp parse_units!(n) when is_binary(n), do: String.to_integer(n)
 
   @kalshi_order_fields ~w(

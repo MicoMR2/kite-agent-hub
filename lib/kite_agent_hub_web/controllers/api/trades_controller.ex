@@ -392,6 +392,11 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   defp parse_units(n) when is_integer(n) and n > 0, do: n
 
+  # JSON numbers without a fraction land here as floats (e.g. `1000.0`).
+  # OANDA requires integer units, so coerce — agents shouldn't be
+  # rejected just for sending `1000.0` instead of `1000`.
+  defp parse_units(n) when is_float(n) and n > 0, do: trunc(n)
+
   defp parse_units(n) when is_binary(n) do
     case Integer.parse(n) do
       {i, ""} when i > 0 -> i
