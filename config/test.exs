@@ -65,3 +65,8 @@ config :phoenix,
 # Invite-only off in test — overridden per-test via Application.put_env when needed.
 config :kite_agent_hub, invite_only_signup: false
 config :kite_agent_hub, admin_emails: "admin@example.com"
+
+# Shorten the triggers long-poll cap so the empty-queue path doesn't
+# block tests for the production 10s default. The default is enforced
+# in `triggers_controller.ex`.
+config :kite_agent_hub, :triggers_long_poll_ms, 50
