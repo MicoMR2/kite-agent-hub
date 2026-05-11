@@ -14,6 +14,7 @@ defmodule KiteAgentHub.Trading.BrokerStats do
 
       %{
         total_pnl: Decimal.t(),
+        total_notional: Decimal.t(),
         win_count: integer(),
         loss_count: integer(),
         trade_count: integer(),
@@ -33,6 +34,14 @@ defmodule KiteAgentHub.Trading.BrokerStats do
 
   @empty %{
     total_pnl: Decimal.new(0),
+    # Capital deployed across closed lots — denominator for the
+    # dashboard Return % card. Alpaca: `filled_qty * filled_avg_price`
+    # summed across closed sells. Kalshi: `|revenue|` summed across
+    # settlements as a rough proxy (the settle endpoint doesn't expose
+    # entry price × contracts directly). Mico flagged 2026-05-11
+    # (msg 9029) that the Return % card showed "No Data" because the
+    # field didn't exist here.
+    total_notional: Decimal.new(0),
     win_count: 0,
     loss_count: 0,
     trade_count: 0,
@@ -71,9 +80,11 @@ defmodule KiteAgentHub.Trading.BrokerStats do
           end
 
         {total, wins, losses, trade_count} = fifo_realized_pnl(closed_orders)
+        notional = alpaca_notional(closed_orders)
 
         %{
           total_pnl: total,
+          total_notional: notional,
           win_count: wins,
           loss_count: losses,
           trade_count: trade_count,
@@ -136,6 +147,22 @@ defmodule KiteAgentHub.Trading.BrokerStats do
     {acc + pnl, [{lot_qty - qty_left, lot_price} | rest]}
   end
 
+  # Capital deployed: sum of `filled_qty * filled_avg_price` across
+  # every closed sell. Matches the FIFO trade_count grain (one notional
+  # entry per closed lot) so the Return % denominator lines up with the
+  # numerator it pairs against.
+  defp alpaca_notional(closed_orders) do
+    total =
+      closed_orders
+      |> Enum.filter(&(&1.side == "sell"))
+      |> Enum.filter(&(&1.filled_qty && &1.filled_qty > 0 && &1.filled_avg_price))
+      |> Enum.reduce(0.0, fn order, acc ->
+        acc + order.filled_qty * order.filled_avg_price
+      end)
+
+    Decimal.from_float(total * 1.0)
+  end
+
   # ── Kalshi ──────────────────────────────────────────────────────────────────
 
   defp kalshi_stats(org_id) do
@@ -154,6 +181,13 @@ defmodule KiteAgentHub.Trading.BrokerStats do
           end
 
         total = Enum.reduce(settlements, 0.0, fn s, acc -> acc + (s.revenue || 0.0) end)
+        # Notional proxy — Kalshi settle rows don't expose entry × contracts,
+        # so we use |revenue| as a floor for capital deployed. Binary
+        # markets pay 1.00 on a hit, 0 on a miss, so |revenue| roughly
+        # tracks the size you put on.
+        notional =
+          Enum.reduce(settlements, 0.0, fn s, acc -> acc + abs(s.revenue || 0.0) end)
+
         wins = Enum.count(settlements, fn s -> (s.revenue || 0.0) > 0 end)
         losses = Enum.count(settlements, fn s -> (s.revenue || 0.0) < 0 end)
         trade_count = length(settlements)
@@ -161,6 +195,7 @@ defmodule KiteAgentHub.Trading.BrokerStats do
 
         %{
           total_pnl: Decimal.from_float(total * 1.0),
+          total_notional: Decimal.from_float(notional * 1.0),
           win_count: wins,
           loss_count: losses,
           trade_count: trade_count,
@@ -177,6 +212,11 @@ defmodule KiteAgentHub.Trading.BrokerStats do
   defp merge(a, b) do
     %{
       total_pnl: Decimal.add(a.total_pnl, b.total_pnl),
+      total_notional:
+        Decimal.add(
+          Map.get(a, :total_notional, Decimal.new(0)),
+          Map.get(b, :total_notional, Decimal.new(0))
+        ),
       win_count: a.win_count + b.win_count,
       loss_count: a.loss_count + b.loss_count,
       trade_count: a.trade_count + b.trade_count,
