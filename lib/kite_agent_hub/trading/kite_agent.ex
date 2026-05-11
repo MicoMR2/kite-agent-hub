@@ -8,6 +8,12 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   @statuses ~w(pending active paused error archived)
   @agent_types ~w(trading research conversational)
   @llm_providers ~w(anthropic openai)
+  # passport-handoff §2:
+  # `none`         — agent has not opted into either rail (default).
+  # `subscription` — Rail A monthly Stripe subscription, no per-trade fee.
+  # `per_trade`    — Rail B x402 fee per trade to the KAH vault.
+  @payment_rails ~w(none subscription per_trade)
+  def payment_rails, do: @payment_rails
 
   # Whitelist of markets an agent can be configured to trade. Surfaced
   # in onboarding as the multi-select. Each value maps to the broker /
@@ -51,6 +57,11 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     # in Trading.Risk". Whitelisted keys only — see risk_config_changeset/2.
     field :risk_config, :map, default: %{}
 
+    # Payment rail an agent opted into. See @payment_rails attr above
+    # for legal values. Default `none`. Subscription billing + per-trade
+    # x402 fee enforcement live in later PRs (PR-4 x402 endpoint).
+    field :payment_rail, :string, default: "none"
+
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     has_many :trade_records, KiteAgentHub.Trading.TradeRecord
 
@@ -72,10 +83,12 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :markets,
       :llm_provider,
       :llm_model,
-      :llm_endpoint_url
+      :llm_endpoint_url,
+      :payment_rail
     ])
     |> fill_chain_id_default()
     |> validate_required([:name, :organization_id])
+    |> validate_inclusion(:payment_rail, @payment_rails)
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:agent_type, @agent_types)
     |> validate_inclusion(:llm_provider, @llm_providers)
