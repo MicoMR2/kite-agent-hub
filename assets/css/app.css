@@ -429,6 +429,65 @@ html[data-theme="light"] .kah-glow-accent::before {
   background: radial-gradient(closest-side, rgba(34,197,94,0.22), transparent 70%);
 }
 
+/* ─── Interaction feedback (hover / active / focus-visible) ──────────────
+   Day mode had no visible feedback on hover or click — site felt frozen
+   until the next page landed. Below applies globally to anchor + button
+   elements so every interactive surface acknowledges presses + focus
+   without per-component wiring. Opt-out: add `.kah-no-press`. */
+
+a[href]:not(.kah-no-press),
+button:not([disabled]):not(.kah-no-press),
+[role="button"]:not(.kah-no-press) {
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease, background-color 180ms ease;
+}
+
+a[href]:active:not(.kah-no-press),
+button:not([disabled]):active:not(.kah-no-press),
+[role="button"]:active:not(.kah-no-press) {
+  transform: translateY(1px);
+  filter: brightness(0.92);
+}
+
+/* Phoenix LV applies `phx-click-loading` to a clicked element during the
+   round-trip. Give a quick visual confirmation the click was received
+   before the next mount completes. */
+.phx-click-loading {
+  opacity: 0.85;
+  filter: saturate(0.85);
+  transition: opacity 90ms ease, filter 90ms ease;
+}
+
+/* Keyboard focus — visible on both themes. */
+a[href]:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgba(34, 197, 94, 0.70);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Light-mode hover boost. Dark-canvas hover deltas (bg-white/0.05 →
+   bg-white/0.10) are imperceptible on the cream canvas once the shim
+   maps both to surface-02/-08. Re-anchor hover states to a dark-ink
+   tint so users feel the button respond. */
+html[data-theme="light"] [class~="hover:bg-white/[0.10]"]:hover,
+html[data-theme="light"] [class~="hover:bg-white/[0.1]"]:hover,
+html[data-theme="light"] [class~="hover:bg-white/[0.12]"]:hover {
+  background-color: rgba(15, 23, 42, 0.10) !important;
+}
+
+html[data-theme="light"] [class~="hover:bg-white/[0.06]"]:hover,
+html[data-theme="light"] [class~="hover:bg-white/[0.08]"]:hover {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+html[data-theme="light"] [class~="hover:bg-white/[0.14]"]:hover,
+html[data-theme="light"] [class~="hover:bg-white/[0.16]"]:hover,
+html[data-theme="light"] [class~="hover:bg-white/[0.18]"]:hover {
+  background-color: rgba(15, 23, 42, 0.14) !important;
+}
+
 .kah-theme-toggle {
   color: var(--fg-2);
   border-color: var(--border-default);

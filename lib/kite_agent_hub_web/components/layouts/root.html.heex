@@ -9,11 +9,23 @@
          Stripe/Linear-adjacent), Space Grotesk 400/500/600 (body), JetBrains Mono
          400/500 (chain IDs / tickers). Loaded via Bunny Fonts — privacy-preserving
          Google Fonts mirror. --%>
+    <%!-- Non-render-blocking font load. `rel="preload"` fetches without
+         blocking, then onload promotes to a stylesheet. <noscript>
+         fallback covers no-JS clients. font-display=swap on the URL
+         already prevents FOIT on the face files themselves. --%>
     <link rel="preconnect" href="https://fonts.bunny.net" crossorigin />
     <link
-      rel="stylesheet"
+      rel="preload"
+      as="style"
       href="https://fonts.bunny.net/css?family=plus-jakarta-sans:600,700,800|space-grotesk:400,500,600|jetbrains-mono:400,500&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.bunny.net/css?family=plus-jakarta-sans:600,700,800|space-grotesk:400,500,600|jetbrains-mono:400,500&display=swap"
+      />
+    </noscript>
     <.live_title>
       {assigns[:page_title] || "Kite Agent Hub"}
     </.live_title>
