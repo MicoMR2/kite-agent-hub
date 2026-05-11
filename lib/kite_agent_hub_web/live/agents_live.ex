@@ -12,6 +12,9 @@ defmodule KiteAgentHubWeb.AgentsLive do
   use KiteAgentHubWeb, :live_view
 
   alias KiteAgentHub.{Orgs, Repo, Trading}
+  alias KiteAgentHub.Kite.VaultConfig
+  alias KiteAgentHub.Passport.Passports
+  alias KiteAgentHub.Trading.KiteAgent
 
   @impl true
   def mount(_params, _session, socket) do
@@ -20,16 +23,17 @@ defmodule KiteAgentHubWeb.AgentsLive do
     # Mount hardening (kah_lv_rescue): every DB call must rescue, or
     # a transient `DBConnection.ConnectionError` during a pool burst
     # crashes the LV process and Phoenix mount-loops the user.
-    {org, agents} =
+    {org, agents, passport_links} =
       try do
         org = Orgs.get_org_for_user(user.id)
         agents = if org, do: Trading.list_agents(org.id), else: []
-        {org, agents}
+        passport_links = Passports.active_links_by_agent(agents)
+        {org, agents, passport_links}
       rescue
         e ->
           require Logger
           Logger.warning("AgentsLive mount DB read failed — #{Exception.message(e)}")
-          {nil, []}
+          {nil, [], %{}}
       end
 
     {:ok,
@@ -39,7 +43,11 @@ defmodule KiteAgentHubWeb.AgentsLive do
      |> assign(:editing_id, nil)
      |> assign(:form_errors, %{})
      |> assign(:revealed_token, nil)
-     |> assign(:confirm_archive_id, nil)}
+     |> assign(:confirm_archive_id, nil)
+     |> assign(:passport_links, passport_links)
+     |> assign(:passport_form_errors, %{})
+     |> assign(:expanded_passport_id, nil)
+     |> assign(:vault_address, VaultConfig.address())}
   end
 
   @impl true
@@ -181,6 +189,88 @@ defmodule KiteAgentHubWeb.AgentsLive do
          socket
          |> assign(:confirm_archive_id, nil)
          |> put_flash(:error, "Archive failed.")}
+    end
+  end
+
+  # Toggle the Passport panel open/closed for a given agent.
+  def handle_event("toggle_passport_panel", %{"id" => id}, socket) do
+    next = if socket.assigns.expanded_passport_id == id, do: nil, else: id
+    {:noreply, assign(socket, expanded_passport_id: next, passport_form_errors: %{})}
+  end
+
+  def handle_event("link_passport", %{"agent_id" => id} = params, socket) do
+    with %KiteAgent{} = agent <- find_owned_agent(socket, id),
+         attrs <- %{
+           "passport_user_id" => params["passport_user_id"],
+           "passport_agent_id" => params["passport_agent_id"],
+           "passport_wallet_address" => params["passport_wallet_address"]
+         },
+         {:ok, link} <-
+           Passports.link_agent(socket.assigns.current_scope.user.id, agent, attrs) do
+      {:noreply,
+       socket
+       |> assign(:passport_links, Map.put(socket.assigns.passport_links, agent.id, link))
+       |> assign(:passport_form_errors, %{})
+       |> put_flash(:info, "Passport linked.")}
+    else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Agent not found.")}
+
+      {:error, %Ecto.Changeset{} = cs} ->
+        {:noreply, assign(socket, :passport_form_errors, errors_of(cs))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not link Passport.")}
+    end
+  end
+
+  def handle_event("unlink_passport", %{"agent_id" => id}, socket) do
+    link = Map.get(socket.assigns.passport_links, id)
+
+    with %KiteAgent{} <- find_owned_agent(socket, id),
+         %_{} <- link,
+         {:ok, _} <- Passports.unlink_agent(socket.assigns.current_scope.user.id, link) do
+      {:noreply,
+       socket
+       |> assign(:passport_links, Map.delete(socket.assigns.passport_links, id))
+       |> put_flash(:info, "Passport unlinked.")}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Could not unlink Passport.")}
+    end
+  end
+
+  def handle_event("select_payment_rail", %{"agent_id" => id, "rail" => rail}, socket) do
+    rails = KiteAgent.payment_rails()
+
+    with true <- rail in rails,
+         %KiteAgent{} = agent <- find_owned_agent(socket, id),
+         {:ok, updated} <-
+           Passports.change_payment_rail(socket.assigns.current_scope.user.id, agent, rail) do
+      {:noreply,
+       socket
+       |> assign(:agents, replace_agent(socket.assigns.agents, updated))
+       |> put_flash(:info, "Payment rail updated.")}
+    else
+      false ->
+        {:noreply, put_flash(socket, :error, "Invalid payment rail.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Could not update payment rail.")}
+    end
+  end
+
+  # Belt-and-suspenders ownership check (CyberSec ask 5, msg 9093). The
+  # context wraps writes in `Repo.with_user/2` so RLS scopes them, but
+  # we also explicitly verify the agent lives in the current user's
+  # org_id before invoking the context — defense in depth against any
+  # future RLS-policy regression.
+  defp find_owned_agent(socket, id) do
+    org_id = socket.assigns.org && socket.assigns.org.id
+
+    case Enum.find(socket.assigns.agents, &(&1.id == id)) do
+      %KiteAgent{organization_id: ^org_id} = agent when not is_nil(org_id) -> agent
+      _ -> nil
     end
   end
 
@@ -607,6 +697,172 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     <span class="font-mono truncate block text-gray-400">
                       {agent.vault_address || "—"}
                     </span>
+                  </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-white/5 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <span class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                        Passport · Payment rail
+                      </span>
+                      <span class="text-[11px] text-gray-500">
+                        Choose how this agent pays for KAH (post-hackathon).
+                      </span>
+                    </div>
+                    <button
+                      phx-click="toggle_passport_panel"
+                      phx-value-id={agent.id}
+                      class="px-3 py-1.5 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/20"
+                    >
+                      {if @expanded_passport_id == agent.id, do: "Hide", else: "Configure"}
+                    </button>
+                  </div>
+
+                  <div :if={@expanded_passport_id == agent.id} class="space-y-4">
+                    <%!-- Payment rail selector --%>
+                    <div class="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        phx-click="select_payment_rail"
+                        phx-value-agent_id={agent.id}
+                        phx-value-rail="none"
+                        class={[
+                          "px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest",
+                          agent.payment_rail == "none" &&
+                            "border-emerald-400 bg-emerald-500/10 text-emerald-200",
+                          agent.payment_rail != "none" &&
+                            "border-white/10 text-gray-400 hover:text-white hover:border-white/20"
+                        ]}
+                      >
+                        None
+                      </button>
+                      <button
+                        type="button"
+                        phx-click="select_payment_rail"
+                        phx-value-agent_id={agent.id}
+                        phx-value-rail="per_trade"
+                        class={[
+                          "px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest",
+                          agent.payment_rail == "per_trade" &&
+                            "border-emerald-400 bg-emerald-500/10 text-emerald-200",
+                          agent.payment_rail != "per_trade" &&
+                            "border-white/10 text-gray-400 hover:text-white hover:border-white/20"
+                        ]}
+                      >
+                        Per-trade fee (Passport)
+                      </button>
+                      <div class="px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest text-gray-600 bg-white/[0.02] cursor-not-allowed text-center">
+                        Monthly · post-hackathon
+                      </div>
+                    </div>
+
+                    <%!-- Connect Passport panel --%>
+                    <%= if Map.get(@passport_links, agent.id) do %>
+                      <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-4 space-y-2">
+                        <div class="flex items-center justify-between">
+                          <div>
+                            <span class="block text-[10px] font-bold text-emerald-300 uppercase tracking-widest">
+                              Passport linked
+                            </span>
+                            <span class="font-mono text-[11px] text-gray-300 break-all">
+                              {Map.get(@passport_links, agent.id).passport_wallet_address}
+                            </span>
+                            <span class="block text-[10px] text-gray-500 mt-1">
+                              Linked {Calendar.strftime(
+                                Map.get(@passport_links, agent.id).linked_at,
+                                "%Y-%m-%d %H:%M UTC"
+                              )}
+                            </span>
+                          </div>
+                          <button
+                            phx-click="unlink_passport"
+                            phx-value-agent_id={agent.id}
+                            class="px-3 py-1.5 rounded-xl border border-red-500/30 text-[10px] font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/10"
+                          >
+                            Unlink
+                          </button>
+                        </div>
+                      </div>
+                    <% else %>
+                      <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                        <div>
+                          <span class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                            Don't have a Passport yet?
+                          </span>
+                          <p class="text-[11px] text-gray-400 mt-1">
+                            Install kpass locally; KAH never sees your key.
+                          </p>
+                          <code class="block font-mono text-[11px] text-emerald-200 bg-black/40 rounded-xl px-3 py-2 mt-2 break-all">curl -fsSL https://agentpassport.ai/install.sh | bash</code>
+                        </div>
+
+                        <form phx-submit="link_passport" class="space-y-2">
+                          <input type="hidden" name="agent_id" value={agent.id} />
+                          <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                              Passport user id
+                            </label>
+                            <input
+                              type="text"
+                              name="passport_user_id"
+                              autocomplete="off"
+                              class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-white focus:outline-none focus:border-white/30"
+                            />
+                            <p
+                              :if={err = get_in(@passport_form_errors, [:passport_user_id, Access.at(0)])}
+                              class="text-[11px] text-red-400 mt-1"
+                            >
+                              {err}
+                            </p>
+                          </div>
+                          <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                              Passport agent id
+                            </label>
+                            <input
+                              type="text"
+                              name="passport_agent_id"
+                              autocomplete="off"
+                              class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-white focus:outline-none focus:border-white/30"
+                            />
+                            <p
+                              :if={err = get_in(@passport_form_errors, [:passport_agent_id, Access.at(0)])}
+                              class="text-[11px] text-red-400 mt-1"
+                            >
+                              {err}
+                            </p>
+                          </div>
+                          <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                              Wallet address (0x…)
+                            </label>
+                            <input
+                              type="text"
+                              name="passport_wallet_address"
+                              autocomplete="off"
+                              placeholder="0x..."
+                              class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+                            />
+                            <p
+                              :if={err = get_in(@passport_form_errors, [:passport_wallet_address, Access.at(0)])}
+                              class="text-[11px] text-red-400 mt-1"
+                            >
+                              {err}
+                            </p>
+                          </div>
+                          <p :if={@vault_address} class="text-[10px] text-gray-500">
+                            Per-trade fee payee:
+                            <span class="font-mono text-gray-400">{@vault_address}</span>
+                          </p>
+                          <button
+                            type="submit"
+                            class="w-full px-4 py-2 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-gray-100"
+                          >
+                            Link Passport
+                          </button>
+                        </form>
+                      </div>
+                    <% end %>
                   </div>
                 </div>
 
