@@ -270,11 +270,12 @@ defmodule KiteAgentHub.Kite.AgentRunner do
             "Signal: #{signal["action"]} #{signal["market"]} @ confidence #{signal["confidence"]} — enqueueing trade"
         )
 
-        signal
-        |> Map.put("agent_id", agent.id)
-        |> Map.put("owner_user_id", owner_user_id)
-        |> TradeExecutionWorker.new()
-        |> Oban.insert()
+        intent =
+          signal
+          |> Map.put("agent_id", agent.id)
+          |> Map.put("owner_user_id", owner_user_id)
+
+        dispatch_trade_intent(agent, "trade_intent", intent)
 
       {:hold, reason} ->
         Logger.debug("AgentRunner: agent #{agent.id} signal hold — #{reason}")
@@ -317,7 +318,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
       )
 
       Enum.each(actions, fn action ->
-        %{
+        intent = %{
           "agent_id" => agent.id,
           "owner_user_id" => owner_user_id,
           "market" => action.ticker,
@@ -329,10 +330,57 @@ defmodule KiteAgentHub.Kite.AgentRunner do
           "reason" => action.reason,
           "source" => "rule_based"
         }
-        |> TradeExecutionWorker.new()
-        |> Oban.insert()
+
+        dispatch_trade_intent(agent, "rule_based_exit", intent)
       end)
     end
+  end
+
+  # Passport PR-3 dispatcher gate. Per passport-handoff §1, agents on
+  # the per-trade payment rail must NOT have KAH place broker orders
+  # on their behalf — KAH writes a `trigger_event` outbox row instead
+  # and the user's kpass-side runner executes the trade locally with
+  # the brokerage credentials it holds. Every other rail (none /
+  # subscription) keeps the direct-broker path unchanged so this PR is
+  # zero-regression for existing agents.
+  #
+  # Exposed as @doc false (not private) so the unit test can exercise
+  # both routing branches without spinning up the full GenServer.
+  @doc false
+  def dispatch_trade_intent(%{payment_rail: "per_trade"} = agent, event_type, intent) do
+    case KiteAgentHub.Trading.TriggerEvents.emit(agent, event_type, intent) do
+      {:ok, ev} ->
+        Logger.info(
+          "AgentRunner: agent #{agent.id} per_trade — emitted trigger_event #{ev.id} (#{event_type})"
+        )
+
+        AgentLog.push(agent.id,
+          event: "trigger_emitted",
+          message: "Trigger #{event_type} emitted (#{ev.id}) — awaiting client execution"
+        )
+
+        {:ok, ev}
+
+      {:error, :duplicate} ->
+        Logger.debug(
+          "AgentRunner: agent #{agent.id} per_trade — duplicate trigger #{event_type}, skipping"
+        )
+
+        {:error, :duplicate}
+
+      {:error, reason} ->
+        Logger.warning(
+          "AgentRunner: agent #{agent.id} per_trade trigger emit failed: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  def dispatch_trade_intent(_agent, _event_type, intent) do
+    intent
+    |> TradeExecutionWorker.new()
+    |> Oban.insert()
   end
 
   # DB-only slice of the tick context. Runs inside Repo.with_user so
