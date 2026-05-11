@@ -13,8 +13,12 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
     - Liquidity (0-20): can you exit cleanly
   """
 
-  alias KiteAgentHub.Credentials
+  alias KiteAgentHub.{Credentials, Oanda}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
+
+  # Top-of-book majors get a higher liquidity factor in the forex
+  # scoring breakdown. Cross/exotic pairs ride a lower default.
+  @forex_majors ~w(EUR_USD GBP_USD USD_JPY USD_CAD AUD_USD NZD_USD USD_CHF)
 
   @type recommendation :: :strong_hold | :hold | :watch | :exit
   @type position_score :: %{
@@ -39,6 +43,7 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   @type portfolio_scores :: %{
           alpaca_scores: [position_score()],
           kalshi_scores: [position_score()],
+          forex_scores: [position_score()],
           suggestions: [suggestion()],
           timestamp: DateTime.t()
         }
@@ -54,11 +59,13 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
   def score_portfolio(org_id) do
     alpaca_scores = score_alpaca_positions(org_id)
     kalshi_scores = score_kalshi_positions(org_id)
+    forex_scores = score_forex_positions(org_id)
     suggestions = generate_suggestions(kalshi_scores, alpaca_scores)
 
     %{
       alpaca_scores: alpaca_scores,
       kalshi_scores: kalshi_scores,
+      forex_scores: forex_scores,
       suggestions: suggestions,
       timestamp: DateTime.utc_now()
     }
@@ -105,11 +112,17 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
     # Phase 3 — pure math; no IO.
     alpaca_scores = Enum.map(alpaca_positions, &score_alpaca_position/1)
     kalshi_scores = Enum.map(kalshi_positions, &score_kalshi_position/1)
+    # Forex/OANDA positions live behind a separate credential and a
+    # different HTTP host. score_forex_positions/1 does its own Repo +
+    # broker round-trip — keep the split-mode parity simple by reusing
+    # the single-phase path for now.
+    forex_scores = score_forex_positions(org_id)
     suggestions = generate_suggestions(kalshi_scores, alpaca_scores)
 
     %{
       alpaca_scores: alpaca_scores,
       kalshi_scores: kalshi_scores,
+      forex_scores: forex_scores,
       suggestions: suggestions,
       timestamp: DateTime.utc_now()
     }
@@ -239,6 +252,101 @@ defmodule KiteAgentHub.Kite.PortfolioEdgeScorer do
       }
     }
   end
+
+  # ── Forex (OANDA) Position Scoring ──────────────────────────────────────────
+  #
+  # OANDA returns a single position row per instrument with both `long`
+  # and `short` legs nested inside; only one carries non-zero units at
+  # a time. We emit a score row per active leg. Scoring mirrors the
+  # Alpaca/Kalshi shape (entry_quality / momentum / risk_reward /
+  # liquidity) using pip-agnostic %-PnL as the input; liquidity is
+  # bumped for top-of-book majors.
+
+  defp score_forex_positions(org_id) do
+    env = Oanda.active_env(org_id) || :practice
+
+    case Oanda.list_positions(org_id, env) do
+      positions when is_list(positions) ->
+        Enum.flat_map(positions, &score_forex_position/1)
+
+      _ ->
+        []
+    end
+  end
+
+  defp score_forex_position(%{"instrument" => instrument} = pos) when is_binary(instrument) do
+    [
+      forex_leg_score(pos, instrument, "long"),
+      forex_leg_score(pos, instrument, "short")
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp score_forex_position(_), do: []
+
+  defp forex_leg_score(pos, instrument, side) do
+    with leg when is_map(leg) <- pos[side],
+         units when is_float(units) and units != 0.0 <-
+           parse_oanda_float(leg["units"]),
+         avg when is_float(avg) and avg > 0 <- parse_oanda_float(leg["averagePrice"]),
+         upl when is_float(upl) <- parse_oanda_float(leg["unrealizedPL"]) || 0.0 do
+      notional = abs(units) * avg
+      pnl_pct = if notional > 0, do: upl / notional * 100, else: 0.0
+
+      entry_quality = score_entry_quality(pnl_pct)
+      momentum = score_momentum(pnl_pct, side)
+      risk_reward = score_risk_reward(pnl_pct)
+      liquidity = forex_liquidity(instrument)
+
+      total = entry_quality + momentum + risk_reward + liquidity
+
+      %{
+        platform: :forex,
+        ticker: instrument,
+        side: side,
+        qty: abs(units),
+        entry_price: avg,
+        # OANDA doesn't return a "current_price" on the positions
+        # endpoint — derive a synthetic one from avg + per-unit PnL so
+        # the response shape stays parallel to Alpaca/Kalshi.
+        current_price:
+          if abs(units) > 0 do
+            sign = if side == "long", do: 1, else: -1
+            avg + sign * upl / abs(units)
+          else
+            avg
+          end,
+        pnl_pct: Float.round(pnl_pct, 2),
+        unrealized_pl: upl,
+        score: total,
+        recommendation: recommend(total),
+        breakdown: %{
+          entry_quality: entry_quality,
+          momentum: momentum,
+          risk_reward: risk_reward,
+          liquidity: liquidity
+        }
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp forex_liquidity(instrument) when instrument in @forex_majors, do: 22
+  defp forex_liquidity(_), do: 14
+
+  defp parse_oanda_float(nil), do: nil
+
+  defp parse_oanda_float(v) when is_binary(v) do
+    case Float.parse(v) do
+      {f, _} -> f
+      :error -> nil
+    end
+  end
+
+  defp parse_oanda_float(v) when is_float(v), do: v
+  defp parse_oanda_float(v) when is_integer(v), do: v * 1.0
+  defp parse_oanda_float(_), do: nil
 
   # ── Suggestions ──────────────────────────────────────────────────────────────
 

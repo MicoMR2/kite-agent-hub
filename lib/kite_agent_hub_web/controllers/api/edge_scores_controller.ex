@@ -19,6 +19,7 @@ defmodule KiteAgentHubWeb.API.EdgeScoresController do
   def index(conn, _params) do
     with {:ok, agent} <- authenticate(conn) do
       scores = PortfolioEdgeScorer.score_portfolio(agent.organization_id)
+      forex_scores = Enum.map(scores.forex_scores, &serialize_score/1)
 
       conn
       |> json(%{
@@ -26,6 +27,12 @@ defmodule KiteAgentHubWeb.API.EdgeScoresController do
         timestamp: DateTime.to_iso8601(scores.timestamp),
         alpaca_scores: Enum.map(scores.alpaca_scores, &serialize_score/1),
         kalshi_scores: Enum.map(scores.kalshi_scores, &serialize_score/1),
+        forex_scores: forex_scores,
+        # Backwards-compat alias for agents that have been polling
+        # `oanda_scores` since before the FX scoring path existed
+        # (msg 8909 P2-4). Same array, same shape — drop later once
+        # all agents standardize on `forex_scores`.
+        oanda_scores: forex_scores,
         suggestions: Enum.map(scores.suggestions, &serialize_suggestion/1)
       })
     else
