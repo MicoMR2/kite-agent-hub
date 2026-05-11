@@ -117,6 +117,15 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     fill_price = Decimal.new(to_string(args["fill_price"]))
     notional = notional_for_record(args, fill_price)
 
+    # Cap-check baseline. Agent-stated prices can drift below the live
+    # market between signal generation and Oban dispatch — if we cap
+    # against the stated price, a market order can fill 2-3× over the
+    # cap (Mico flagged ALAB/VRT/PWR/GEV/GRID overshoot 2026-05-11).
+    # For Alpaca-routed markets, refetch the live ask and recompute
+    # notional for the gate only. Storage notional (above) stays
+    # agent-derived so display / settlement math are unchanged.
+    cap_notional = cap_check_notional(args, fill_price, notional, platform, agent)
+
     # Risk gate. The agent's per-trade notional cap comes from
     # Trading.Risk — either the user-defined override on
     # `agent.risk_config` or the workspace default. A structurally
@@ -136,22 +145,73 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         )
 
       {:ok, %Decimal{} = cap, _source} ->
-        if Decimal.compare(notional, cap) == :gt do
+        if Decimal.compare(cap_notional, cap) == :gt do
           record_blocked_trade(
             agent,
             market,
             platform,
             args,
             fill_price,
-            notional,
+            cap_notional,
             :over_cap,
-            "RC-CAP: notional $#{Decimal.to_string(notional, :normal)} exceeds " <>
-              "per-trade cap $#{Decimal.to_string(cap, :normal)}"
+            "RC-CAP: live-ask notional $#{Decimal.to_string(cap_notional, :normal)} " <>
+              "exceeds per-trade cap $#{Decimal.to_string(cap, :normal)} " <>
+              "(stated $#{Decimal.to_string(notional, :normal)})"
           )
         else
           do_execute_trade(agent, args, owner_user_id, market, platform, fill_price, notional)
         end
     end
+  end
+
+  # Live-ask cap-check notional. Only kicks in for Alpaca routes — Kite
+  # chain trades are settled at the price the agent signs (no market
+  # drift). Returns the stated notional on any fetch failure (with a
+  # warning log) so a transient quote outage doesn't block trades.
+  defp cap_check_notional(args, _fill_price, stated_notional, "alpaca", agent) do
+    symbol = canonical_alpaca_symbol(args["market"])
+    contracts = decimal_or_zero(args["contracts"])
+
+    if Decimal.eq?(contracts, 0) do
+      stated_notional
+    else
+      case live_ask_for_cap(agent, symbol) do
+        {:ok, %Decimal{} = ask} ->
+          Decimal.mult(ask, contracts)
+
+        {:error, reason} ->
+          Logger.warning(
+            "TradeExecutionWorker: cap-check live-ask fetch failed for #{symbol}: #{inspect(reason)} — falling back to stated price"
+          )
+
+          stated_notional
+      end
+    end
+  end
+
+  defp cap_check_notional(_args, _fill_price, stated_notional, _platform, _agent),
+    do: stated_notional
+
+  defp live_ask_for_cap(agent, symbol) when is_binary(symbol) do
+    with {:ok, {key_id, secret, _env}} <-
+           Credentials.fetch_secret_with_env(agent.organization_id, :alpaca),
+         {:ok, quotes} <- AlpacaClient.latest_quotes(key_id, secret, [symbol]) do
+      case Map.get(quotes, symbol) do
+        %{"ap" => ap} when is_number(ap) and ap > 0 ->
+          {:ok, Decimal.from_float(ap * 1.0)}
+
+        _ ->
+          {:error, :no_ask}
+      end
+    end
+  end
+
+  defp live_ask_for_cap(_agent, _symbol), do: {:error, :no_symbol}
+
+  defp canonical_alpaca_symbol(nil), do: nil
+
+  defp canonical_alpaca_symbol(market) when is_binary(market) do
+    Map.get(@alpaca_symbol_map, market, market)
   end
 
   defp do_execute_trade(agent, args, owner_user_id, market, platform, fill_price, notional) do
@@ -215,6 +275,40 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
     # calling Alpaca. Same destructure-trap class as #320 in
     # `PortfolioEdgeScorer.score_portfolio_split/2`.
     case create_result do
+      {:ok, {:ok, %{platform_order_id: existing_order_id} = trade}}
+      when is_binary(existing_order_id) and existing_order_id != "" ->
+        # Idempotency: a prior attempt of this job already placed the
+        # order with the broker and stored the order_id. Do NOT
+        # re-submit. Just make sure the row is at :open (in case the
+        # prior attempt crashed between order submit and status flip)
+        # and let the on-chain submit run as usual.
+        Logger.info(
+          "TradeExecutionWorker: trade #{trade.id} already has platform_order_id=#{existing_order_id} — skipping broker re-submit"
+        )
+
+        Repo.with_user(owner_user_id, fn ->
+          if trade.status == "pending" do
+            Trading.update_trade(trade, %{status: "open"})
+          else
+            {:ok, trade}
+          end
+        end)
+
+        if platform != "alpaca" do
+          maybe_submit_onchain(trade, agent, args, owner_user_id)
+        end
+
+      {:ok, {:ok, %{broker_submitted_at: %DateTime{}} = trade}} ->
+        # Idempotency: prior attempt hit the broker but crashed before
+        # storing platform_order_id. Hand off to StuckTradeSweeper for
+        # reconciliation — it will look up the order with the broker
+        # and either flip to :open or :failed. Do not re-submit.
+        Logger.warning(
+          "TradeExecutionWorker: trade #{trade.id} broker_submitted_at set without platform_order_id — leaving for StuckTradeSweeper reconciliation"
+        )
+
+        {:ok, trade}
+
       {:ok, {:ok, trade}} ->
         Logger.info(
           "TradeExecutionWorker: trade #{trade.id} pending for agent #{agent.id} on #{platform}"
