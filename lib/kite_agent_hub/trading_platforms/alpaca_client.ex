@@ -970,6 +970,11 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
        cash: parse_float(body["cash"]),
        buying_power: parse_float(body["buying_power"]),
        portfolio_value: parse_float(body["portfolio_value"]),
+       # Prior-session close equity — Alpaca's own 1D% denominator.
+       # KAH uses this as the 1D chart baseline so our number matches
+       # the Alpaca dashboard exactly instead of comparing today's
+       # market-open chart point against today's last point.
+       last_equity: parse_float(body["last_equity"]),
        day_trade_count: body["daytrade_count"] || 0,
        status: body["status"] || "unknown",
        # Margin / shortable fields exposed for the dashboard headroom
