@@ -40,6 +40,9 @@ defmodule KiteAgentHubWeb.Router do
   scope "/api/v1", KiteAgentHubWeb.API do
     pipe_through :api
 
+    get "/triggers/pending", TriggersController, :index
+    post "/triggers/:id/ack", TriggersController, :ack
+
     post "/trades", TradesController, :create
     get "/trades", TradesController, :index
     get "/trades/:id", TradesController, :show

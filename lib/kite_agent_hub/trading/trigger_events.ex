@@ -16,8 +16,19 @@ defmodule KiteAgentHub.Trading.TriggerEvents do
 
   import Ecto.Query, warn: false
 
+  alias Ecto.Multi
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading.TriggerEvent
+
+  @pubsub_topic_prefix "trigger_events:"
+
+  @doc """
+  Phoenix.PubSub topic an agent runner subscribes to in order to wake
+  its long-poll on a new emit. One topic per agent.
+  """
+  @spec pubsub_topic(binary()) :: String.t()
+  def pubsub_topic(agent_id) when is_binary(agent_id),
+    do: @pubsub_topic_prefix <> agent_id
 
   @doc """
   Insert a new trigger event. Returns `{:ok, event}`, `{:error,
@@ -42,7 +53,8 @@ defmodule KiteAgentHub.Trading.TriggerEvents do
     }
 
     case %TriggerEvent{} |> TriggerEvent.changeset(attrs) |> Repo.insert() do
-      {:ok, _} = ok ->
+      {:ok, event} = ok ->
+        broadcast_new(event)
         ok
 
       {:error, %Ecto.Changeset{errors: errors} = cs} ->
@@ -52,6 +64,78 @@ defmodule KiteAgentHub.Trading.TriggerEvents do
           {:error, cs}
         end
     end
+  end
+
+  @doc """
+  Atomically claim every currently-pending event for an agent: SELECT
+  the rows, UPDATE WHERE status='pending' AND delivered_at IS NULL to
+  'delivered' inside a single transaction. The clause makes the update
+  idempotent under concurrent polls — a second caller will see zero
+  rows to claim (CyberSec ask 4, msg 9123).
+
+  Returns the list of events that this call transitioned. Events that
+  were already delivered are not included.
+  """
+  @spec claim_pending_for_agent(binary()) :: [TriggerEvent.t()]
+  def claim_pending_for_agent(agent_id) when is_binary(agent_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Multi.new()
+    |> Multi.run(:select, fn repo, _ ->
+      rows =
+        from(t in TriggerEvent,
+          where:
+            t.agent_id == ^agent_id and t.status == "pending" and is_nil(t.delivered_at),
+          order_by: [asc: t.inserted_at],
+          lock: "FOR UPDATE SKIP LOCKED"
+        )
+        |> repo.all()
+
+      {:ok, rows}
+    end)
+    |> Multi.run(:update, fn repo, %{select: rows} ->
+      ids = Enum.map(rows, & &1.id)
+
+      {count, _} =
+        from(t in TriggerEvent, where: t.id in ^ids)
+        |> repo.update_all(set: [status: "delivered", delivered_at: now])
+
+      {:ok, count}
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{select: rows}} ->
+        Enum.map(rows, fn r -> %{r | status: "delivered", delivered_at: now} end)
+
+      {:error, _, _, _} ->
+        []
+    end
+  end
+
+  @doc """
+  Look up a single event scoped to the calling agent. Returns
+  `:not_found` for non-existent rows AND for cross-agent attempts —
+  the controller cannot distinguish, so an enumeration probe can't
+  use the response to confirm an event id exists on another agent
+  (CyberSec ask 5, msg 9123).
+  """
+  @spec get_for_agent(binary(), binary()) :: {:ok, TriggerEvent.t()} | :not_found
+  def get_for_agent(event_id, agent_id)
+      when is_binary(event_id) and is_binary(agent_id) do
+    case Repo.get(TriggerEvent, event_id) do
+      %TriggerEvent{agent_id: ^agent_id} = ev -> {:ok, ev}
+      _ -> :not_found
+    end
+  end
+
+  defp broadcast_new(%TriggerEvent{agent_id: agent_id} = event) do
+    Phoenix.PubSub.broadcast(
+      KiteAgentHub.PubSub,
+      pubsub_topic(agent_id),
+      {:trigger_event_emitted, event.id}
+    )
+
+    :ok
   end
 
   @doc """
