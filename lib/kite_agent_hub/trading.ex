@@ -611,6 +611,17 @@ defmodule KiteAgentHub.Trading do
       |> where(kite_agent_id: ^agent_id, status: "settled")
       |> select([t], %{
         total_pnl: sum(t.realized_pnl),
+        # Capital deployed across all settled trades: fill_price ×
+        # contracts. Denominator for the dashboard "Return %" card.
+        # COALESCE keeps the sum at 0 when one leg is nil instead of
+        # nullifying the whole row.
+        total_notional: sum(
+          fragment(
+            "COALESCE(?, 0) * COALESCE(?, 0)",
+            t.fill_price,
+            t.contracts
+          )
+        ),
         win_count: sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", t.realized_pnl)),
         loss_count: sum(fragment("CASE WHEN ? < 0 THEN 1 ELSE 0 END", t.realized_pnl)),
         trade_count: count(t.id)
@@ -624,6 +635,7 @@ defmodule KiteAgentHub.Trading do
 
     %{
       total_pnl: settled.total_pnl || Decimal.new(0),
+      total_notional: settled.total_notional || Decimal.new(0),
       win_count: settled.win_count || 0,
       loss_count: settled.loss_count || 0,
       trade_count: settled.trade_count || 0,
