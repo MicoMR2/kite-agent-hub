@@ -2241,11 +2241,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   # Realized return as a percentage of capital deployed across settled
   # trades. Mico (msg 8986): "we don't use percentages in many places".
-  # Returns nil when no capital has been deployed yet — template falls
-  # back to a — placeholder so we never show a 0% derived from a 0/0.
-  defp realized_return_pct(%{total_pnl: pnl, total_notional: notional})
-       when not is_nil(pnl) and not is_nil(notional) do
+  # Uses Map.get so a legacy stat shape that doesn't carry
+  # `:total_notional` falls through to nil gracefully instead of
+  # crashing the function head — that mismatch is what surfaced as
+  # "No Data" before BrokerStats started carrying the field (msg 9029).
+  defp realized_return_pct(%{total_pnl: pnl} = stats) when not is_nil(pnl) do
+    notional = Map.get(stats, :total_notional)
+
     cond do
+      is_nil(notional) ->
+        nil
+
       Decimal.eq?(notional, 0) ->
         nil
 
