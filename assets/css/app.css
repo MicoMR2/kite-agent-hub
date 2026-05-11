@@ -651,6 +651,28 @@ html[data-theme="light"] [class~="border-stone-400/30"] {
       linear-gradient(90deg, rgb(var(--platform-rgb) / 0.20), rgb(255 255 255 / 0.70));
   }
 
+  /* Light-mode dashboard tab hover (Mico flagged 2026-05-11 msg 8870 —
+     tabs read flat on cream, the colored box-shadow from the dark-mode
+     hover rule gets lost on a near-white surface). Add a dark-ink
+     surface tint + green border hint + 1px lift on hover. Clearly
+     distinct from the active tab which already carries the full
+     colored glow. */
+  html[data-theme="light"] #dashboard-tabs button:hover {
+    background-color: rgba(15, 23, 42, 0.06);
+    color: rgba(15, 23, 42, 0.80);
+    border-bottom-color: rgba(34, 197, 94, 0.30) !important;
+    transform: translateY(-1px);
+  }
+
+  /* Tighter click-loading visual specifically on the tab row — the
+     button is its own click initiator so LV applies .phx-click-loading
+     to it. Dim harder + wait cursor so the user sees the page is
+     loading even before the new tab content paints. */
+  #dashboard-tabs button.phx-click-loading {
+    opacity: 0.60;
+    cursor: wait;
+  }
+
   .kah-eyebrow {
     font-size: 9px;
     font-weight: 700;
