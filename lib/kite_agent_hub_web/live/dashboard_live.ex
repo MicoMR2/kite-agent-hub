@@ -3653,8 +3653,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Portfolio Equity ({@alpaca_period})
                       </p>
                       <%= if length(@alpaca_history) > 1 do %>
-                        <% first_val = List.first(@alpaca_history).v %>
                         <% last_val = List.last(@alpaca_history).v %>
+                        <%!-- 1D baseline aligns with Alpaca's own dashboard %:
+                             prior-session close (`last_equity` on the account
+                             endpoint), not the first chart point at today's
+                             market open. Other periods continue to use the
+                             first chart point. --%>
+                        <% first_val =
+                          cond do
+                            @alpaca_period == "1D" and
+                              is_map(@alpaca_data) and
+                              is_number(@alpaca_data[:last_equity]) and
+                              @alpaca_data[:last_equity] > 0 ->
+                              @alpaca_data[:last_equity]
+
+                            true ->
+                              List.first(@alpaca_history).v
+                          end %>
                         <% pct_change =
                           if first_val > 0,
                             do: Float.round((last_val - first_val) / first_val * 100, 2),
