@@ -2421,7 +2421,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <.kah_logo class="w-5 h-5 shrink-0" /> Launch Your First Agent
               </.link>
               <p class="text-xs text-gray-600 mt-6 font-mono">
-                Chain ID 2368 · Powered by Claude
+                Chain ID {KiteAgentHub.Kite.ChainId.default()} · Powered by Claude
               </p>
             </div>
           </div>
@@ -3295,7 +3295,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">
                         Network
                       </p>
-                      <p class="text-sm text-white font-mono">Kite Testnet · Chain 2368</p>
+                      <p class="text-sm text-white font-mono">
+                        Kite {KiteAgentHub.Kite.ChainId.label()}
+                      </p>
                     </div>
                     <div class="text-right">
                       <p class="text-xs text-gray-500 uppercase tracking-widest mb-1 font-bold">

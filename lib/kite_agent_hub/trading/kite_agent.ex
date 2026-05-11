@@ -20,7 +20,12 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     field :agent_type, :string, default: "trading"
     field :wallet_address, :string
     field :vault_address, :string
-    field :chain_id, :integer, default: 2368
+    # Schema-level default removed in favor of runtime fill via the
+    # changeset (see fill_chain_id_default/1) so operators can flip
+    # KITE_CHAIN_ID without redeploying. The migration still carries
+    # 2368 as the DB-level default — that's the floor if no changeset
+    # path is taken.
+    field :chain_id, :integer
     field :status, :string, default: "pending"
     field :api_token, :string
     field :tags, {:array, :string}, default: []
@@ -69,6 +74,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :llm_model,
       :llm_endpoint_url
     ])
+    |> fill_chain_id_default()
     |> validate_required([:name, :organization_id])
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:agent_type, @agent_types)
@@ -349,6 +355,14 @@ defmodule KiteAgentHub.Trading.KiteAgent do
         end
       end
     end)
+  end
+
+  defp fill_chain_id_default(changeset) do
+    if get_field(changeset, :chain_id) do
+      changeset
+    else
+      put_change(changeset, :chain_id, KiteAgentHub.Kite.ChainId.default())
+    end
   end
 
   defp maybe_generate_api_token(changeset) do

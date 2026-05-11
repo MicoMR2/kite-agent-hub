@@ -57,7 +57,7 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
                     </tr></table>
                   </td>
                   <td align="right">
-                    <span style="display:inline-block;padding:5px 11px;border-radius:9999px;border:1px solid rgba(34,197,94,0.30);background:rgba(34,197,94,0.10);color:#4ade80;font-size:11px;font-weight:600;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">Testnet · 2368</span>
+                    <span style="display:inline-block;padding:5px 11px;border-radius:9999px;border:1px solid rgba(34,197,94,0.30);background:rgba(34,197,94,0.10);color:#4ade80;font-size:11px;font-weight:600;letter-spacing:0.10em;text-transform:uppercase;font-family:'JetBrains Mono','Courier New',monospace;">#{KiteAgentHub.Kite.ChainId.label()}</span>
                   </td>
                 </tr>
               </table>

@@ -203,6 +203,16 @@ if config_env() == :prod do
   config :kite_agent_hub,
     app_base_url: System.get_env("APP_BASE_URL", "https://kiteagenthub.com")
 
+  # Default Kite chain id used wherever an agent row's chain_id is nil
+  # or a freshly inserted row needs a value. Testnet (2368) stays the
+  # default so prod doesn't accidentally flip to mainnet on a misconfig.
+  # Operators flip platform-wide to mainnet by setting KITE_CHAIN_ID=2366.
+  # Routing modules (KiteAttestationWorker, GaslessClient, TxSigner)
+  # continue to carry explicit testnet/mainnet constants for dispatch.
+  config :kite_agent_hub,
+    kite_chain_id:
+      System.get_env("KITE_CHAIN_ID", "2368") |> String.to_integer()
+
   # Mailer — Resend adapter via Swoosh.
   # Swoosh 1.16 ships Swoosh.Adapters.Resend — no extra dependency.
   # Set RESEND_API_KEY via: fly secrets set RESEND_API_KEY=re_...

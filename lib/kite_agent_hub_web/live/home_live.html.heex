@@ -11,7 +11,9 @@
           <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
             <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
             </span>
-            <span class="text-sm font-mono text-gray-300">Kite Testnet · Chain 2368</span>
+            <span class="text-sm font-mono text-gray-300">
+              Kite {KiteAgentHub.Kite.ChainId.label()}
+            </span>
           </div>
           <.link
             navigate={~p"/users/log-in"}
@@ -162,7 +164,7 @@
           <span class="text-[#2dd4bf]">Kite Chain</span>
         </div>
         <p class="text-xs font-mono uppercase tracking-[0.22em] text-gray-400">
-          Testnet · 2368
+          {KiteAgentHub.Kite.ChainId.label()}
         </p>
       </div>
     </section>
@@ -321,7 +323,7 @@
           Request your invite →
         </.link>
         <p class="text-[11px] text-gray-500 mt-10 font-mono uppercase tracking-[0.22em]">
-          Built for the Kite AI Hackathon 2026 · Chain 2368
+          Built for the Kite AI Hackathon 2026 · Chain {KiteAgentHub.Kite.ChainId.default()}
         </p>
       </div>
     </section>
@@ -334,7 +336,7 @@
             Kite Agent Hub
           </span>
           <span class="text-gray-700">|</span>
-          <span class="text-xs">Chain 2368</span>
+          <span class="text-xs">Chain {KiteAgentHub.Kite.ChainId.default()}</span>
         </div>
         <span class="text-xs uppercase tracking-widest opacity-80">
           Non-custodial | Apache 2.0
