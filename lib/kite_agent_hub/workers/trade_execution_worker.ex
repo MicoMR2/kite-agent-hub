@@ -610,7 +610,10 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
               data: encode_trade_calldata(trade)
             }
 
-            case TxSigner.sign(tx, private_key, chain_id: agent.chain_id || 2368) do
+            case TxSigner.sign(tx,
+                   private_key,
+                   chain_id: agent.chain_id || KiteAgentHub.Kite.ChainId.default()
+                 ) do
               {:ok, signed_hex} ->
                 submit_tx(trade, signed_hex, owner_user_id)
 

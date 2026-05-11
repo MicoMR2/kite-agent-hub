@@ -208,7 +208,9 @@
         <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
           <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
           </span>
-          <span class="text-xs font-mono text-gray-300">Kite Testnet · Chain 2368</span>
+          <span class="text-xs font-mono text-gray-300">
+            Kite {KiteAgentHub.Kite.ChainId.label()}
+          </span>
         </div>
         <.link
           navigate={~p"/users/log-in"}
@@ -429,7 +431,7 @@
           Create free account →
         </.link>
         <p class="text-xs text-gray-600 mt-8 font-mono">
-          Built for the Kite AI Hackathon 2026 · Kite chain EVM testnet 2368
+          Built for the Kite AI Hackathon 2026 · Kite chain EVM {KiteAgentHub.Kite.ChainId.label()}
         </p>
       </div>
     </div>
@@ -472,7 +474,7 @@
         <.kah_logo class="w-6 h-6 shrink-0" />
         <span class="font-bold text-white tracking-widest uppercase text-xs">Kite Agent Hub</span>
         <span class="text-gray-700">|</span>
-        <span class="text-xs">Chain 2368</span>
+        <span class="text-xs">Chain {KiteAgentHub.Kite.ChainId.default()}</span>
       </div>
       <span class="text-xs uppercase tracking-widest opacity-80">
         Non-custodial | Apache 2.0

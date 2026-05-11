@@ -719,7 +719,7 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
                     Kite Testnet
                   </p>
                   <div class="space-y-1.5 text-xs text-gray-500 font-mono">
-                    <p>Chain ID: 2368</p>
+                    <p>Chain ID: {KiteAgentHub.Kite.ChainId.default()}</p>
                     <p>RPC: rpc-testnet.gokite.ai</p>
                     <p>Explorer: testnet.kitescan.ai</p>
                   </div>

@@ -377,7 +377,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
       >
         ← Back to home
       </.link>
-      <span class="kah-eyebrow">Chain ID 2368</span>
+      <span class="kah-eyebrow">Chain ID {KiteAgentHub.Kite.ChainId.default()}</span>
     </div>
 
     <div class="flex items-center gap-[10px] mt-4">
