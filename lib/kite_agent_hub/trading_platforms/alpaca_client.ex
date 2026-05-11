@@ -702,10 +702,33 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
         invalidate_positions_cache(key_id, env)
         ok
 
-      err ->
-        err
+      {:error, raw} = err ->
+        case humanize_options_error(symbol, env, raw) do
+          nil -> err
+          friendly -> {:error, friendly}
+        end
     end
   end
+
+  # Alpaca paper currently only supports options on NVDA. Any other
+  # underlying returns code=42210000 "asset not found", which surfaces
+  # to the agent as a raw broker error. Translate it once at the
+  # boundary so callers see an actionable message. Stocks and other
+  # 422s pass through unchanged.
+  defp humanize_options_error(symbol, "paper", raw) when is_binary(symbol) and is_binary(raw) do
+    if KiteAgentHub.Trading.OccSymbol.match?(symbol) and String.contains?(raw, "42210000") do
+      underlying =
+        case Regex.run(~r/\A([A-Z]{1,6})\d{6}[CP]\d{8}\z/, symbol) do
+          [_, u] -> u
+          _ -> symbol
+        end
+
+      "Alpaca paper options are limited to NVDA — '#{underlying}' options are not available in paper. " <>
+        "Switch to live env or use a NVDA contract."
+    end
+  end
+
+  defp humanize_options_error(_symbol, _env, _raw), do: nil
 
   @doc """
   Forward to `KiteAgentHub.Trading.OccSymbol.match?/1`. Kept on
