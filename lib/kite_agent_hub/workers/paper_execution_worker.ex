@@ -395,7 +395,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       %{
         fill_price: fill_price,
         contracts: fill_units,
-        notional_usd: Decimal.mult(Decimal.new(fill_units), fill_price)
+        notional_usd: oanda_notional_usd(trade.market, fill_units, fill_price)
       }
       |> maybe_put_order_id(order_id)
 
@@ -438,6 +438,36 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   defp maybe_put_order_id(attrs, nil), do: attrs
   defp maybe_put_order_id(attrs, id), do: Map.put(attrs, :platform_order_id, to_string(id))
+
+  # USD notional for an OANDA fill. The unit-price math depends on
+  # which currency in the pair is USD:
+  #   * USD_<quote>  (USD_JPY, USD_CAD, USD_CHF, USD_MXN, …) — base is
+  #     USD, so 1000 units = $1000 USD regardless of the exchange rate.
+  #   * <base>_USD   (EUR_USD, GBP_USD, AUD_USD, NZD_USD)    — quote is
+  #     USD, so notional = units × fill_price (existing behavior).
+  #   * Cross pair   (EUR_JPY, GBP_JPY, …)                   — needs a
+  #     USD-pivot rate that we do not have at fill time. Keep the
+  #     legacy units × fill_price math + log a warning so cross-pair
+  #     notionals are flagged for follow-up (Mico flagged
+  #     USD_JPY 1000u showing $157k 2026-05-11).
+  defp oanda_notional_usd(market, units, %Decimal{} = fill_price)
+       when is_binary(market) do
+    units_dec = Decimal.new(to_string(units))
+
+    case market do
+      "USD_" <> _quote -> units_dec
+      <<_base::binary-size(3), "_USD">> -> Decimal.mult(units_dec, fill_price)
+      _ ->
+        Logger.warning(
+          "PaperExecutionWorker: oanda notional for cross pair #{market} — USD pivot rate unavailable, using legacy units * fill_price"
+        )
+
+        Decimal.mult(units_dec, fill_price)
+    end
+  end
+
+  defp oanda_notional_usd(_market, units, %Decimal{} = fill_price),
+    do: Decimal.mult(Decimal.new(to_string(units)), fill_price)
 
   # ── Kalshi TradeRecord lifecycle ────────────────────────────────────────────
 
