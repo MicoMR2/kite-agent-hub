@@ -169,7 +169,12 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
 
   @doc """
   Fetch portfolio equity history for sparkline chart.
-  Returns {:ok, [%{t: unix_ts, v: equity_float}]} or {:error, reason}.
+
+  Returns `{:ok, %{points: [%{t, v}], base_value: float | nil}}` or
+  `{:error, reason}`. `base_value` is Alpaca's own period baseline —
+  for 1D it matches what the Alpaca app uses in its `+%` headline, so
+  KAH's daily-change card lines up exactly instead of approximating
+  against `last_equity`.
   """
   def portfolio_history(key_id, secret, period \\ "1M", timeframe \\ "1D", env \\ "paper") do
     case get(
@@ -178,16 +183,16 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
            secret,
            env
          ) do
-      {:ok, %{"timestamp" => ts, "equity" => equity}} when is_list(ts) ->
+      {:ok, %{"timestamp" => ts, "equity" => equity} = body} when is_list(ts) ->
         points =
           Enum.zip(ts, equity)
           |> Enum.reject(fn {_t, v} -> is_nil(v) end)
           |> Enum.map(fn {t, v} -> %{t: t, v: v} end)
 
-        {:ok, points}
+        {:ok, %{points: points, base_value: parse_float(body["base_value"])}}
 
       {:ok, _} ->
-        {:ok, []}
+        {:ok, %{points: [], base_value: nil}}
 
       err ->
         err
