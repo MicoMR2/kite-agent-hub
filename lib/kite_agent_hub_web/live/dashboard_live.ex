@@ -1753,6 +1753,113 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp position_unrealized_pl(_), do: "0"
 
+  # ── Forex position card helpers (msg 8983 Phorari ack) ─────────────────
+  #
+  # OANDA position rows carry both `long` and `short` legs in the same
+  # object; the active leg is the one with non-zero units. `forex_view/2`
+  # pulls that leg out and returns the fields the card needs (instrument,
+  # direction, entry price, current price from the pricing map, unrealized
+  # P&L in account currency, % move since entry). Returns `nil` when both
+  # legs are flat so the template can skip the row.
+  defp forex_view(pos, pricing_by_instrument) do
+    instrument = pos["instrument"]
+
+    leg = active_forex_leg(pos)
+
+    if leg do
+      entry = parse_oanda_float(leg["averagePrice"])
+      upl = parse_oanda_float(leg["unrealizedPL"]) || 0.0
+      units_signed = parse_oanda_float(leg["units"]) || 0.0
+      side = if units_signed >= 0, do: "long", else: "short"
+      units = abs(units_signed)
+      current = forex_current_price(instrument, pricing_by_instrument) || entry
+
+      pct_move =
+        cond do
+          is_number(entry) and is_number(current) and entry > 0 ->
+            sign = if side == "long", do: 1.0, else: -1.0
+            sign * (current - entry) / entry * 100.0
+
+          true ->
+            0.0
+        end
+
+      %{
+        instrument: instrument,
+        side: side,
+        units: units,
+        entry: entry,
+        current: current,
+        upl: upl,
+        pct_move: pct_move
+      }
+    end
+  end
+
+  defp active_forex_leg(%{"long" => %{"units" => u} = leg})
+       when is_binary(u) and u != "0" and u != "" and u != "0.0",
+       do: leg
+
+  defp active_forex_leg(%{"short" => %{"units" => u} = leg})
+       when is_binary(u) and u != "0" and u != "" and u != "0.0",
+       do: leg
+
+  defp active_forex_leg(_), do: nil
+
+  defp forex_current_price(instrument, pricing_by_instrument)
+       when is_binary(instrument) and is_map(pricing_by_instrument) do
+    case Map.get(pricing_by_instrument, instrument) do
+      %{} = price ->
+        bid = parse_oanda_float(best_bid(price))
+        ask = parse_oanda_float(best_ask(price))
+
+        cond do
+          is_number(bid) and is_number(ask) -> (bid + ask) / 2.0
+          is_number(bid) -> bid
+          is_number(ask) -> ask
+          true -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp forex_current_price(_, _), do: nil
+
+  defp parse_oanda_float(nil), do: nil
+
+  defp parse_oanda_float(v) when is_binary(v) do
+    case Float.parse(v) do
+      {f, _} -> f
+      :error -> nil
+    end
+  end
+
+  defp parse_oanda_float(v) when is_float(v), do: v
+  defp parse_oanda_float(v) when is_integer(v), do: v * 1.0
+  defp parse_oanda_float(_), do: nil
+
+  defp forex_fmt_money(nil), do: "—"
+
+  defp forex_fmt_money(v) when is_number(v) do
+    sign = if v >= 0, do: "+", else: "−"
+    sign <> "$" <> :erlang.float_to_binary(abs(v) * 1.0, decimals: 2)
+  end
+
+  defp forex_fmt_pct(nil), do: "—"
+
+  defp forex_fmt_pct(v) when is_number(v) do
+    sign = if v >= 0, do: "+", else: "−"
+    sign <> :erlang.float_to_binary(abs(v) * 1.0, decimals: 2) <> "%"
+  end
+
+  defp forex_fmt_price(nil), do: "—"
+
+  defp forex_fmt_price(v) when is_number(v) do
+    :erlang.float_to_binary(v * 1.0, decimals: 5)
+  end
+
   # TradeRecord.contracts is :decimal — render without trailing zeros
   # for whole-unit forex sizes ("1000" rather than "1000.0000000").
   defp format_units(%Decimal{} = d) do
@@ -4895,33 +5002,85 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <span class="text-xs">Loading…</span>
                     </div>
                   <% is_list(@forex_positions) && @forex_positions != [] -> %>
-                    <div class="space-y-2">
-                      <%= for pos <- @forex_positions do %>
-                        <% inst = Oanda.field(pos, "instrument", Oanda.field(pos, "symbol", "—")) %>
-                        <div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                          <div class="min-w-0">
-                            <p class="text-sm font-bold text-white">
-                              {inst}
-                            </p>
-                            <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
-                              {position_side(pos)} · units {position_units(pos)}
-                            </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <%= for pos <- @forex_positions, view = forex_view(pos, @forex_pricing_by_instrument), view != nil do %>
+                        <% up? = view.pct_move >= 0 %>
+                        <% pl_color = if view.upl >= 0, do: "text-emerald-400", else: "text-red-400" %>
+                        <% pct_color = if up?, do: "text-emerald-400", else: "text-red-400" %>
+                        <% pct_bg = if up?, do: "bg-emerald-500/10 border-emerald-500/30", else: "bg-red-500/10 border-red-500/30" %>
+                        <% direction_color =
+                          if view.side == "long",
+                            do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300",
+                            else: "bg-red-500/15 border-red-500/40 text-red-300" %>
+                        <%!-- Pip-progress bar: visualize where the
+                             current price sits relative to entry on a
+                             ±1% band. Pure CSS, no async fetch. --%>
+                        <% bar_pct =
+                          cond do
+                            view.pct_move > 1.0 -> 100.0
+                            view.pct_move < -1.0 -> 0.0
+                            true -> 50.0 + view.pct_move * 50.0
+                          end %>
+                        <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4 flex flex-col gap-3">
+                          <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                              <span class="text-base font-bold text-white tabular-nums truncate">
+                                {view.instrument}
+                              </span>
+                              <span class={"shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border " <> direction_color}>
+                                {view.side}
+                              </span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                              <span class={"px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border " <> pct_bg <> " " <> pct_color}>
+                                {forex_fmt_pct(view.pct_move)}
+                              </span>
+                              <%= if forex_agent_can_trade and @forex_oanda_env == :practice do %>
+                                <button
+                                  phx-click="forex_close_position"
+                                  phx-value-instrument={view.instrument}
+                                  data-confirm={"Close all open #{view.instrument} on OANDA practice?"}
+                                  class="px-2.5 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 text-[10px] font-bold uppercase tracking-widest text-white transition-colors shadow-sm"
+                                >
+                                  Close
+                                </button>
+                              <% end %>
+                            </div>
                           </div>
-                          <div class="flex items-center gap-3">
-                            <p class="text-sm font-mono text-emerald-300">
-                              {position_unrealized_pl(pos)}
-                            </p>
-                            <%= if forex_agent_can_trade and @forex_oanda_env == :practice do %>
-                              <button
-                                phx-click="forex_close_position"
-                                phx-value-instrument={inst}
-                                data-confirm={"Close all open #{inst} on OANDA practice?"}
-                                class="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 text-[10px] font-bold uppercase tracking-widest text-white transition-colors shadow-sm"
-                              >
-                                Close
-                              </button>
-                            <% end %>
+
+                          <div class="grid grid-cols-3 gap-2 text-[11px]">
+                            <div>
+                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">Entry</p>
+                              <p class="text-gray-200 font-mono tabular-nums">{forex_fmt_price(view.entry)}</p>
+                            </div>
+                            <div>
+                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">Current</p>
+                              <p class="text-white font-mono tabular-nums">{forex_fmt_price(view.current)}</p>
+                            </div>
+                            <div class="text-right">
+                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">P&amp;L</p>
+                              <p class={"font-mono tabular-nums font-bold " <> pl_color}>
+                                {forex_fmt_money(view.upl)}
+                              </p>
+                            </div>
                           </div>
+
+                          <%!-- Pip-progress bar within ±1% band (sparkline
+                               deferred per Phorari msg 8983; OANDA candle
+                               fetch per pair is too many HTTP calls for
+                               on-tab-load — follow-up if Mico asks). --%>
+                          <div class="relative h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                            <div class="absolute inset-y-0 left-1/2 w-px bg-white/20"></div>
+                            <div
+                              class={"absolute inset-y-0 " <> if(up?, do: "bg-emerald-500/70 left-1/2", else: "bg-red-500/70 right-1/2")}
+                              style={"width: " <> :erlang.float_to_binary(abs(bar_pct - 50.0) * 1.0, decimals: 2) <> "%;"}
+                            >
+                            </div>
+                          </div>
+
+                          <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">
+                            Units {:erlang.float_to_binary(view.units * 1.0, decimals: 0)}
+                          </p>
                         </div>
                       <% end %>
                     </div>
