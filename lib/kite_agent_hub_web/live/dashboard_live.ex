@@ -124,6 +124,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:portfolio_scores, nil)
       |> assign(:alpaca_data, nil)
       |> assign(:alpaca_history, [])
+      |> assign(:alpaca_history_base_value, nil)
       |> assign(:alpaca_period, "1M")
       |> assign(:kalshi_data, nil)
       |> assign(:kalshi_quick_trade_ticker, "")
@@ -192,6 +193,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:portfolio_scores, nil)
     |> assign(:alpaca_data, nil)
     |> assign(:alpaca_history, [])
+    |> assign(:alpaca_history_base_value, nil)
     |> assign(:alpaca_period, "1M")
     |> assign(:kalshi_data, nil)
     |> assign(:kalshi_quick_trade_ticker, "")
@@ -1848,10 +1850,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 _ -> []
               end
 
-            history =
+            {history, base_value} =
               case history_result do
-                {:ok, h} -> h
-                _ -> []
+                {:ok, %{points: pts, base_value: bv}} -> {pts, bv}
+                # Backwards-compat in case any other caller still
+                # returns the legacy list-only shape.
+                {:ok, h} when is_list(h) -> {h, nil}
+                _ -> {[], nil}
               end
 
             orders =
@@ -1863,6 +1868,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
             socket
             |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
             |> assign(:alpaca_history, history)
+            |> assign(:alpaca_history_base_value, base_value)
             |> assign(:alpaca_period, period)
 
           {:error, :unauthorized} ->
@@ -3590,6 +3596,31 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
 
+                  <%!-- Today's change row — pulled directly from
+                       Alpaca's `equity` vs `last_equity` so the dollar
+                       and % numbers match the Alpaca app's daily
+                       change badge exactly. --%>
+                  <%= if is_number(data.account.last_equity) and is_number(data.account.equity) and data.account.last_equity > 0 do %>
+                    <% day_change_usd = data.account.equity - data.account.last_equity %>
+                    <% day_change_pct = day_change_usd / data.account.last_equity * 100 %>
+                    <% is_up? = day_change_usd >= 0 %>
+                    <% sign = if is_up?, do: "+", else: "−" %>
+                    <% color_cls = if is_up?, do: "text-emerald-400", else: "text-red-400" %>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mt-3 flex items-center justify-between">
+                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                        Today
+                      </p>
+                      <div class={"flex items-baseline gap-3 text-lg font-black tabular-nums #{color_cls}"}>
+                        <span>
+                          {sign}${:erlang.float_to_binary(abs(day_change_usd), decimals: 2)}
+                        </span>
+                        <span class="text-sm font-bold opacity-90">
+                          ({sign}{:erlang.float_to_binary(abs(day_change_pct), decimals: 2)}%)
+                        </span>
+                      </div>
+                    </div>
+                  <% end %>
+
                   <%!-- Margin / shortable strip — Reg-T BP, Day-Trade BP,
                        account multiplier, shorting status. These come
                        from `AlpacaClient.account/3` (PR #248) and were
@@ -3654,18 +3685,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </p>
                       <%= if length(@alpaca_history) > 1 do %>
                         <% last_val = List.last(@alpaca_history).v %>
-                        <%!-- 1D baseline aligns with Alpaca's own dashboard %:
-                             prior-session close (`last_equity` on the account
-                             endpoint), not the first chart point at today's
-                             market open. Other periods continue to use the
-                             first chart point. --%>
+                        <%!-- Alpaca's portfolio_history endpoint returns
+                             `base_value` — the exact baseline Alpaca uses for
+                             the requested period (matches the % shown in the
+                             Alpaca app). Prefer it. Fall back to the first
+                             chart point if the field is missing (e.g. on
+                             very old data or a custom range). --%>
                         <% first_val =
                           cond do
-                            @alpaca_period == "1D" and
-                              is_map(@alpaca_data) and
-                              is_number(@alpaca_data[:last_equity]) and
-                              @alpaca_data[:last_equity] > 0 ->
-                              @alpaca_data[:last_equity]
+                            is_number(@alpaca_history_base_value) and
+                                @alpaca_history_base_value > 0 ->
+                              @alpaca_history_base_value
 
                             true ->
                               List.first(@alpaca_history).v
