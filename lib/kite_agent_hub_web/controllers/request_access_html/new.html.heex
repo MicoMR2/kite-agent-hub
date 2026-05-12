@@ -11,9 +11,21 @@
     </div>
 
     <div class="relative w-full max-w-md">
+      <%!-- Back-to-home link so the page is never a dead-end. --%>
+      <div class="mb-6 text-left">
+        <.link
+          navigate={~p"/"}
+          class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors font-medium"
+        >
+          <span aria-hidden="true">←</span>
+          Back to home
+        </.link>
+      </div>
       <%!-- Header --%>
       <div class="text-center mb-10">
-        <.kah_logo class="w-14 h-14 mx-auto mb-6 drop-shadow-[0_0_24px_rgba(34,197,94,0.55)]" />
+        <.link navigate={~p"/"} aria-label="Kite Agent Hub home">
+          <.kah_logo class="w-14 h-14 mx-auto mb-6 drop-shadow-[0_0_24px_rgba(34,197,94,0.55)]" />
+        </.link>
         <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-semibold text-gray-200 mb-5 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.02)]">
           <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
           </span>
