@@ -7,7 +7,8 @@ This runbook describes how a user runs the **client-side trade executor** for
 a Kite Agent Hub (KAH) agent that has opted into the Passport **per-trade fee
 rail**. KAH itself never executes the trade and never holds the user's
 brokerage credentials or Passport authority — see the [Non-custodial
-invariant](#non-custodial-invariant) below.
+invariant](#non-custodial-invariant) immediately below the architecture
+diagram.
 
 ## Audience
 
@@ -47,17 +48,25 @@ actual broker order) and any credentials needed to authorize it.
 
 ## Non-custodial invariant
 
-**KAH never receives or stores brokerage credentials or any Passport JWT.**
+**KAH never receives, stores, or processes any of the following** (CyberSec
+ask 6, msg 9140):
 
-- Brokerage keys (Alpaca, Kalshi, OANDA) live on the user's machine only.
-- The Passport that funds the per-trade fee is the user's; KAH only sees the
-  public `passport_wallet_address` they pasted into the linking form.
-- The x402 receipt KAH validates is a public payment proof on the vault
-  address. It is not an authorization token and grants no access.
+- Brokerage api_key
+- Brokerage api_secret
+- kpass private key
+- Passport JWT / session token
+- User wallet private key
 
-If a future change to this runbook ever instructs you to send a JWT, kpass
-session token, or brokerage key to a KAH endpoint, treat the document as
-compromised and stop.
+Each of these stays on the user's machine, in the user's secret store. The
+only Passport-related value KAH ever holds is the **public**
+`passport_wallet_address` the user pasted into the linking form (PR-5). The
+only payment-related value KAH ever holds is the **opaque x402 receipt
+string** (PR-4) — a public payment proof against the vault address, not an
+authorization token.
+
+If a future change to this runbook ever instructs you to send any item from
+the bullet list above to a KAH endpoint, treat the document as compromised
+and stop.
 
 ## Auth
 
@@ -101,7 +110,9 @@ while true; do
   #    a. Look up symbol/side/qty in the whitelisted fields.
   #    b. Execute on your broker using LOCAL credentials.
   #    c. If Rail B, pay the x402 fee via your kpass client and capture
-  #       the receipt as $RECEIPT.
+  #       the receipt as $RECEIPT. The receipt is an opaque base64
+  #       string (CyberSec ask 5, msg 9140) — never parse or modify
+  #       it; pass it through to KAH as-is.
   #    d. POST the trade back to KAH for attestation:
   #
   #       curl -fsSL -X POST \
@@ -159,7 +170,7 @@ unique-index level rather than producing a second event.
 | `200`  | Events returned (possibly empty) | Process each event, then re-poll. |
 | `204`  | `ack` accepted | Continue. |
 | `401`  | Bad/missing `Authorization` header | Stop. Check the agent token. |
-| `402`  | `POST /api/v1/trades` from a `per_trade` agent without an `X-Payment-Receipt` | Pay the fee via kpass, retry with the receipt header. |
+| `402`  | `POST /api/v1/trades` from a `per_trade` agent without an `X-Payment-Receipt` | Pay the fee via kpass, then **retry the exact same trade body with the `X-Payment-Receipt` header added** (CyberSec ask 7, msg 9140). Do **not** re-issue a different or re-randomized trade — that bypasses the idempotency guard on `TradeExecutionWorker` and can produce duplicate broker orders. |
 | `404`  | `ack` for an event id this agent does not own (or that does not exist) | Skip. The API intentionally collapses both cases to 404 to prevent cross-agent enumeration. |
 | `409`  | `X-Payment-Receipt` replay — KAH has already logged this receipt | Treat as success and skip. The fee is already booked. |
 | `429`  | Rate-limited | Back off (exponential, ≥1s start). The endpoint enforces a per-agent cap on the same limiter as the trade endpoint. |
