@@ -2494,16 +2494,31 @@ defmodule KiteAgentHubWeb.DashboardLive do
             class="flex gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             id="dashboard-tabs"
           >
-            <%= for {label, tab_key} <- [{"Overview", "overview"}, {"Attestations", "attestations"}, {"Kite Wallet", "wallet"}, {"EdgeScorer", "edge_scorer"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"ForEx", "forex"}, {"Portfolio", "portfolio"}, {"Agent Logs", "logs"}] do %>
+            <%!-- Per-venue connector logos (nil for non-venue tabs). Rendered
+                 inline before the label so users see the same brand mark
+                 they get from the home brand belt pre-signin. --%>
+            <%= for {label, tab_key, logo} <- [
+              {"Overview", "overview", nil},
+              {"Attestations", "attestations", nil},
+              {"Kite Wallet", "wallet", "/images/connectors/kite_chain.png"},
+              {"EdgeScorer", "edge_scorer", nil},
+              {"Alpaca", "alpaca", "/images/connectors/alpaca.png"},
+              {"Kalshi", "kalshi", "/images/connectors/kalshi.png"},
+              {"Polymarket", "polymarket", "/images/connectors/polymarket.png"},
+              {"ForEx", "forex", "/images/connectors/oanda.png"},
+              {"Portfolio", "portfolio", nil},
+              {"Agent Logs", "logs", nil}
+            ] do %>
               <button
                 id={"tab-#{tab_key}"}
                 phx-click="switch_tab"
                 phx-value-tab={tab_key}
                 class={[
-                  "px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  "inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap",
                   dashboard_tab_class(tab_key, @active_tab == String.to_atom(tab_key))
                 ]}
               >
+                <img :if={logo} src={logo} alt="" class="h-4 w-4 object-contain" />
                 {label}
               </button>
             <% end %>
