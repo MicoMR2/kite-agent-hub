@@ -24,6 +24,16 @@ defmodule KiteAgentHub.Application do
       read_concurrency: true
     ])
 
+    # Vault balance cache (Passport transparency marker, PR vault-balance-
+    # 2026-05-11). Owned by the application root process so it outlives
+    # any LiveView mount that races to be the first reader.
+    :ets.new(:kah_vault_balance_cache, [
+      :set,
+      :public,
+      :named_table,
+      read_concurrency: true
+    ])
+
     children = [
       KiteAgentHubWeb.Telemetry,
       KiteAgentHub.Repo,
