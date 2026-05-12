@@ -2169,17 +2169,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp wei_to_eth(nil), do: nil
 
-  # Wei → KITE display string. Uses Decimal to preserve sub-penny
-  # precision so the standard 0.00001 KITE per-attestation fee
-  # renders as "0.00001" instead of being truncated to "0.0000"
-  # by 4-decimal Float rounding. Returns a normalized string
-  # (no scientific notation) ready for HEEx interpolation.
   defp wei_to_eth(wei) when is_integer(wei) do
-    wei
-    |> Decimal.new()
-    |> Decimal.div(Decimal.new("1000000000000000000"))
-    |> Decimal.round(8)
-    |> Decimal.to_string(:normal)
+    Float.round(wei / 1_000_000_000_000_000_000, 4)
   end
 
   # Format an ERC-20 token balance from Blockscout. Blockscout returns the
