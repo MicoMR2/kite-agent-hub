@@ -141,32 +141,82 @@ defmodule KiteAgentHub.Credentials do
 
   @doc """
   Upsert a credential for an org + provider. Returns {:ok, credential} or {:error, changeset}.
+
+  Pass `actor_user_id` to enable audit logging for live-slot mutations
+  (CyberSec ask 8 on PR #364). When nil, no audit row is written —
+  used by tests and internal call sites that don't have a user
+  context.
   """
-  def upsert_credential(org_id, provider, attrs) do
-    attrs = Map.merge(attrs, %{"org_id" => org_id, "provider" => to_string(provider)})
+  def upsert_credential(org_id, provider, attrs, actor_user_id \\ nil) do
+    provider_str = to_string(provider)
+    attrs = Map.merge(attrs, %{"org_id" => org_id, "provider" => provider_str})
 
-    case get_credential(org_id, provider) do
-      nil ->
-        %ApiCredential{}
-        |> ApiCredential.changeset(attrs)
-        |> Repo.insert()
+    result =
+      case get_credential(org_id, provider_str) do
+        nil ->
+          %ApiCredential{}
+          |> ApiCredential.changeset(attrs)
+          |> Repo.insert()
+          |> tag_action(:credential_created)
 
-      existing ->
-        existing
-        |> ApiCredential.update_changeset(attrs)
-        |> Repo.update()
+        existing ->
+          existing
+          |> ApiCredential.update_changeset(attrs)
+          |> Repo.update()
+          |> tag_action(:credential_updated)
+      end
+
+    audit_if_live(result, actor_user_id, org_id, provider_str)
+
+    case result do
+      {:ok, {value, _action}} -> {:ok, value}
+      {:error, _} = err -> err
     end
   end
 
   @doc """
   Delete a credential. Silently succeeds if not found.
+
+  Pass `actor_user_id` to enable audit logging for live-slot deletes.
   """
-  def delete_credential(org_id, provider) do
-    case get_credential(org_id, provider) do
-      nil -> :ok
-      credential -> Repo.delete(credential)
+  def delete_credential(org_id, provider, actor_user_id \\ nil) do
+    provider_str = to_string(provider)
+
+    case get_credential(org_id, provider_str) do
+      nil ->
+        :ok
+
+      credential ->
+        case Repo.delete(credential) do
+          {:ok, _} = ok ->
+            audit_if_live({:ok, {credential, :credential_deleted}}, actor_user_id, org_id, provider_str)
+            ok
+
+          {:error, _} = err ->
+            err
+        end
     end
   end
+
+  defp tag_action({:ok, value}, action), do: {:ok, {value, action}}
+  defp tag_action({:error, _} = err, _action), do: err
+
+  defp audit_if_live({:ok, {_value, action}}, actor_user_id, org_id, provider)
+       when not is_nil(actor_user_id) do
+    if provider in ApiCredential.live_providers() do
+      KiteAgentHub.Audit.log_live_credential_event(
+        actor_user_id,
+        org_id,
+        action,
+        provider,
+        %{}
+      )
+    end
+
+    :ok
+  end
+
+  defp audit_if_live(_, _, _, _), do: :ok
 
   @doc """
   List all configured providers for an org. Returns list of provider strings.

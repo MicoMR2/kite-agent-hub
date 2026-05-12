@@ -149,8 +149,43 @@ Agent transactions use EIP-3009 off-chain signatures submitted to Kite's relayer
 ### Account Abstraction SDK (`gokite-aa-sdk`)
 Smart contract wallets via ERC-4337. `getAccountAddress()` generates deterministic wallet addresses from any signer. `sendUserOperationAndWait()` submits user operations through the bundler. Spending controls enforce per-agent budgets with time windows.
 
-### Kite Agent Passport
-OAuth-based agent identity layer. Agents register an ID and sign spending rules (a "Session"). The Kite MCP Tool handles `kite.pay()` calls — authorization, retries, and on-chain execution — without building identity infrastructure from scratch.
+### Kite Agent Passport (Rail B — Per-Trade Fee, Non-Custodial)
+
+Agents can opt into a **non-custodial Rail B** where the user's own Kite Passport pays a per-trade USDC fee to the KAH ops vault. KAH never holds the user's Passport JWT, brokerage credentials, or signing authority — the only Passport value KAH stores is the public `passport_wallet_address` pasted into the linking form.
+
+**Setup (per agent):**
+1. Go to `/users/settings/agents` → expand the **Passport · Payment rail** panel
+2. Paste your Passport `user_id`, `agent_id`, and wallet address
+3. Select payment rail = `per_trade`
+
+**Trade flow:**
+- `POST /api/v1/trades` from a per_trade agent without `X-Payment-Receipt` → `402 Payment Required` with the vault envelope
+- Client pays the fee via kpass, retries the same trade body with the receipt header
+- KAH verifies the payee matches `VaultConfig.address/0`, writes a row to `fee_accruals` (replay-guarded on `x402_receipt`), and routes the trade intent to the `trigger_events` outbox
+- Client polls `GET /api/v1/triggers/pending` (long-poll, claims rows atomically), executes the order on the brokerage with **its own** credentials, then `POST /api/v1/triggers/:id/ack`
+
+Full client runbook (poll loop, error handling, idempotency rules): [`docs/passport-client-runbook.md`](docs/passport-client-runbook.md).
+
+### Vault Transparency Badge
+
+The landing page shows the KAH ops vault address (`0xFC74…3465`) and its live USDC balance. The vault is the public payee for every Rail B per-trade fee — anyone can verify the on-chain ledger before linking a Passport. Loaded server-side from `KiteAgentHub.Kite.VaultConfig.address/0` (Fly secret `KAH_VAULT_ADDRESS`, never committed) and cached for 60s; balance comes from Blockscout (testnet.kitescan.ai).
+
+### Credential Management — Paper vs Live Slots
+
+Each broker (Alpaca, Kalshi, OANDA) exposes two clearly separated credential slots:
+
+- **Paper / Sandbox** (emerald section) — settles on Kite testnet (chain `2368`). Test trades, no real money.
+- **Live · Real money** (red section) — settles on Kite mainnet (chain `2366`). Live keys require an unmissable confirmation checkbox before save, and a second checkbox if the pasted `key_id` matches the paper counterpart (likely paste mistake).
+
+Polymarket is live-only — no paper slot exists.
+
+Routing happens at trade time via a single server-side helper (`KiteAgentHub.Credentials.broker_slug_for(agent, broker_root)`) keyed off the agent's `chain_id`. The split is enforced in three layers:
+
+1. UI sections (visual separation, distinct colors)
+2. Server-side checkbox gates on save (`live_confirm`, `reuse_confirm`)
+3. Runtime fail-closed in `TradeExecutionWorker` / `PaperExecutionWorker` — any per_trade-rail agent that somehow reaches the KAH-custodial broker path is rejected with `{:cancel, "per_trade_agent_must_use_client_execution"}`
+
+Live-slot credential mutations write append-only rows to `audit_logs` (no FK on actor/org so the trail survives user/org deletion; metadata sanitized for credentials and PII before insert).
 
 ---
 
@@ -201,12 +236,20 @@ Kite Collective Intelligence (KCI) is workspace-scoped, opt-in shared trade lear
 
 All endpoints require `Authorization: Bearer <agent_api_token>`.
 
+External integrators running the **non-custodial Rail B** flow should start with [`docs/passport-client-runbook.md`](docs/passport-client-runbook.md) — it documents the poll loop, the response shape allowlist, the 402-retry contract, and the idempotency rules.
+
 ### Trades
 ```
 POST   /api/v1/trades              Submit trade signal
 GET    /api/v1/trades              List trades (?status=open&limit=50)
 GET    /api/v1/trades/:id          Get single trade
 DELETE /api/v1/trades/:id          Cancel trade
+```
+
+### Triggers (Rail B trigger dispatch)
+```
+GET    /api/v1/triggers/pending    Long-poll up to 10s; claims pending events atomically
+POST   /api/v1/triggers/:id/ack    Acknowledge a delivered event (204 on owned, 404 otherwise)
 ```
 
 #### Trade payload

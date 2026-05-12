@@ -155,6 +155,15 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     live_slot? = provider in KiteAgentHub.Credentials.ApiCredential.live_providers()
     confirmed? = Map.get(params, "live_confirm") in ["true", "on", true]
 
+    # Cross-slot key-reuse guard (CyberSec asks 6 + 7, msg 9199).
+    # When the pasted key_id matches the counterpart slot for the
+    # same broker family (paper alpaca ↔ alpaca_live, etc.), require
+    # a second explicit confirmation. Server-side enforced so the
+    # client cannot bypass via DevTools.
+    counterpart = counterpart_slug(provider)
+    reuse_conflict? = key_collision?(org.id, counterpart, key_id)
+    reuse_confirmed? = Map.get(params, "reuse_confirm") in ["true", "on", true]
+
     cond do
       live_slot? and not confirmed? ->
         {:noreply,
@@ -162,8 +171,38 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
          |> assign(:form_errors, %{live_confirm: ["You must confirm this is real money before saving."]})
          |> put_flash(:error, "Live-money keys need the 'I understand' checkbox before they can save.")}
 
+      reuse_conflict? and not reuse_confirmed? ->
+        {:noreply,
+         socket
+         |> assign(:form_errors, %{
+           reuse_confirm: [
+             "This key_id matches the existing #{counterpart} slot. Confirm this is intentional (likely a paste mistake)."
+           ]
+         })
+         |> put_flash(:error, "Same key_id is already saved on the counterpart slot. Confirm to proceed.")}
+
       true ->
         save_credential(socket, org, provider, key_id, secret, env, params)
+    end
+  end
+
+  # Map a provider slug to its paper/live counterpart for cross-slot
+  # reuse detection. Polymarket has no counterpart (live-only).
+  defp counterpart_slug("alpaca"), do: "alpaca_live"
+  defp counterpart_slug("alpaca_live"), do: "alpaca"
+  defp counterpart_slug("kalshi"), do: "kalshi_live"
+  defp counterpart_slug("kalshi_live"), do: "kalshi"
+  defp counterpart_slug("oanda"), do: "oanda_live"
+  defp counterpart_slug("oanda_live"), do: "oanda"
+  defp counterpart_slug(_), do: nil
+
+  defp key_collision?(_org_id, nil, _key_id), do: false
+  defp key_collision?(_org_id, _counterpart, key_id) when key_id in [nil, ""], do: false
+
+  defp key_collision?(org_id, counterpart, key_id) when is_binary(key_id) do
+    case Credentials.get_credential(org_id, counterpart) do
+      %{key_id: ^key_id} -> true
+      _ -> false
     end
   end
 
@@ -178,9 +217,11 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       |> maybe_put(params, "account_id")
       |> maybe_put(params, "server")
 
+    actor_user_id = socket.assigns.current_scope && socket.assigns.current_scope.user && socket.assigns.current_scope.user.id
+
     result =
       try do
-        Credentials.upsert_credential(org.id, provider, attrs)
+        Credentials.upsert_credential(org.id, provider, attrs, actor_user_id)
       rescue
         e -> {:error, {:exception, Exception.message(e)}}
       end
@@ -210,8 +251,10 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   def handle_event("delete", %{"provider" => provider}, socket) do
     org = socket.assigns.org
 
+    actor_user_id = socket.assigns.current_scope && socket.assigns.current_scope.user && socket.assigns.current_scope.user.id
+
     try do
-      Credentials.delete_credential(org.id, provider)
+      Credentials.delete_credential(org.id, provider, actor_user_id)
     rescue
       e ->
         Logger.error("ApiKeysLive: delete_credential crashed: #{inspect(e)}")
@@ -616,6 +659,21 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                   </label>
                   <%= if err = get_in(@form_errors, [:live_confirm, Access.at(0)]) do %>
                     <p class="text-xs text-red-400">{err}</p>
+                  <% end %>
+
+                  <%!-- Cross-slot key-reuse confirmation (CyberSec ask 7, msg 9199).
+                       Only rendered after the server has detected a key_id collision
+                       with the paper counterpart; the field is otherwise harmless to
+                       include unconditionally since the server-side check is what
+                       gates the save. --%>
+                  <%= if get_in(@form_errors, [:reuse_confirm, Access.at(0)]) do %>
+                    <label class="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 cursor-pointer">
+                      <input type="checkbox" name="reuse_confirm" value="true" class="mt-0.5" />
+                      <span class="text-xs text-amber-100 leading-relaxed">
+                        <strong class="font-bold">This key matches my paper / sandbox slot.</strong> I am intentionally using the same key_id for live trading and this is not a paste mistake.
+                      </span>
+                    </label>
+                    <p class="text-xs text-amber-300">{get_in(@form_errors, [:reuse_confirm, Access.at(0)])}</p>
                   <% end %>
 
                   <div class="flex items-center gap-3 pt-1">
