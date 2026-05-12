@@ -38,4 +38,37 @@ defmodule KiteAgentHub.Kite.ChainId do
   def label(@mainnet), do: "Mainnet · #{@mainnet}"
   def label(n) when is_integer(n), do: "Chain · #{n}"
   def label(_), do: label(@testnet)
+
+  @doc """
+  Allowlist of chain ids accepted on the user-driven mutation path
+  (CyberSec ask 1, msg 9212). The new-row default fill still uses
+  `default/0`, but a user changing chain via the agent settings UI
+  must pass one of these explicit values.
+  """
+  @spec valid_chain_ids() :: [integer()]
+  def valid_chain_ids, do: [@testnet, @mainnet]
+
+  @doc "Convenience accessor for the testnet chain id constant."
+  @spec testnet() :: integer()
+  def testnet, do: @testnet
+
+  @doc "Convenience accessor for the mainnet chain id constant."
+  @spec mainnet() :: integer()
+  def mainnet, do: @mainnet
+
+  @doc """
+  Whether the mainnet signing key is configured on this instance.
+  Returns boolean only — never the key value itself (CyberSec ask 2,
+  msg 9212). Gates the user-driven testnet→mainnet flip in
+  `AgentsLive.handle_event("select_chain", …)` before any
+  `Repo.update` runs.
+  """
+  @spec mainnet_available?() :: boolean()
+  def mainnet_available? do
+    case Application.get_env(:kite_agent_hub, :agent_private_key_mainnet) ||
+           System.get_env("AGENT_PRIVATE_KEY_MAINNET") do
+      v when is_binary(v) and byte_size(v) > 0 -> true
+      _ -> false
+    end
+  end
 end

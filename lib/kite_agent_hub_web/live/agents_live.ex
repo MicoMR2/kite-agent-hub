@@ -12,9 +12,16 @@ defmodule KiteAgentHubWeb.AgentsLive do
   use KiteAgentHubWeb, :live_view
 
   alias KiteAgentHub.{Orgs, Repo, Trading}
-  alias KiteAgentHub.Kite.VaultConfig
+  alias KiteAgentHub.Kite.{ChainId, VaultConfig}
   alias KiteAgentHub.Passport.Passports
   alias KiteAgentHub.Trading.KiteAgent
+
+  # Soft rate-limit on chain_id flips per agent (CyberSec ask 9, msg
+  # 9212). Server-side timestamp check in :ets — no DB column, no
+  # new infra. The :kah_chain_flip_cooldown table is created lazily
+  # on the first flip.
+  @chain_flip_cooldown_ms 60_000
+  @chain_flip_table :kah_chain_flip_cooldown
 
   @impl true
   def mount(_params, _session, socket) do
@@ -257,6 +264,139 @@ defmodule KiteAgentHubWeb.AgentsLive do
 
       _ ->
         {:noreply, put_flash(socket, :error, "Could not update payment rail.")}
+    end
+  end
+
+  def handle_event("select_chain", %{"agent_id" => id} = params, socket) do
+    chain_id =
+      case params["chain_id"] do
+        n when is_integer(n) -> n
+        s when is_binary(s) -> case Integer.parse(s), do: ({n, ""} -> n; _ -> nil)
+        _ -> nil
+      end
+
+    valid_chains = ChainId.valid_chain_ids()
+    mainnet = ChainId.mainnet()
+    actor_user_id = socket.assigns.current_scope.user.id
+
+    with %KiteAgent{} = agent <- find_owned_agent(socket, id),
+         true <- chain_id in valid_chains,
+         :ok <- check_cooldown(agent.id),
+         :ok <- check_mainnet_gate(chain_id, params, mainnet),
+         {:ok, updated} <-
+           Trading.update_agent_chain(agent, %{"chain_id" => chain_id}, actor_user_id) do
+      record_flip(updated.id)
+
+      flash_msg =
+        cond do
+          agent.chain_id == updated.chain_id ->
+            "Chain unchanged."
+
+          updated.chain_id == mainnet ->
+            "Switched to Mainnet. " <> open_position_warning(agent) <> passport_warning(agent)
+
+          true ->
+            "Switched to Testnet. " <> open_position_warning(agent) <> passport_warning(agent)
+        end
+
+      {:noreply,
+       socket
+       |> assign(:agents, replace_agent(socket.assigns.agents, updated))
+       |> put_flash(:info, flash_msg)}
+    else
+      nil ->
+        {:noreply, put_flash(socket, :error, "Agent not found.")}
+
+      false ->
+        {:noreply, put_flash(socket, :error, "Invalid chain id.")}
+
+      {:error, :mainnet_unavailable} ->
+        {:noreply,
+         put_flash(socket, :error, "Mainnet is not available on this instance (operator must set AGENT_PRIVATE_KEY_MAINNET).")}
+
+      {:error, :mainnet_confirmation_required} ->
+        {:noreply,
+         put_flash(socket, :error, "Switching to Mainnet requires the confirmation checkbox.")}
+
+      {:error, :cooldown} ->
+        {:noreply, put_flash(socket, :error, "Chain switches are rate-limited to one per minute per agent. Try again shortly.")}
+
+      {:error, %Ecto.Changeset{} = cs} ->
+        require Logger
+
+        Logger.error(
+          "AgentsLive select_chain failed agent_id=#{id} chain_id=#{chain_id} errors=#{inspect(cs.errors)}"
+        )
+
+        {:noreply, put_flash(socket, :error, "Could not update chain.")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Could not update chain.")}
+    end
+  end
+
+  # CyberSec ask 2, msg 9212: server-side check that
+  # AGENT_PRIVATE_KEY_MAINNET is set AND that the user ticked the
+  # live-confirmation checkbox before allowing a mainnet flip. Both
+  # gates run BEFORE Repo.update.
+  defp check_mainnet_gate(chain_id, params, mainnet) do
+    cond do
+      chain_id != mainnet -> :ok
+      not ChainId.mainnet_available?() -> {:error, :mainnet_unavailable}
+      not (Map.get(params, "mainnet_confirm") in ["true", "on", true]) ->
+        {:error, :mainnet_confirmation_required}
+      true -> :ok
+    end
+  end
+
+  # CyberSec ask 9, msg 9212: 1 flip/min/agent soft rate limit.
+  # ETS-backed; the table is lazily created on first call and lives
+  # for the lifetime of the BEAM process. A reject returns
+  # {:error, :cooldown} so the LV surface flashes instead of raising.
+  defp check_cooldown(agent_id) do
+    ensure_cooldown_table()
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@chain_flip_table, agent_id) do
+      [{^agent_id, ts}] when now - ts < @chain_flip_cooldown_ms -> {:error, :cooldown}
+      _ -> :ok
+    end
+  end
+
+  defp record_flip(agent_id) do
+    ensure_cooldown_table()
+    :ets.insert(@chain_flip_table, {agent_id, System.monotonic_time(:millisecond)})
+  end
+
+  defp ensure_cooldown_table do
+    case :ets.whereis(@chain_flip_table) do
+      :undefined ->
+        try do
+          :ets.new(@chain_flip_table, [:named_table, :public, :set, read_concurrency: true])
+          :ok
+        rescue
+          ArgumentError -> :ok
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp open_position_warning(agent) do
+    case Trading.count_open_trades(agent.id) do
+      n when is_integer(n) and n > 0 ->
+        "Note: #{n} open position(s) were NOT auto-closed on the broker — close manually if needed. "
+
+      _ ->
+        ""
+    end
+  end
+
+  defp passport_warning(agent) do
+    case Passports.get_active_link(agent.id) do
+      nil -> ""
+      _ -> "Note: this agent has an active Passport link — the wallet may be chain-specific; unlink + relink if needed."
     end
   end
 
@@ -755,6 +895,68 @@ defmodule KiteAgentHubWeb.AgentsLive do
                       <div class="px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest text-gray-600 bg-white/[0.02] cursor-not-allowed text-center">
                         Monthly · post-hackathon
                       </div>
+                    </div>
+
+                    <%!-- Chain selector (Testnet/Mainnet) --%>
+                    <div class="space-y-2">
+                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                        Settlement chain
+                      </p>
+                      <form phx-submit="select_chain" class="space-y-2">
+                        <input type="hidden" name="agent_id" value={agent.id} />
+                        <div class="grid grid-cols-2 gap-2">
+                          <button
+                            type="submit"
+                            name="chain_id"
+                            value={ChainId.testnet()}
+                            class={[
+                              "px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest",
+                              agent.chain_id == ChainId.testnet() &&
+                                "border-emerald-400 bg-emerald-500/10 text-emerald-200",
+                              agent.chain_id != ChainId.testnet() &&
+                                "border-white/10 text-gray-400 hover:text-white hover:border-white/20"
+                            ]}
+                          >
+                            Testnet · {ChainId.testnet()}
+                          </button>
+                          <% mainnet_ready? = ChainId.mainnet_available?() %>
+                          <%= if mainnet_ready? do %>
+                            <button
+                              type="submit"
+                              name="chain_id"
+                              value={ChainId.mainnet()}
+                              class={[
+                                "px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest",
+                                agent.chain_id == ChainId.mainnet() &&
+                                  "border-red-400 bg-red-500/15 text-red-100",
+                                agent.chain_id != ChainId.mainnet() &&
+                                  "border-red-500/30 text-red-300 hover:text-red-100 hover:border-red-400"
+                              ]}
+                            >
+                              Mainnet · {ChainId.mainnet()}
+                            </button>
+                          <% else %>
+                            <div class="px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest text-gray-600 bg-white/[0.02] cursor-not-allowed text-center" title="Operator must set AGENT_PRIVATE_KEY_MAINNET to enable Mainnet">
+                              Mainnet · disabled
+                            </div>
+                          <% end %>
+                        </div>
+
+                        <%!-- Confirmation checkbox required when target is Mainnet
+                             (CyberSec ask 5, msg 9212 — server-enforced; UI just
+                             surfaces the requirement). --%>
+                        <%= if mainnet_ready? and agent.chain_id != ChainId.mainnet() do %>
+                          <label class="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 cursor-pointer">
+                            <input type="checkbox" name="mainnet_confirm" value="true" class="mt-0.5" />
+                            <span class="text-[11px] text-red-100 leading-relaxed">
+                              <strong class="font-bold">I understand switching to Mainnet</strong> will route trades using my live brokerage credentials and settle fees on Kite Mainnet.
+                            </span>
+                          </label>
+                        <% end %>
+                      </form>
+                      <p class="text-[10px] text-gray-500">
+                        Testnet uses your paper / sandbox broker keys; Mainnet uses your live broker keys. Per-trade Passport fees settle on the chosen chain.
+                      </p>
                     </div>
 
                     <%!-- Connect Passport panel --%>

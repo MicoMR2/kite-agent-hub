@@ -69,6 +69,44 @@ defmodule KiteAgentHub.Trading do
   Profile-only update (name, tags, bio). Cannot change api_token,
   wallet, org, or status — see `KiteAgent.profile_changeset/2`.
   """
+  @doc """
+  User-driven chain_id mutation. Validates the new chain_id against
+  `Kite.ChainId.valid_chain_ids/0` via `KiteAgent.chain_changeset/2`
+  and writes an `agent_chain_changed` audit row on successful
+  transition (CyberSec ask 6, msg 9212 — no-op saves skipped at the
+  audit layer).
+
+  Returns `{:ok, agent}` on success or `{:error, changeset}` on a
+  validation failure. The audit write is soft-failure (logs, does
+  not block the mutation) per the credential-audit pattern from
+  PR #365.
+
+  `actor_user_id` is required for the audit trail. Callers MUST
+  thread it from `socket.assigns.current_scope.user.id`, not from
+  request params.
+  """
+  def update_agent_chain(%KiteAgent{} = agent, %{"chain_id" => _} = attrs, actor_user_id)
+      when not is_nil(actor_user_id) do
+    changeset = KiteAgent.chain_changeset(agent, attrs)
+
+    case Repo.update(changeset) do
+      {:ok, updated} = ok ->
+        KiteAgentHub.Audit.log_chain_change(
+          actor_user_id,
+          agent.organization_id,
+          agent.id,
+          agent.chain_id,
+          updated.chain_id
+        )
+
+        Phoenix.PubSub.broadcast(@pubsub, "agent:#{updated.id}", {:agent_updated, updated})
+        ok
+
+      err ->
+        err
+    end
+  end
+
   def update_agent_profile(%KiteAgent{} = agent, attrs) do
     case agent
          |> KiteAgent.profile_changeset(attrs)
