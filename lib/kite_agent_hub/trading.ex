@@ -319,6 +319,82 @@ defmodule KiteAgentHub.Trading do
     |> elem(1)
   end
 
+  @doc """
+  Realized P&L for a settling SELL trade computed against the agent's
+  prior settled BUY fills on the same `(platform, market)` (CyberSec
+  ask 3, msg 9222 — scope is strictly (agent_id, platform, market)).
+  Returns a `Decimal`.
+
+  Buys / non-sell actions return `Decimal.new(0)` — there is nothing
+  realized until the position is closed. Nil `fill_price` /
+  `contracts` short-circuit to `Decimal.new(0)` so a broker row with
+  partial data never crashes settlement (Phorari refinement,
+  msg 9221).
+
+  CyberSec ask 1 (msg 9222): every arithmetic step uses Decimal —
+  zero Float coercion. Strings are cast via `Decimal.cast/1`.
+
+  CyberSec ask 2 (msg 9222) — concurrent-settle:
+  AlpacaSettlementWorker globally single-flights via
+  `unique: [period: 30, fields: [:worker]]` and iterates trades
+  sequentially; PaperExecutionWorker single-flights per
+  `(agent_id, provider, symbol, side)`. Both modern paths guarantee
+  no two sells on the same agent+market settle concurrently, so the
+  FIFO read does not need a `SELECT FOR UPDATE`. The legacy
+  `SettlementWorker` deduplicates on `args` only — concurrent
+  same-market sells with different args are theoretically possible
+  but the worker is on the way out and the read is followed
+  immediately by `settle_trade/2`'s `Repo.update`; the window is
+  microseconds. Documented; no DB-level lock added.
+  """
+  @spec compute_realized_pnl_for_sell(KiteAgentHub.Trading.TradeRecord.t()) :: Decimal.t()
+  def compute_realized_pnl_for_sell(trade)
+
+  def compute_realized_pnl_for_sell(%TradeRecord{action: "sell"} = trade) do
+    with sell_price when not is_nil(sell_price) <- decimal_or_nil(trade.fill_price),
+         qty when not is_nil(qty) <- decimal_or_nil(trade.contracts) do
+      lots = prior_buy_lots(trade)
+      {pnl, _remaining} = consume_fifo_lots(lots, qty, sell_price, Decimal.new(0))
+      pnl
+    else
+      _ -> Decimal.new(0)
+    end
+  end
+
+  def compute_realized_pnl_for_sell(_), do: Decimal.new(0)
+
+  defp prior_buy_lots(%TradeRecord{} = sell) do
+    TradeRecord
+    |> where([t], t.kite_agent_id == ^sell.kite_agent_id)
+    |> where([t], t.market == ^sell.market)
+    |> where([t], t.platform == ^(sell.platform || "kite"))
+    |> where([t], t.action == "buy")
+    |> where([t], t.status == "settled")
+    |> where([t], t.inserted_at <= ^sell.inserted_at)
+    |> where([t], t.id != ^sell.id)
+    |> order_by([t], asc: t.inserted_at)
+    |> Repo.all()
+    |> Enum.flat_map(fn buy ->
+      case {decimal_or_nil(buy.contracts), decimal_or_nil(buy.fill_price)} do
+        {nil, _} -> []
+        {_, nil} -> []
+        {qty, price} -> [{qty, price}]
+      end
+    end)
+  end
+
+  defp decimal_or_nil(nil), do: nil
+  defp decimal_or_nil(%Decimal{} = d), do: d
+
+  defp decimal_or_nil(value) when is_binary(value) or is_integer(value) or is_float(value) do
+    case Decimal.cast(value) do
+      {:ok, d} -> d
+      :error -> nil
+    end
+  end
+
+  defp decimal_or_nil(_), do: nil
+
   defp consume_fifo_lots([], _qty_left, _sell_price, acc), do: {acc, []}
 
   defp consume_fifo_lots([{lot_qty, lot_price} | rest], qty_left, sell_price, acc) do
