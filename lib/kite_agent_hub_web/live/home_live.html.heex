@@ -109,7 +109,7 @@
           </.link>
         </div>
 
-        <p class="text-sm text-gray-500 mt-8 font-mono">
+        <p class="text-sm text-gray-400 mt-8 font-mono">
           Free on testnet · No credit card · Keys stay local
         </p>
       </div>
@@ -158,16 +158,16 @@
       <% {:ok, snap} -> %>
         <div class="border-b border-white/5 bg-emerald-500/[0.025]">
           <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] font-mono">
-            <div class="flex items-center gap-2 text-gray-700">
+            <div class="flex items-center gap-2 text-gray-400">
               <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e]"></span>
               <span class="uppercase tracking-widest text-[10px] font-semibold">KAH Treasury · public ledger</span>
             </div>
-            <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-gray-700">
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-gray-400">
               <a
                 href={"https://testnet.kitescan.ai/address/" <> snap.address}
                 target="_blank"
                 rel="noopener"
-                class="text-gray-700 hover:text-white transition-colors underline-offset-2 hover:underline"
+                class="text-gray-400 hover:text-white transition-colors underline-offset-2 hover:underline"
               >
                 {String.slice(snap.address, 0, 6) <> "…" <> String.slice(snap.address, -4, 4)}
               </a>
@@ -176,7 +176,7 @@
               </span>
               <span :if={!snap.usdc} class="text-gray-600">— USDC</span>
               <span class="text-gray-600">·</span>
-              <span class="text-gray-700">
+              <span class="text-gray-400">
                 updated {Calendar.strftime(snap.fetched_at, "%H:%M UTC")}
               </span>
             </div>
@@ -404,14 +404,14 @@
         >
           Request your invite →
         </.link>
-        <p class="text-[11px] text-gray-500 mt-10 font-mono uppercase tracking-[0.22em]">
+        <p class="text-[11px] text-gray-400 mt-10 font-mono uppercase tracking-[0.22em]">
           Built for the Kite AI Hackathon 2026 · Chain {KiteAgentHub.Kite.ChainId.default()}
         </p>
       </div>
     </section>
 
     <footer class="border-t border-white/10 bg-black/40 relative z-10 backdrop-blur-md">
-      <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500 font-mono">
+      <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-400 font-mono">
         <div class="flex items-center gap-3">
           <.kah_logo class="w-6 h-6 shrink-0" />
           <span class="font-bold text-white tracking-widest uppercase text-xs">
