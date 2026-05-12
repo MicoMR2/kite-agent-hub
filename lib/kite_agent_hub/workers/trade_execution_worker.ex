@@ -94,6 +94,19 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         Logger.warning("TradeExecutionWorker: agent #{agent_id} is #{agent.status}, skipping")
         {:cancel, "agent not active"}
 
+      agent.payment_rail == "per_trade" ->
+        # Runtime fail-closed (CyberSec ask 1, msg 9180/9181). Per-trade
+        # agents must execute client-side via the trigger_events
+        # outbox; reaching this worker means a dispatch-routing bug
+        # leaked a per_trade intent into the KAH-custodial broker
+        # path. Cancel rather than execute — defense in depth on top
+        # of the AgentRunner.dispatch_trade_intent/3 branch (PR-4a).
+        Logger.warning(
+          "TradeExecutionWorker: agent #{agent_id} is payment_rail=per_trade — refusing server-side execution (CS ask 1)"
+        )
+
+        {:cancel, "per_trade_agent_must_use_client_execution"}
+
       true ->
         owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
         # `execute_trade/3` opens its own brief `with_user` blocks

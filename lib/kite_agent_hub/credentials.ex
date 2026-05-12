@@ -7,9 +7,75 @@ defmodule KiteAgentHub.Credentials do
   """
 
   import Ecto.Query
+  require Logger
 
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Credentials.{ApiCredential, Cipher}
+
+  @testnet_chain_id 2368
+  @mainnet_chain_id 2366
+
+  @doc """
+  Single server-side helper that maps an agent + broker root to the
+  exact ApiCredential provider slug to load (CyberSec ask 4, msg
+  9176). Per-agent `chain_id` drives the choice:
+
+    * `2368` (testnet) → paper slug (`alpaca` / `kalshi` / `oanda`)
+    * `2366` (mainnet) → live slug (`alpaca_live` / `kalshi_live` /
+      `oanda_live`)
+    * `polymarket` is live-only — returns `"polymarket"` regardless
+      of chain (CyberSec ask 3)
+
+  Returns `{:ok, slug}` or `{:error, reason}`. Callers MUST go through
+  this helper rather than constructing slugs at call sites — that
+  duplication is the single security-critical surface CyberSec
+  flagged for review.
+
+  Log redaction: any error log emitted here shows only the broker
+  root and the agent id, never the secret or key value (CyberSec
+  ask 6).
+  """
+  @spec broker_slug_for(map(), atom() | binary()) ::
+          {:ok, String.t()} | {:error, :invalid_broker}
+  def broker_slug_for(agent, broker_root) when broker_root in [:polymarket, "polymarket"] do
+    _ = agent
+    {:ok, "polymarket"}
+  end
+
+  def broker_slug_for(agent, broker_root) when is_atom(broker_root),
+    do: broker_slug_for(agent, Atom.to_string(broker_root))
+
+  def broker_slug_for(%{chain_id: @testnet_chain_id} = _agent, broker_root)
+      when broker_root in ["alpaca", "kalshi", "oanda"] do
+    {:ok, broker_root}
+  end
+
+  def broker_slug_for(%{chain_id: @mainnet_chain_id, id: agent_id}, broker_root)
+      when broker_root in ["alpaca", "kalshi", "oanda"] do
+    slug = broker_root <> "_live"
+    Logger.debug("broker_slug_for: agent_id=#{agent_id} slug=#{slug}")
+    {:ok, slug}
+  end
+
+  def broker_slug_for(%{chain_id: nil} = agent, broker_root) do
+    # Defensive fallback: agents created via KiteAgent.changeset get
+    # chain_id filled by `fill_chain_id_default/1`, but if a row
+    # somehow has nil, treat as paper so a missing config doesn't
+    # accidentally route to a live broker.
+    Logger.warning(
+      "broker_slug_for: agent_id=#{agent.id} has nil chain_id — defaulting to paper slug for safety"
+    )
+
+    broker_slug_for(%{agent | chain_id: @testnet_chain_id}, broker_root)
+  end
+
+  def broker_slug_for(%{id: agent_id, chain_id: cid}, broker_root) do
+    Logger.warning(
+      "broker_slug_for: agent_id=#{agent_id} unknown broker_root=#{inspect(broker_root)} chain_id=#{inspect(cid)}"
+    )
+
+    {:error, :invalid_broker}
+  end
 
   @doc """
   Get the credential for a given org and provider (:alpaca | :kalshi).

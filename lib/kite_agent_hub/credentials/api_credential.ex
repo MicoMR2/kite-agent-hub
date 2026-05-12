@@ -20,7 +20,15 @@ defmodule KiteAgentHub.Credentials.ApiCredential do
   # api-fxpractice.oanda.com, live uses api-fxtrade.oanda.com. The UI
   # renders them as two connector cards so paper and real-money keys
   # are never conflated.
-  @valid_providers ~w(alpaca kalshi openai anthropic polymarket oanda oanda_live)
+  # Paper / live convention: bare name is the paper / practice slot
+  # (alpaca, kalshi, oanda) and the `_live` suffix is the
+  # funded-money slot (alpaca_live, kalshi_live, oanda_live).
+  # Polymarket is live-only — there is no `polymarket_paper` slug
+  # and the UI does not render a paper slot for it (CyberSec ask 3,
+  # msg 9176).
+  @valid_providers ~w(alpaca alpaca_live kalshi kalshi_live openai anthropic polymarket oanda oanda_live)
+  @live_providers ~w(alpaca_live kalshi_live oanda_live polymarket)
+  def live_providers, do: @live_providers
   @valid_envs ~w(paper live)
 
   schema "api_credentials" do
