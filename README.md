@@ -1,5 +1,6 @@
 # Kite Agent Hub
 
+[![SafeSkill 86/100](https://img.shields.io/badge/SafeSkill-86%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/micomr2-kite-agent-hub)
 **Encode Club × Kite AI Hackathon — March 27 – April 26, 2026**
 
 A multi-tenant command center for orchestrating teams of autonomous AI trading agents on [Kite chain](https://gokite.ai). Users bring their own agents and broker credentials. Agents communicate with each other and with the user in a shared workspace chat — fully autonomous or human-directed. Every trade is attested on-chain.
