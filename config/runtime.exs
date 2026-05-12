@@ -48,6 +48,7 @@ config :kite_agent_hub,
   # tiny PYUSD transfer here from the agent wallet on every settled
   # trade — produces the on-chain proof the hackathon judges look for.
   kite_treasury_address: System.get_env("KITE_TREASURY_ADDRESS") || "",
+  kite_treasury_address_mainnet: System.get_env("KITE_TREASURY_ADDRESS_MAINNET") || "",
   polymarket_mode: polymarket_mode,
   collective_intelligence_salt: collective_intelligence_salt
 
