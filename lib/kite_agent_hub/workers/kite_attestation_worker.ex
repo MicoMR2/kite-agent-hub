@@ -184,7 +184,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     chain = chain_atom_for(agent)
 
     with {:ok, private_key} <- fetch_private_key(),
-         {:ok, treasury} <- fetch_treasury_address(),
+         {:ok, treasury} <- fetch_treasury_address(agent.chain_id),
          {:ok, tx_hash} <- submit_native_transfer(private_key, treasury, trade, chain),
          {:ok, _updated} <- persist_tx_hash(trade, tx_hash) do
       Logger.info(
@@ -197,9 +197,30 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
         Logger.error("KiteAttestationWorker: AGENT_PRIVATE_KEY not configured")
         {:error, "agent private key not configured"}
 
-      {:error, :missing_treasury} ->
-        Logger.error("KiteAttestationWorker: KITE_TREASURY_ADDRESS not configured")
+      {:error, :testnet_treasury_unconfigured} ->
+        Logger.error(
+          "KiteAttestationWorker: KITE_TREASURY_ADDRESS not configured (chain_id=#{agent.chain_id})"
+        )
+
         {:error, "treasury address not configured"}
+
+      {:error, :mainnet_treasury_unconfigured} ->
+        # CyberSec ask 2, msg 9264: hard-gated fail-closed. Mainnet
+        # attestation MUST NOT fall back to the testnet treasury
+        # address — that bug would route real-money fees to a
+        # testnet-controlled wallet.
+        Logger.error(
+          "KiteAttestationWorker: KITE_TREASURY_ADDRESS_MAINNET not configured (chain_id=#{agent.chain_id}) — refusing to attest on mainnet"
+        )
+
+        {:error, :mainnet_treasury_unconfigured}
+
+      {:error, :unknown_chain} ->
+        Logger.error(
+          "KiteAttestationWorker: unknown chain_id=#{agent.chain_id}"
+        )
+
+        {:error, :unknown_chain}
 
       {:error, reason} ->
         Logger.warning(
@@ -217,10 +238,16 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     end
   end
 
-  defp fetch_treasury_address do
-    case Application.get_env(:kite_agent_hub, :kite_treasury_address) do
-      addr when is_binary(addr) and byte_size(addr) >= 42 -> {:ok, addr}
-      _ -> {:error, :missing_treasury}
+  # CyberSec ask 2 (msg 9264): chain-aware treasury with hard fail-
+  # closed on the mainnet path. No fallback from mainnet to testnet
+  # — a missing KITE_TREASURY_ADDRESS_MAINNET aborts the attestation.
+  # Delegates to `Kite.Contracts.treasury_address/1` which carries
+  # the chain↔secret mapping.
+  defp fetch_treasury_address(chain_id) when is_integer(chain_id) do
+    case KiteAgentHub.Kite.Contracts.treasury_address(chain_id) do
+      {:ok, addr} when is_binary(addr) and byte_size(addr) >= 42 -> {:ok, addr}
+      {:ok, _} -> {:error, :testnet_treasury_unconfigured}
+      err -> err
     end
   end
 

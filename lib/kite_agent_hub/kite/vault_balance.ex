@@ -14,8 +14,7 @@ defmodule KiteAgentHub.Kite.VaultBalance do
   renders the snapshot (CyberSec ask 1, msg 9162).
   """
 
-  alias KiteAgentHub.Kite.Blockscout
-  alias KiteAgentHub.Kite.VaultConfig
+  alias KiteAgentHub.Kite.{Blockscout, ChainId, Contracts, VaultConfig}
 
   @cache_table :kah_vault_balance_cache
   @ttl_seconds 60
@@ -86,13 +85,20 @@ defmodule KiteAgentHub.Kite.VaultBalance do
   ## Internals
 
   defp refresh(address) do
-    case Blockscout.token_balances(address) do
+    # CyberSec ask 4 (msg 9264): chain_id is selected ONCE at the top
+    # of the refresh path; both the Blockscout URL and the symbol
+    # allowlist are pinned to this value for the duration of the call.
+    chain_id = ChainId.default()
+    allowed = Contracts.allowed_tokens(chain_id)
+
+    case Blockscout.token_balances(address, chain_id) do
       {:ok, balances} when is_list(balances) ->
         snap = %{
           address: address,
-          usdc: extract(balances, "USDC"),
-          usdt: extract(balances, "USDT"),
-          native_kite: extract(balances, "KITE"),
+          chain_id: chain_id,
+          usdc: extract(balances, "USDC.e", allowed),
+          usdt: extract(balances, "USDT", allowed),
+          native_kite: native_kite_balance(address, chain_id, balances, allowed),
           fetched_at: DateTime.utc_now() |> DateTime.truncate(:second),
           fetched_at_unix: System.system_time(:second)
         }
@@ -113,13 +119,41 @@ defmodule KiteAgentHub.Kite.VaultBalance do
     end
   end
 
-  # Symbol-allowlist parse (CyberSec ask 4, msg 9162) — Blockscout
-  # rows for tokens outside USDC/USDT/KITE are dropped on the floor.
-  # The full Blockscout response is never put into assigns.
-  defp extract(balances, symbol) do
+  # On mainnet, KITE is the native coin — query the address balance
+  # endpoint (coin_balance) rather than token_balances. On testnet,
+  # KITE is the ERC-20 at the testnet contract address.
+  defp native_kite_balance(address, chain_id, balances, allowed) do
+    if Contracts.native_kite?(chain_id) do
+      case Blockscout.address_info(address, chain_id) do
+        {:ok, %{balance_wei: wei}} -> format_balance(wei, 18)
+        _ -> nil
+      end
+    else
+      extract(balances, "KITE", allowed)
+    end
+  end
+
+  # Symbol + contract-address allowlist parse (CyberSec asks 6+7,
+  # msg 9264). Blockscout rows are matched on both `symbol` AND
+  # `token.address` against the chain-specific allowlist from
+  # `Contracts.allowed_tokens/1`; address comparison normalizes both
+  # sides via `String.downcase/1` so an EIP-55 checksum mismatch
+  # can't silently bypass the gate.
+  defp extract(balances, symbol, allowed) do
     Enum.find_value(balances, fn b ->
-      if String.upcase(to_string(b[:symbol] || "")) == symbol do
-        format_balance(b[:balance], b[:decimals] || 18)
+      b_symbol = String.upcase(to_string(b[:symbol] || ""))
+      b_addr = (b[:contract_address] || b[:address] || "") |> to_string() |> String.downcase()
+      target_symbol = String.upcase(symbol)
+
+      with true <- b_symbol == target_symbol,
+           {_sym, allowed_addr, decimals} <-
+             Enum.find(allowed, fn {sym, addr, _d} ->
+               String.upcase(sym) == target_symbol and b_addr == addr
+             end) do
+        _ = allowed_addr
+        format_balance(b[:balance], b[:decimals] || decimals)
+      else
+        _ -> nil
       end
     end)
   end
@@ -137,7 +171,11 @@ defmodule KiteAgentHub.Kite.VaultBalance do
   defp decimal_pow10(n) when n > 0, do: Decimal.mult(Decimal.new(10), decimal_pow10(n - 1))
   defp decimal_pow10(_), do: Decimal.new(1)
 
-  defp sanitize(snap), do: Map.drop(snap, [:fetched_at_unix])
+  defp sanitize(snap) do
+    snap
+    |> Map.drop([:fetched_at_unix])
+    |> Map.put_new(:chain_id, ChainId.default())
+  end
 
   defp err_reason({:error, r}), do: r
   defp err_reason(other), do: other

@@ -714,14 +714,15 @@ defmodule KiteAgentHubWeb.AgentOnboardLive do
               </div>
 
               <%= if @attestations_enabled do %>
+                <% chain_id = KiteAgentHub.Kite.ChainId.default() %>
                 <div class="mt-10 rounded-xl border border-white/5 bg-white/[0.01] p-4">
                   <p class="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-2">
-                    Kite Testnet
+                    Kite · {KiteAgentHub.Kite.ChainId.label(chain_id)}
                   </p>
                   <div class="space-y-1.5 text-xs text-gray-500 font-mono">
-                    <p>Chain ID: {KiteAgentHub.Kite.ChainId.default()}</p>
-                    <p>RPC: rpc-testnet.gokite.ai</p>
-                    <p>Explorer: testnet.kitescan.ai</p>
+                    <p>Chain ID: {chain_id}</p>
+                    <p>RPC: {KiteAgentHub.Kite.Contracts.rpc_url(chain_id)}</p>
+                    <p>Explorer: {KiteAgentHub.Kite.Contracts.explorer_url(chain_id)}</p>
                   </div>
                 </div>
               <% end %>

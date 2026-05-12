@@ -357,7 +357,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
           <% else %>
             <span class="text-gray-600">Step <%= step_number(@step) %> of 4</span>
           <% end %>
-          <span class="font-mono text-gray-600">v2.8 · testnet</span>
+          <span class="font-mono text-gray-600">v2.8 · {KiteAgentHub.Kite.ChainId.label()}</span>
         </div>
       </div>
     </div>

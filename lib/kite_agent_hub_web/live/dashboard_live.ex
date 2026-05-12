@@ -2547,7 +2547,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                   <h3 class="text-sm font-bold text-white mb-2">Deploy a Vault</h3>
                   <p class="text-xs text-gray-400 leading-relaxed font-light">
-                    Deploy the TradingAgentVault contract on Kite testnet. Your keys never leave your machine.
+                    Deploy the TradingAgentVault contract on Kite chain. Your keys never leave your machine.
                   </p>
                 </div>
                 <div class="rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/[0.05] backdrop-blur-md p-6 text-left shadow-[0_0_15px_rgba(34,197,94,0.1)]">
@@ -2830,7 +2830,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           {@wallet_balance_eth}
                         </p>
                         <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
-                          ETH (Testnet)
+                          KITE ({KiteAgentHub.Kite.ChainId.label(@selected_agent && @selected_agent.chain_id)})
                         </p>
                       <% else %>
                         <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight animate-pulse">
@@ -2872,7 +2872,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </div>
                       <%= if @selected_agent && @selected_agent.wallet_address do %>
                         <a
-                          href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
+                          href={explorer_address_url(@selected_agent.wallet_address, @selected_agent.chain_id)}
                           target="_blank"
                           rel="noopener noreferrer"
                           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
@@ -2889,7 +2889,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </p>
                         <%= for tx <- @recent_attestations do %>
                           <a
-                            href={"https://testnet.kitescan.ai/tx/" <> tx.attestation_tx_hash}
+                            href={explorer_tx_url(tx.attestation_tx_hash, @selected_agent.chain_id)}
                             target="_blank"
                             rel="noopener noreferrer"
                             class="flex items-center justify-between gap-2 text-[11px] font-mono text-gray-400 hover:text-emerald-300 transition-colors"
@@ -3075,7 +3075,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                judges' "settles on Kite chain + attestation" proof. --%>
                             <%= if trade.attestation_tx_hash do %>
                               <a
-                                href={"https://testnet.kitescan.ai/tx/" <> trade.attestation_tx_hash}
+                                href={explorer_tx_url(trade.attestation_tx_hash, @selected_agent.chain_id)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 class="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono inline-flex items-center gap-1"
@@ -3250,7 +3250,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                     <%= if @selected_agent.wallet_address do %>
                       <a
-                        href={"https://testnet.kitescan.ai/address/" <> @selected_agent.wallet_address}
+                        href={explorer_address_url(@selected_agent.wallet_address, @selected_agent.chain_id)}
                         target="_blank"
                         rel="noopener noreferrer"
                         class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
@@ -3309,7 +3309,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </div>
                           <div class="col-span-2 md:col-span-3 min-w-0">
                             <a
-                              href={"https://testnet.kitescan.ai/tx/" <> att.attestation_tx_hash}
+                              href={explorer_tx_url(att.attestation_tx_hash, @selected_agent.chain_id)}
                               target="_blank"
                               rel="noopener noreferrer"
                               class="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors"
@@ -3390,7 +3390,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                     <%= if @selected_agent.wallet_address do %>
                       <a
-                        href={"https://testnet.kitescan.ai/address/#{@selected_agent.wallet_address}"}
+                        href={explorer_address_url(@selected_agent.wallet_address, @selected_agent.chain_id)}
                         target="_blank"
                         class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
                       >
@@ -3410,7 +3410,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                     <%= if @selected_agent.vault_address do %>
                       <a
-                        href={"https://testnet.kitescan.ai/address/#{@selected_agent.vault_address}"}
+                        href={explorer_address_url(@selected_agent.vault_address, @selected_agent.chain_id)}
                         target="_blank"
                         class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
                       >
@@ -3502,7 +3502,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 </div>
                                 <div class="min-w-0">
                                   <a
-                                    href={"https://testnet.kitescan.ai/tx/#{tx.hash}"}
+                                    href={explorer_tx_url(tx.hash, @selected_agent.chain_id)}
                                     target="_blank"
                                     class="text-xs font-mono text-[#22c55e] hover:underline truncate block max-w-[200px]"
                                   >
@@ -6259,8 +6259,8 @@ network_access = true</pre>
     For NEW positions, the rule-based strategy admits anything >= 40 by default — anything higher is your call.
 
     ## Kite chain attestations (the proof)
-    Every settled trade automatically gets a native KITE transfer on Kite testnet, recorded on
-    testnet.kitescan.ai. The tx hash is on the trade row as `attestation_tx_hash`, with a ready-built
+    Every settled trade automatically gets a native KITE transfer on Kite chain, recorded on
+    kitescan.ai (mainnet) or testnet.kitescan.ai (testnet). The tx hash is on the trade row as `attestation_tx_hash`, with a ready-built
     `attestation_explorer_url` link. You don't need to do anything to produce attestations — KAH does
     it after each settlement. You should mention them when reporting trade results in chat (it's the
     audit trail that makes you autonomous + verifiable).
@@ -6280,5 +6280,13 @@ network_access = true</pre>
       n when n > 8 -> String.slice(token, 0, 8) <> "••••••••"
       _ -> String.duplicate("•", 12)
     end
+  end
+
+  defp explorer_tx_url(tx_hash, chain_id) do
+    KiteAgentHub.Kite.Contracts.explorer_url(chain_id || 2368) <> "/tx/" <> tx_hash
+  end
+
+  defp explorer_address_url(address, chain_id) do
+    KiteAgentHub.Kite.Contracts.explorer_url(chain_id || 2368) <> "/address/" <> address
   end
 end
