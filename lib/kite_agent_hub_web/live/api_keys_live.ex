@@ -5,27 +5,25 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
 
   alias KiteAgentHub.{Credentials, Orgs}
 
-  @providers [
+  # Paper slot = test trades, settles on Kite testnet (chain 2368).
+  # Live slot = real money, settles on Kite mainnet (chain 2366).
+  # Visual separation is a safety feature, not cosmetic — Mico
+  # specifically asked for this so muscle-memory paste can't trigger
+  # an accidental real-money order (msg 9168 / Phorari 9169).
+  @paper_providers [
     %{
       id: "alpaca",
-      label: "Alpaca",
-      hint: "Paper trading at paper-api.alpaca.markets",
+      label: "Alpaca (Paper)",
+      hint: "Paper trading at paper-api.alpaca.markets. Test trades only — no real money.",
       key_label: "API Key ID",
       secret_label: "API Secret Key"
     },
     %{
       id: "kalshi",
-      label: "Kalshi",
-      hint: "Demo trading at demo-api.kalshi.co",
+      label: "Kalshi (Demo)",
+      hint: "Demo trading at demo-api.kalshi.co. Test trades only — no real money.",
       key_label: "API Key ID",
       secret_label: "RSA Private Key (PEM)"
-    },
-    %{
-      id: "polymarket",
-      label: "Polymarket",
-      hint: "Relayer credentials for gasless paper/live orders. Private key not stored here — wallet signing is a future release.",
-      key_label: "Relayer Address (0x…)",
-      secret_label: "Relayer API Key"
     },
     %{
       id: "oanda",
@@ -33,6 +31,23 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       hint: "Practice account at api-fxpractice.oanda.com. Generate a Personal Access Token from My Account → Manage API Access.",
       key_label: "Display Name",
       secret_label: "Personal Access Token"
+    }
+  ]
+
+  @live_providers [
+    %{
+      id: "alpaca_live",
+      label: "Alpaca (Live)",
+      hint: "Real-money account at api.alpaca.markets. Orders placed with this key move real funds.",
+      key_label: "API Key ID",
+      secret_label: "API Secret Key"
+    },
+    %{
+      id: "kalshi_live",
+      label: "Kalshi (Live)",
+      hint: "Real-money account at api.elections.kalshi.com. Orders placed with this key move real funds.",
+      key_label: "API Key ID",
+      secret_label: "RSA Private Key (PEM)"
     },
     %{
       id: "oanda_live",
@@ -40,8 +55,17 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       hint: "Real-money account at api-fxtrade.oanda.com. Orders placed with this key move real funds.",
       key_label: "Display Name",
       secret_label: "Personal Access Token"
+    },
+    %{
+      id: "polymarket",
+      label: "Polymarket (Live)",
+      hint: "Polymarket is live-money only — there is no paper / sandbox endpoint. Relayer credentials are stored; wallet signing happens client-side.",
+      key_label: "Relayer Address (0x…)",
+      secret_label: "Relayer API Key"
     }
   ]
+
+  @providers @paper_providers ++ @live_providers
 
   @impl true
   def mount(_params, _session, socket) do
@@ -85,6 +109,8 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     {:ok,
      socket
      |> assign(:org, org)
+     |> assign(:paper_providers, @paper_providers)
+     |> assign(:live_providers, @live_providers)
      |> assign(:providers, @providers)
      |> assign(:configured, configured)
      |> assign(:credentials, credentials)
@@ -119,6 +145,29 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
         "live" -> "live"
         _ -> "paper"
       end
+
+    # Live-slot confirmation gate (CyberSec ask 5, msg 9176). Live
+    # credentials require the unmissable "I understand this is real
+    # money" checkbox on the form. The check is enforced here at the
+    # handler — never trust the absence of the form field as a green
+    # light, and never accept a live save without the affirmative
+    # checkbox value.
+    live_slot? = provider in KiteAgentHub.Credentials.ApiCredential.live_providers()
+    confirmed? = Map.get(params, "live_confirm") in ["true", "on", true]
+
+    cond do
+      live_slot? and not confirmed? ->
+        {:noreply,
+         socket
+         |> assign(:form_errors, %{live_confirm: ["You must confirm this is real money before saving."]})
+         |> put_flash(:error, "Live-money keys need the 'I understand' checkbox before they can save.")}
+
+      true ->
+        save_credential(socket, org, provider, key_id, secret, env, params)
+    end
+  end
+
+  defp save_credential(socket, org, provider, key_id, secret, env, params) do
 
     attrs =
       %{
@@ -180,7 +229,7 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   end
 
   defp load_masked_credentials(org_id) do
-    ~w(alpaca kalshi polymarket oanda oanda_live)
+    ~w(alpaca alpaca_live kalshi kalshi_live polymarket oanda oanda_live)
     |> Enum.reduce(%{}, fn provider, acc ->
       case Credentials.get_credential(org_id, provider) do
         nil ->
@@ -250,8 +299,18 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
             API credentials are encrypted with AES-256-GCM before storage. Keys are never logged or exposed in the UI after saving.
           </p>
 
+          <%!-- Paper / Sandbox section: test trades only, settles on Kite testnet. --%>
+          <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
+            <h3 class="text-[11px] font-black text-emerald-300 uppercase tracking-widest">
+              Paper / Sandbox — test trades only
+            </h3>
+            <p class="text-[11px] text-gray-500 mt-0.5">
+              Keys saved in this section route to each broker's sandbox endpoint. Settles on Kite testnet (chain 2368).
+            </p>
+          </div>
+
           <%!-- Provider API Keys --%>
-          <%= for provider <- @providers do %>
+          <%= for provider <- @paper_providers do %>
             <% configured = provider.id in @configured %>
             <% existing = Map.get(@credentials, provider.id) %>
             <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-6">
@@ -440,6 +499,167 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                         phx-value-provider={provider.id}
                         data-confirm={"Remove #{provider.label} credentials?"}
                         class="px-4 py-1.5 rounded-xl border border-red-500/20 text-xs font-bold uppercase tracking-widest text-red-500/60 hover:text-red-400 hover:border-red-500/40 transition-all"
+                      >
+                        Remove
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+
+          <%!-- Live (Real Money) section: distinct visual separation per Mico 9168 / Phorari 9169. --%>
+          <div class="rounded-2xl border border-red-500/40 bg-red-500/[0.04] p-4 mt-4">
+            <h3 class="text-[11px] font-black text-red-300 uppercase tracking-widest">
+              ⚠ Live · Real money
+            </h3>
+            <p class="text-[11px] text-red-200/80 mt-0.5">
+              Keys saved in this section connect to a funded brokerage account. Orders placed against these keys move real funds and settle on Kite mainnet (chain 2366).
+            </p>
+          </div>
+
+          <%= for provider <- @live_providers do %>
+            <% configured = provider.id in @configured %>
+            <% existing = Map.get(@credentials, provider.id) %>
+            <div class="rounded-2xl border border-red-500/30 bg-red-500/[0.025] backdrop-blur-md p-6">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h2 class="text-sm font-black text-white uppercase tracking-widest">
+                    {provider.label}
+                  </h2>
+                  <p class="text-xs text-gray-400 mt-0.5">{provider.hint}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <%= if configured do %>
+                    <span class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-red-300">
+                      <span class="w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_6px_#ef4444]"></span>
+                      Live · connected
+                    </span>
+                  <% else %>
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">
+                      Not configured
+                    </span>
+                  <% end %>
+                </div>
+              </div>
+
+              <%= if @editing == provider.id do %>
+                <form phx-submit="save" class="space-y-4">
+                  <input type="hidden" name="provider" value={provider.id} />
+                  <input type="hidden" name="env" value="live" />
+
+                  <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                      {provider.key_label}
+                    </label>
+                    <input
+                      type="text"
+                      name="key_id"
+                      autocomplete="off"
+                      placeholder="Paste your LIVE key ID..."
+                      class="w-full bg-black/40 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-400 font-mono"
+                    />
+                    <%= if err = get_in(@form_errors, [:key_id, Access.at(0)]) do %>
+                      <p class="text-xs text-red-400 mt-1">{err}</p>
+                    <% end %>
+                  </div>
+
+                  <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                      {provider.secret_label}
+                    </label>
+                    <%= if provider.id == "kalshi_live" do %>
+                      <textarea
+                        name="secret"
+                        autocomplete="off"
+                        rows="6"
+                        placeholder="-----BEGIN RSA PRIVATE KEY-----..."
+                        class="w-full bg-black/40 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-400 font-mono resize-none"
+                      ></textarea>
+                    <% else %>
+                      <input
+                        type="password"
+                        name="secret"
+                        autocomplete="off"
+                        placeholder="Paste your LIVE secret..."
+                        class="w-full bg-black/40 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-400 font-mono"
+                      />
+                    <% end %>
+                    <%= if err = get_in(@form_errors, [:secret, Access.at(0)]) do %>
+                      <p class="text-xs text-red-400 mt-1">{err}</p>
+                    <% end %>
+                  </div>
+
+                  <%= if provider.id == "oanda_live" do %>
+                    <div>
+                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+                        Account ID
+                      </label>
+                      <input
+                        type="text"
+                        name="account_id"
+                        autocomplete="off"
+                        value={(existing && existing.account_id) || ""}
+                        placeholder="001-001-1234567-001"
+                        class="w-full bg-black/40 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-400 font-mono"
+                      />
+                    </div>
+                  <% end %>
+
+                  <%!-- Live-slot confirmation (CyberSec ask 5, msg 9176). Required before save. --%>
+                  <label class="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 cursor-pointer">
+                    <input type="checkbox" name="live_confirm" value="true" class="mt-0.5" />
+                    <span class="text-xs text-red-100 leading-relaxed">
+                      <strong class="font-bold">I understand this is real money.</strong> Orders placed with this key will execute against a funded brokerage account and move real funds. There is no paper-trading fallback once this key is wired up.
+                    </span>
+                  </label>
+                  <%= if err = get_in(@form_errors, [:live_confirm, Access.at(0)]) do %>
+                    <p class="text-xs text-red-400">{err}</p>
+                  <% end %>
+
+                  <div class="flex items-center gap-3 pt-1">
+                    <button
+                      type="submit"
+                      class="px-5 py-2 rounded-xl bg-red-500 text-white text-xs font-black uppercase tracking-widest hover:bg-red-600 transition-colors"
+                    >
+                      Save live key
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="cancel"
+                      class="px-5 py-2 rounded-xl border border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              <% else %>
+                <div class="flex items-center justify-between">
+                  <div class="font-mono text-sm text-gray-400 flex items-center gap-2">
+                    <%= if existing do %>
+                      {existing.key_id}
+                      <span class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border text-red-300 border-red-500/40 bg-red-500/15">
+                        Live
+                      </span>
+                    <% else %>
+                      <span class="text-gray-700 italic text-xs">No live key stored</span>
+                    <% end %>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button
+                      phx-click="edit"
+                      phx-value-provider={provider.id}
+                      class="px-4 py-1.5 rounded-xl border border-red-500/30 text-xs font-bold uppercase tracking-widest text-red-300 hover:text-red-100 hover:border-red-400 transition-all"
+                    >
+                      {if configured, do: "Update", else: "Add live key"}
+                    </button>
+                    <%= if configured do %>
+                      <button
+                        phx-click="delete"
+                        phx-value-provider={provider.id}
+                        data-confirm={"Remove live #{provider.label} credentials?"}
+                        class="px-4 py-1.5 rounded-xl border border-red-500/30 text-xs font-bold uppercase tracking-widest text-red-400 hover:bg-red-500/10 transition-all"
                       >
                         Remove
                       </button>

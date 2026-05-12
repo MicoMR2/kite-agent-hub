@@ -60,7 +60,8 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
     with :ok <- validate_provider(args["provider"]),
          :ok <- validate_symbol(args["symbol"]),
          :ok <- validate_units(args["units"]),
-         {:ok, agent} <- load_agent(args["agent_id"]) do
+         {:ok, agent} <- load_agent(args["agent_id"]),
+         :ok <- refuse_if_per_trade(agent) do
       # Establish RLS context before any trade record writes — mirrors
       # the pattern used by TradeExecutionWorker / AlpacaSettlementWorker.
       # Without this, Trading.create_trade inserts run with no
@@ -106,6 +107,23 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   defp validate_provider(p) when p in @allowed_providers, do: :ok
   defp validate_provider("oanda_live"), do: {:error, :live_dispatch_not_allowed}
   defp validate_provider(_), do: {:error, :invalid_provider}
+
+  # Runtime fail-closed (CyberSec ask 1, msg 9180/9181). Per-trade
+  # agents must execute client-side via trigger_events; reaching this
+  # paper worker means a dispatch-routing bug leaked a per_trade
+  # intent into the KAH-custodial broker path. Refuse without
+  # placing the order.
+  defp refuse_if_per_trade(%{payment_rail: "per_trade"} = agent) do
+    require Logger
+
+    Logger.warning(
+      "PaperExecutionWorker: agent #{agent.id} is payment_rail=per_trade — refusing server-side execution (CS ask 1)"
+    )
+
+    {:error, :per_trade_agent_must_use_client_execution}
+  end
+
+  defp refuse_if_per_trade(_), do: :ok
 
   defp validate_symbol(s) when is_binary(s) and byte_size(s) > 0, do: :ok
   defp validate_symbol(_), do: {:error, :invalid_symbol}
