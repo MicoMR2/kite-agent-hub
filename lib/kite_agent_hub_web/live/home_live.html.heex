@@ -103,7 +103,7 @@
             data-magnetic-strength="10"
             class="inline-flex items-center gap-2.5 rounded-full border border-white/20 bg-gradient-to-b from-white/[0.10] to-white/[0.04] hover:from-white/[0.16] hover:to-white/[0.08] px-7 sm:px-9 py-3 sm:py-4 text-sm sm:text-base font-semibold transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_24px_rgba(255,255,255,0.06)] w-full sm:w-auto justify-center backdrop-blur-md"
           >
-            <span class="h-1.5 w-1.5 rounded-full bg-white/70 shadow-[0_0_8px_rgba(255,255,255,0.6)]"></span>
+            <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e]"></span>
             Sign in to continue
             <span class="text-gray-400">→</span>
           </.link>
@@ -241,14 +241,11 @@
       </div>
     </section>
 
-    <%!-- Features grid — scoped to dark theme so hardcoded white text
-         keeps contrast against the dark gradient sections regardless
-         of the visitor's chosen page-wide theme. --%>
+    <%!-- Features grid --%>
     <section
       id="features"
       phx-hook="RevealOnScroll"
-      data-theme="dark"
-      class="kah-revealable kah-reveal relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32 bg-[#0a0a0f]"
+      class="kah-revealable kah-reveal relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32"
     >
       <div class="max-w-3xl mb-20">
         <p class="text-[11px] font-mono uppercase tracking-[0.22em] text-[#22c55e] mb-5">
@@ -286,13 +283,11 @@
       </div>
     </section>
 
-    <%!-- How it works — scoped dark, same reason as the features
-         section: hardcoded white text needs a dark canvas. --%>
+    <%!-- How it works --%>
     <section
       id="how"
       phx-hook="RevealOnScroll"
-      data-theme="dark"
-      class="kah-revealable kah-reveal relative z-10 border-t border-white/10 bg-[#0a0a0f]"
+      class="kah-revealable kah-reveal relative z-10 border-t border-white/10 bg-gradient-to-b from-[#0a0a0f] to-white/[0.02]"
     >
       <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
         <div class="max-w-3xl mb-20">
