@@ -139,6 +139,39 @@
       </div>
     </div>
 
+    <%!-- Vault transparency marker --%>
+    <%= case @vault_snapshot do %>
+      <% {:ok, snap} -> %>
+        <div class="border-b border-white/5 bg-emerald-500/[0.025]">
+          <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] font-mono">
+            <div class="flex items-center gap-2 text-gray-400">
+              <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e]"></span>
+              <span class="uppercase tracking-widest text-[10px] font-bold">KAH Treasury · public ledger</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-gray-300">
+              <a
+                href={"https://testnet.kitescan.ai/address/" <> snap.address}
+                target="_blank"
+                rel="noopener"
+                class="hover:text-white transition-colors underline-offset-2 hover:underline"
+              >
+                {String.slice(snap.address, 0, 6) <> "…" <> String.slice(snap.address, -4, 4)}
+              </a>
+              <span :if={snap.usdc} class="text-emerald-200">
+                {Decimal.to_string(Decimal.round(snap.usdc, 2), :normal)} USDC
+              </span>
+              <span :if={!snap.usdc} class="text-gray-600">— USDC</span>
+              <span class="text-gray-600">·</span>
+              <span class="text-gray-500">
+                updated {Calendar.strftime(snap.fetched_at, "%H:%M UTC")}
+              </span>
+            </div>
+          </div>
+        </div>
+
+      <% _ -> %>
+    <% end %>
+
     <%!-- Brand belt --%>
     <section
       id="brand-belt"
