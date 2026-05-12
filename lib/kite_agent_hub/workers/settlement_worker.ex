@@ -59,7 +59,7 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
             "SettlementWorker: trade #{trade.id} has no tx_hash, settling as confirmed"
           )
 
-          Trading.settle_trade(trade, Decimal.new(0))
+          Trading.settle_trade(trade, Trading.compute_realized_pnl_for_sell(trade))
           :ok
         end)
 
@@ -75,7 +75,7 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
                 "SettlementWorker: tx #{tx_hash} confirmed, settling trade #{trade.id}"
               )
 
-              Trading.settle_trade(trade, Decimal.new(0))
+              Trading.settle_trade(trade, Trading.compute_realized_pnl_for_sell(trade))
               :ok
             end)
 

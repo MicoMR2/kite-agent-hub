@@ -419,7 +419,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       |> maybe_put_order_id(order_id)
 
     with {:ok, updated} <- Trading.update_trade(trade, update_attrs),
-         {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
+         {:ok, settled} <- Trading.settle_trade(updated, Trading.compute_realized_pnl_for_sell(updated)) do
       enqueue_attestation(settled)
       {:ok, settled}
     else
@@ -607,7 +607,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   defp settle_kalshi(trade, attrs, job_id, order_id) do
     with {:ok, updated} <- Trading.update_trade(trade, attrs),
-         {:ok, settled} <- Trading.settle_trade(updated, Decimal.new(0)) do
+         {:ok, settled} <- Trading.settle_trade(updated, Trading.compute_realized_pnl_for_sell(updated)) do
       enqueue_attestation(settled)
       {:ok, settled}
     else

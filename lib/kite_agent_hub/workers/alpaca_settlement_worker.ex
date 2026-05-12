@@ -163,7 +163,7 @@ defmodule KiteAgentHub.Workers.AlpacaSettlementWorker do
     # write we just made (Phorari PR #87 review bug 2).
     case maybe_update_fill(trade, update_attrs) do
       {:ok, updated_trade} ->
-        case Trading.settle_trade(updated_trade, Decimal.new(0)) do
+        case Trading.settle_trade(updated_trade, Trading.compute_realized_pnl_for_sell(updated_trade)) do
           {:ok, settled_trade} ->
             enqueue_attestation(settled_trade)
             {:ok, settled_trade}
