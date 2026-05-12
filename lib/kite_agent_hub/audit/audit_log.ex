@@ -21,8 +21,13 @@ defmodule KiteAgentHub.Audit.AuditLog do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @valid_actions ~w(credential_created credential_updated credential_deleted)
-  @valid_targets ~w(api_credential)
+  @valid_actions ~w(
+    credential_created
+    credential_updated
+    credential_deleted
+    agent_chain_changed
+  )
+  @valid_targets ~w(api_credential kite_agent)
 
   @max_metadata_bytes 4_096
 

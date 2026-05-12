@@ -370,6 +370,22 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     end)
   end
 
+  @doc """
+  Tightly scoped changeset for the user-driven chain_id flip
+  (CyberSec ask 1, msg 9212). Casts ONLY :chain_id, validates
+  inclusion against the explicit allowlist
+  (`Kite.ChainId.valid_chain_ids/0`), and rejects nil + every other
+  value. The new-row default lives in `fill_chain_id_default/1`;
+  this path is for mutations made via the agent settings UI and
+  must not accept anything else.
+  """
+  def chain_changeset(agent, attrs) do
+    agent
+    |> cast(attrs, [:chain_id])
+    |> validate_required([:chain_id])
+    |> validate_inclusion(:chain_id, KiteAgentHub.Kite.ChainId.valid_chain_ids())
+  end
+
   defp fill_chain_id_default(changeset) do
     if get_field(changeset, :chain_id) do
       changeset
