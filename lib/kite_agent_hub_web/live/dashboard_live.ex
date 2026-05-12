@@ -2527,7 +2527,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   dashboard_tab_class(tab_key, @active_tab == String.to_atom(tab_key))
                 ]}
               >
-                <img :if={logo} src={logo} alt="" class="h-4 w-4 object-contain" />
+                <img :if={logo} src={logo} alt="" class="h-5 w-5 object-contain" />
                 {label}
               </button>
             <% end %>
