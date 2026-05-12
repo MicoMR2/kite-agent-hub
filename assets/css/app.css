@@ -391,11 +391,16 @@ html[data-theme="light"] [class~="to-white/[0.02]"] {
   --tw-gradient-to: var(--canvas) !important;
 }
 
-/* Reveal-on-scroll start state. Removed by the RevealOnScroll JS hook
-   once the section enters the viewport. */
+/* Reveal-on-scroll start state. Previously hid the element at
+   opacity:0 until the IntersectionObserver fired. Defanged 2026-05-12
+   because the failsafe path was not reliably firing on prod (Features
+   + Get-Live sections stuck invisible in light mode; users couldn't
+   see them at all). Animation is now a no-op — the .kah-revealable
+   transition stays wired so a future fix can restore the entrance
+   effect once the underlying RevealOnScroll bug is diagnosed. */
 .kah-reveal {
-  opacity: 0;
-  transform: translateY(18px);
+  opacity: 1;
+  transform: none;
 }
 
 .kah-revealable {
