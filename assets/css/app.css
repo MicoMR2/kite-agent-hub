@@ -359,32 +359,46 @@ html[data-theme="light"] [class~="from-[#0a0a0f]"] {
 
 /* Dark-island sections — opt-in via `.kah-dark-section` on a wrapper.
    Forces the wrapped subtree to render with the dark canvas + dark
-   tokens even when the page-wide theme is light. Used for the
-   Features ("The platform · 01") and Get-live ("Get live · 02")
-   sections of the marketing landing, which were authored against
-   hardcoded `text-white` against cinematic dark gradients — the
-   light-mode override rules above wash that text into the canvas.
-   These rules win the cascade against the light-mode rules because
-   they come later in source order AND match `!important` priority. */
-html .kah-dark-section,
-html .kah-dark-section [class~="bg-[#0a0a0f]"] {
-  background-color: #0a0a0f !important;
-}
+   tokens even when the page-wide theme is light.
 
-html .kah-dark-section [class~="bg-white/[0.02]"] {
-  background-color: rgba(255, 255, 255, 0.02) !important;
-}
+   How it works: the light-theme overrides above all resolve through
+   CSS custom properties (`var(--canvas)`, `var(--fg-1)`, etc.) that
+   `html[data-theme="light"]` defines at line 208. By re-defining
+   those same properties on `.kah-dark-section` for the light theme
+   only, every `!important` light-mode rule inside the section
+   automatically resolves to the dark-mode value — no per-class gaps.
+   Cascade: `html[data-theme="light"] .kah-dark-section` has
+   specificity (0,2,1), one notch above the variable defaults on
+   `html[data-theme="light"]` (0,1,1) — wins cleanly. Custom
+   properties inherit through the DOM so descendants pick the
+   overrides up automatically.
 
-html .kah-dark-section [class~="border-white/10"] {
-  border-color: rgba(255, 255, 255, 0.10) !important;
-}
-
-html .kah-dark-section [class~="text-white"] {
-  color: #ffffff !important;
-}
-
-html .kah-dark-section [class~="text-gray-300"] {
-  color: rgba(255, 255, 255, 0.70) !important;
+   Previous per-class approach (PR #374) lost the cascade in prod
+   after lightning-css stripped the `html` type-selector prefix
+   from both the light overrides AND these rules, leaving them at
+   equal (0,2,0) specificity — source order alone wasn't enough
+   against the light-mode `!important`. The variable approach
+   sidesteps that whole arms race. */
+html[data-theme="light"] .kah-dark-section {
+  --canvas:            #0a0a0f;
+  --canvas-80:         rgba(10,10,15,0.80);
+  --canvas-95:         rgba(10,10,15,0.95);
+  --surface-01:        rgba(255,255,255,0.01);
+  --surface-02:        rgba(255,255,255,0.02);
+  --surface-03:        rgba(255,255,255,0.03);
+  --surface-05:        rgba(255,255,255,0.05);
+  --surface-08:        rgba(255,255,255,0.08);
+  --surface-12:        rgba(255,255,255,0.12);
+  --border-hair:       rgba(255,255,255,0.05);
+  --border-default:    rgba(255,255,255,0.10);
+  --border-strong:     rgba(255,255,255,0.20);
+  --fg-1:              #ffffff;
+  --fg-2:              #e5e7eb;
+  --fg-3:              #d1d5db;
+  --fg-4:              #9ca3af;
+  --fg-5:              #6b7280;
+  --fg-6:              #4b5563;
+  --fg-7:              #374151;
 }
 
 html[data-theme="light"] [class~="to-white/[0.02]"] {
