@@ -248,13 +248,13 @@
       </div>
     </section>
 
-    <%!-- Features grid — scoped to dark theme so hardcoded white text
-         keeps contrast against the dark gradient sections regardless
-         of the visitor's chosen page-wide theme. --%>
+    <%!-- Features grid — theme-adaptive. Inherits the page-wide theme;
+         the global light-mode CSS remap in app.css handles every dark
+         Tailwind utility used inside the cards. --%>
     <section
       id="features"
       phx-hook="RevealOnScroll"
-      class="kah-dark-section kah-revealable kah-reveal relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32 bg-[#0a0a0f]"
+      class="kah-revealable kah-reveal relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32"
     >
       <div class="max-w-3xl mb-20">
         <p class="text-[11px] font-mono uppercase tracking-[0.22em] text-[#22c55e] mb-5">
@@ -292,12 +292,11 @@
       </div>
     </section>
 
-    <%!-- How it works — scoped dark, same reason as the features
-         section: hardcoded white text needs a dark canvas. --%>
+    <%!-- How it works — theme-adaptive (see Features comment above). --%>
     <section
       id="how"
       phx-hook="RevealOnScroll"
-      class="kah-dark-section kah-revealable kah-reveal relative z-10 border-t border-white/10 bg-[#0a0a0f]"
+      class="kah-revealable kah-reveal relative z-10 border-t border-white/10"
     >
       <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
         <div class="max-w-3xl mb-20">
