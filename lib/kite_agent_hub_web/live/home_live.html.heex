@@ -15,6 +15,20 @@
               Kite {KiteAgentHub.Kite.ChainId.label()}
             </span>
           </div>
+          <%!-- Theme toggle — three-state (system / light / dark). The
+               theme-switching JS already lives in root.html.heex; this
+               just dispatches phx:set-theme via the data-phx-theme attr. --%>
+          <button
+            type="button"
+            phx-hook="ThemeCycle"
+            id="kah-theme-toggle"
+            aria-label="Toggle color theme"
+            class="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 hover:text-white transition-colors"
+          >
+            <span class="kah-theme-icon-light hidden">☀</span>
+            <span class="kah-theme-icon-dark hidden">☾</span>
+            <span class="kah-theme-icon-system">◐</span>
+          </button>
           <.link
             navigate={~p"/users/log-in"}
             class="text-sm text-gray-400 hover:text-white transition-colors font-medium px-3 py-1.5"
@@ -186,15 +200,40 @@
              (see .kah-platform-* in app.css). Parity with the dashboard so users
              see the same visual language pre/post sign-in. --%>
         <div class="flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-[15px] sm:text-base font-display font-bold tracking-tight">
-          <span class="text-[#fde047]">Alpaca</span>
+          <a
+            href="https://alpaca.markets"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[#fde047] hover:underline underline-offset-4 transition-all"
+          >Alpaca</a>
           <span class="text-gray-700">·</span>
-          <span class="text-[#4ade80]">Kalshi</span>
+          <a
+            href="https://kalshi.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[#4ade80] hover:underline underline-offset-4 transition-all"
+          >Kalshi</a>
           <span class="text-gray-700">·</span>
-          <span class="text-[#fb923c]">OANDA</span>
+          <a
+            href="https://oanda.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[#fb923c] hover:underline underline-offset-4 transition-all"
+          >OANDA</a>
           <span class="text-gray-700">·</span>
-          <span class="text-[#60a5fa]">Polymarket</span>
+          <a
+            href="https://polymarket.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[#60a5fa] hover:underline underline-offset-4 transition-all"
+          >Polymarket</a>
           <span class="text-gray-700">·</span>
-          <span class="text-[#2dd4bf]">Kite Chain</span>
+          <a
+            href="https://kitescan.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[#2dd4bf] hover:underline underline-offset-4 transition-all"
+          >Kite Chain</a>
         </div>
         <p class="text-xs font-mono uppercase tracking-[0.22em] text-gray-400">
           {KiteAgentHub.Kite.ChainId.label()}
@@ -202,11 +241,14 @@
       </div>
     </section>
 
-    <%!-- Features grid --%>
+    <%!-- Features grid — scoped to dark theme so hardcoded white text
+         keeps contrast against the dark gradient sections regardless
+         of the visitor's chosen page-wide theme. --%>
     <section
       id="features"
       phx-hook="RevealOnScroll"
-      class="kah-revealable kah-reveal relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32"
+      data-theme="dark"
+      class="kah-revealable kah-reveal relative z-10 mx-auto w-full px-4 sm:px-6 lg:px-8 py-32 bg-[#0a0a0f]"
     >
       <div class="max-w-3xl mb-20">
         <p class="text-[11px] font-mono uppercase tracking-[0.22em] text-[#22c55e] mb-5">
@@ -244,11 +286,13 @@
       </div>
     </section>
 
-    <%!-- How it works --%>
+    <%!-- How it works — scoped dark, same reason as the features
+         section: hardcoded white text needs a dark canvas. --%>
     <section
       id="how"
       phx-hook="RevealOnScroll"
-      class="kah-revealable kah-reveal relative z-10 border-t border-white/10 bg-gradient-to-b from-[#0a0a0f] to-white/[0.02]"
+      data-theme="dark"
+      class="kah-revealable kah-reveal relative z-10 border-t border-white/10 bg-[#0a0a0f]"
     >
       <div class="mx-auto w-full px-4 sm:px-6 lg:px-8 py-32">
         <div class="max-w-3xl mb-20">

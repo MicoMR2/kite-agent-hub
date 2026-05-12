@@ -175,22 +175,72 @@ const Magnetic = {
 // Starts the element with `kah-reveal` (opacity 0, 18px translate-y) and
 // removes the class once 18% of the element is on-screen.
 const RevealOnScroll = {
+  _reveal() {
+    this.el.classList.remove("kah-reveal")
+    if (this._failsafe) { clearTimeout(this._failsafe); this._failsafe = null }
+    if (this._io) { this._io.disconnect(); this._io = null }
+  },
   mounted() {
-    if (typeof IntersectionObserver === "undefined") {
-      this.el.classList.remove("kah-reveal")
-      return
-    }
+    // Safety net: regardless of observer state, ensure the section is
+    // visible within 1.2s of hook mount. Covers slow JS load, fast
+    // back-forward nav, and any scenario where the IO callback never
+    // fires for the element's current position.
+    this._failsafe = setTimeout(() => this._reveal(), 1200)
+    const rect = this.el.getBoundingClientRect()
+    // Already at-or-above the viewport at mount time — reveal now;
+    // IntersectionObserver does not retroactively fire for these.
+    if (rect.top < window.innerHeight) { this._reveal(); return }
+    if (typeof IntersectionObserver === "undefined") { this._reveal(); return }
     this._io = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          this.el.classList.remove("kah-reveal")
-          this._io.disconnect()
-        }
-      })
+      entries.forEach((entry) => { if (entry.isIntersecting) this._reveal() })
     }, { threshold: 0.18 })
     this._io.observe(this.el)
   },
-  destroyed() { this._io && this._io.disconnect() }
+  destroyed() {
+    if (this._failsafe) clearTimeout(this._failsafe)
+    if (this._io) this._io.disconnect()
+  }
+}
+
+// ThemeCycle — three-state toggle (system → light → dark → system).
+// Reads the current mode from data-theme-mode on <html> (written by
+// the inline theme-init script in root.html.heex), advances to the
+// next state, and fires phx:set-theme via a temporary data-phx-theme
+// node so the existing handler in root.html.heex applies it.
+const ThemeCycle = {
+  _order: ["system", "light", "dark"],
+  _next(current) {
+    const i = this._order.indexOf(current)
+    return this._order[(i + 1) % this._order.length]
+  },
+  _syncIcon() {
+    const mode = document.documentElement.getAttribute("data-theme-mode") || "system"
+    const light = this.el.querySelector(".kah-theme-icon-light")
+    const dark = this.el.querySelector(".kah-theme-icon-dark")
+    const sys = this.el.querySelector(".kah-theme-icon-system")
+    if (light && dark && sys) {
+      light.classList.toggle("hidden", mode !== "light")
+      dark.classList.toggle("hidden", mode !== "dark")
+      sys.classList.toggle("hidden", mode !== "system")
+    }
+  },
+  mounted() {
+    this._syncIcon()
+    this._onClick = () => {
+      const current = document.documentElement.getAttribute("data-theme-mode") || "system"
+      const next = this._next(current)
+      // The inline theme-init listens for phx:set-theme on a node carrying
+      // data-phx-theme. Re-use that contract.
+      const event = new CustomEvent("phx:set-theme", { bubbles: true })
+      this.el.setAttribute("data-phx-theme", next)
+      this.el.dispatchEvent(event)
+      this._syncIcon()
+    }
+    this.el.addEventListener("click", this._onClick)
+  },
+  destroyed() {
+    if (this._onClick) this.el.removeEventListener("click", this._onClick)
+  }
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
@@ -211,6 +261,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     QuickTradeConfirm,
     Magnetic,
     RevealOnScroll,
+    ThemeCycle,
     WordCycle
   },
 })
