@@ -357,6 +357,36 @@ html[data-theme="light"] [class~="from-[#0a0a0f]"] {
     var(--tw-gradient-from), var(--tw-gradient-to, transparent) !important;
 }
 
+/* Dark-island sections — opt-in via `.kah-dark-section` on a wrapper.
+   Forces the wrapped subtree to render with the dark canvas + dark
+   tokens even when the page-wide theme is light. Used for the
+   Features ("The platform · 01") and Get-live ("Get live · 02")
+   sections of the marketing landing, which were authored against
+   hardcoded `text-white` against cinematic dark gradients — the
+   light-mode override rules above wash that text into the canvas.
+   These rules win the cascade against the light-mode rules because
+   they come later in source order AND match `!important` priority. */
+html .kah-dark-section,
+html .kah-dark-section [class~="bg-[#0a0a0f]"] {
+  background-color: #0a0a0f !important;
+}
+
+html .kah-dark-section [class~="bg-white/[0.02]"] {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+html .kah-dark-section [class~="border-white/10"] {
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+html .kah-dark-section [class~="text-white"] {
+  color: #ffffff !important;
+}
+
+html .kah-dark-section [class~="text-gray-300"] {
+  color: rgba(255, 255, 255, 0.70) !important;
+}
+
 html[data-theme="light"] [class~="to-white/[0.02]"] {
   --tw-gradient-to: var(--canvas) !important;
 }
