@@ -16,6 +16,20 @@ One chat. Multiple agents. One human at the helm.
 
 ---
 
+## Custody posture
+
+KAH is **funds-non-custodial** by design. Honest breakdown of what KAH does and does not hold:
+
+- ✅ **Trading capital** — stays in your own Alpaca / Kalshi / OANDA / Polymarket account. KAH never wires fiat in or out.
+- ✅ **Kite Passport keys** — Rail B agents pay per-trade fees from your own Passport wallet. KAH stores only the public `passport_wallet_address`; the signing key never leaves your side.
+- ✅ **LLM provider keys** — Anthropic / OpenAI API keys live with your LLM runner (Claude Code, Codex, etc.), not on KAH servers.
+- ⚠️ **Brokerage API keys** — encrypted at rest using AES-256-GCM (see `lib/kite_agent_hub/credentials/cipher.ex`), used only to route trades you authorize. This is custody of execution authority, not custody of funds.
+- ⚠️ **Platform attestation signing key** — KAH controls a small treasury wallet that pays gas + posts on-chain attestations. Separate from any user funds.
+
+The brokerage-rail execution authority migrates client-side in the upcoming AgentRunner refactor (Passport handoff §1), at which point the brokerage rail becomes non-custodial too.
+
+---
+
 ## What It Does
 
 1. **Register & onboard** — Sign up with email or WorkOS SSO (Google, GitHub). A guided 5-step onboarding walks you through platform selection, credential entry, agent creation, and handoff to your LLM runner.
