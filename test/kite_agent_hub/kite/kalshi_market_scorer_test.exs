@@ -78,9 +78,17 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorerTest do
     end
 
     test "time_score decays at 5 points per day, clamped to zero at 20+ days" do
-      near = KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(1 * 86_400)}), @now)
-      mid = KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(5 * 86_400)}), @now)
-      far = KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(30 * 86_400)}), @now)
+      near =
+        KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(1 * 86_400)}), @now)
+
+      mid =
+        KalshiMarketScorer.score_market(market(%{"close_time" => iso_from_now(5 * 86_400)}), @now)
+
+      far =
+        KalshiMarketScorer.score_market(
+          market(%{"close_time" => iso_from_now(30 * 86_400)}),
+          @now
+        )
 
       assert near.breakdown.time == 95
       assert mid.breakdown.time == 75
@@ -107,12 +115,27 @@ defmodule KiteAgentHub.Kite.KalshiMarketScorerTest do
   describe "score_markets/2" do
     test "filters by min_score and sorts desc" do
       markets = [
-        market(%{"ticker" => "A", "volume_24h" => 50, "yes_bid" => 30, "yes_ask" => 50,
-                 "close_time" => iso_from_now(30 * 86_400)}),
-        market(%{"ticker" => "B", "volume_24h" => 800, "yes_bid" => 52, "yes_ask" => 54,
-                 "close_time" => iso_from_now(6 * 3600)}),
-        market(%{"ticker" => "C", "volume_24h" => 400, "yes_bid" => 49, "yes_ask" => 51,
-                 "close_time" => iso_from_now(3 * 86_400)})
+        market(%{
+          "ticker" => "A",
+          "volume_24h" => 50,
+          "yes_bid" => 30,
+          "yes_ask" => 50,
+          "close_time" => iso_from_now(30 * 86_400)
+        }),
+        market(%{
+          "ticker" => "B",
+          "volume_24h" => 800,
+          "yes_bid" => 52,
+          "yes_ask" => 54,
+          "close_time" => iso_from_now(6 * 3600)
+        }),
+        market(%{
+          "ticker" => "C",
+          "volume_24h" => 400,
+          "yes_bid" => 49,
+          "yes_ask" => 51,
+          "close_time" => iso_from_now(3 * 86_400)
+        })
       ]
 
       # Pass @now so the time-proximity scoring uses the same anchor

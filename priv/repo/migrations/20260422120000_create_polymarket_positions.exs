@@ -4,7 +4,10 @@ defmodule KiteAgentHub.Repo.Migrations.CreatePolymarketPositions do
   def change do
     create table(:polymarket_positions, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :kite_agent_id, references(:kite_agents, type: :binary_id, on_delete: :nilify_all)
       add :market_id, :string, null: false
       add :token_id, :string, null: false

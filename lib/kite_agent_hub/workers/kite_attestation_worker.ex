@@ -216,9 +216,7 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
         {:error, :mainnet_treasury_unconfigured}
 
       {:error, :unknown_chain} ->
-        Logger.error(
-          "KiteAttestationWorker: unknown chain_id=#{agent.chain_id}"
-        )
+        Logger.error("KiteAttestationWorker: unknown chain_id=#{agent.chain_id}")
 
         {:error, :unknown_chain}
 

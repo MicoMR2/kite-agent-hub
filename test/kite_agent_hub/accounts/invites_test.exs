@@ -62,7 +62,9 @@ defmodule KiteAgentHub.Accounts.InvitesTest do
 
       KiteAgentHub.Repo.update_all(
         from(c in KiteAgentHub.Accounts.InviteCode, where: c.id == ^invite.id),
-        set: [expires_at: DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second)]
+        set: [
+          expires_at: DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second)
+        ]
       )
 
       assert {:error, :expired} = Invites.peek(plaintext)
@@ -71,6 +73,7 @@ defmodule KiteAgentHub.Accounts.InvitesTest do
 
     test "approves the access request when code is generated", %{admin: admin, req: req} do
       assert {:ok, _, _} = Invites.generate_code(req, admin)
+
       assert KiteAgentHub.Repo.get!(KiteAgentHub.Accounts.AccessRequest, req.id).status ==
                "approved"
     end

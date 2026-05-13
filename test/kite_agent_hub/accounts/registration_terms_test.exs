@@ -13,6 +13,7 @@ defmodule KiteAgentHub.Accounts.RegistrationTermsTest do
     test "rejects registration without accept_terms=true" do
       changeset = User.registration_changeset(%User{}, @valid_attrs)
       refute changeset.valid?
+
       assert {"you must accept the Terms of Service and Privacy Policy", _} =
                changeset.errors[:accept_terms]
     end

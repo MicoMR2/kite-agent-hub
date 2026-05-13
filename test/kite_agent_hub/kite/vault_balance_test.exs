@@ -27,7 +27,8 @@ defmodule KiteAgentHub.Kite.VaultBalanceTest do
       # warm reads, so seeding lets us verify the read+sanitize path
       # without mocking the HTTP client.
       :ets.whereis(:kah_vault_balance_cache) == :undefined and
-        :ets.new(:kah_vault_balance_cache,
+        :ets.new(
+          :kah_vault_balance_cache,
           [:named_table, :public, :set, read_concurrency: true]
         )
 
@@ -74,7 +75,8 @@ defmodule KiteAgentHub.Kite.VaultBalanceTest do
 
     test "returns the cached snapshot when one is fresh in ETS" do
       :ets.whereis(:kah_vault_balance_cache) == :undefined and
-        :ets.new(:kah_vault_balance_cache,
+        :ets.new(
+          :kah_vault_balance_cache,
           [:named_table, :public, :set, read_concurrency: true]
         )
 

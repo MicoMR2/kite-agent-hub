@@ -162,8 +162,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   defp risk_gate(%{} = agent) do
     case KiteAgentHub.Trading.Risk.per_trade_notional_cap(agent) do
       {:error, :invalid_risk_config} ->
-        {:blocked, :invalid,
-         "RC-INVALID: risk_config invalid — edit on agent settings page"}
+        {:blocked, :invalid, "RC-INVALID: risk_config invalid — edit on agent settings page"}
 
       {:ok, %Decimal{}, _source} ->
         :ok
@@ -388,7 +387,11 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
       cancel = body["orderCancelTransaction"] ->
         reason = cancel["reason"] || "OANDA cancelled"
-        Logger.info("PaperExecutionWorker job=#{job_id} provider=oanda_practice cancelled: #{reason}")
+
+        Logger.info(
+          "PaperExecutionWorker job=#{job_id} provider=oanda_practice cancelled: #{reason}"
+        )
+
         mark_trade_failed(trade, "oanda cancel: #{reason}")
         {:error, {:oanda_cancel, reason}}
 
@@ -419,7 +422,8 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       |> maybe_put_order_id(order_id)
 
     with {:ok, updated} <- Trading.update_trade(trade, update_attrs),
-         {:ok, settled} <- Trading.settle_trade(updated, Trading.compute_realized_pnl_for_sell(updated)) do
+         {:ok, settled} <-
+           Trading.settle_trade(updated, Trading.compute_realized_pnl_for_sell(updated)) do
       enqueue_attestation(settled)
       {:ok, settled}
     else
@@ -476,8 +480,8 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
       String.contains?(text, "expired") or
         String.contains?(text, "settled") or
-          String.contains?(text, "closed") or
-            String.contains?(text, "inactive") ->
+        String.contains?(text, "closed") or
+          String.contains?(text, "inactive") ->
         "Kalshi market #{ticker} is closed for trading (expired, settled, or inactive). " <>
           "Pick a current contract before retrying."
 
@@ -505,8 +509,12 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
     units_dec = Decimal.new(to_string(units))
 
     case market do
-      "USD_" <> _quote -> units_dec
-      <<_base::binary-size(3), "_USD">> -> Decimal.mult(units_dec, fill_price)
+      "USD_" <> _quote ->
+        units_dec
+
+      <<_base::binary-size(3), "_USD">> ->
+        Decimal.mult(units_dec, fill_price)
+
       _ ->
         Logger.warning(
           "PaperExecutionWorker: oanda notional for cross pair #{market} — USD pivot rate unavailable, using legacy units * fill_price"
@@ -587,7 +595,9 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
       status when status in ["canceled", "cancelled"] ->
         limit_cents = order_limit_cents(order)
-        reason = "kalshi cancelled — 0 of #{order.count || trade.contracts} filled at #{limit_cents}c (likely IOC un-marketable)"
+
+        reason =
+          "kalshi cancelled — 0 of #{order.count || trade.contracts} filled at #{limit_cents}c (likely IOC un-marketable)"
 
         Logger.info(
           "PaperExecutionWorker job=#{job_id} provider=kalshi cancelled order=#{order.id} reason=#{reason}"
@@ -607,7 +617,8 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
 
   defp settle_kalshi(trade, attrs, job_id, order_id) do
     with {:ok, updated} <- Trading.update_trade(trade, attrs),
-         {:ok, settled} <- Trading.settle_trade(updated, Trading.compute_realized_pnl_for_sell(updated)) do
+         {:ok, settled} <-
+           Trading.settle_trade(updated, Trading.compute_realized_pnl_for_sell(updated)) do
       enqueue_attestation(settled)
       {:ok, settled}
     else

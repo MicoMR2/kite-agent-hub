@@ -56,6 +56,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
   require Logger
 
   alias KiteAgentHub.{Trading, Repo}
+
   alias KiteAgentHub.Kite.{
     AgentLog,
     RPC,
@@ -64,6 +65,7 @@ defmodule KiteAgentHub.Kite.AgentRunner do
     RuleBasedStrategy,
     PortfolioEdgeScorer
   }
+
   alias KiteAgentHub.Workers.{TradeExecutionWorker, PositionSyncWorker}
 
   @default_interval_ms 60_000

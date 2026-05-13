@@ -9,8 +9,7 @@ defmodule KiteAgentHub.Repo.Migrations.CreateAgentConfigChanges do
   def change do
     create table(:agent_config_changes, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :agent_id, references(:kite_agents, type: :binary_id, on_delete: :restrict),
-        null: false
+      add :agent_id, references(:kite_agents, type: :binary_id, on_delete: :restrict), null: false
 
       add :user_id, references(:users, on_delete: :restrict), null: false
 

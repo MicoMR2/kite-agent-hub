@@ -84,8 +84,7 @@ defmodule KiteAgentHub.Trading.TriggerEvents do
     |> Multi.run(:select, fn repo, _ ->
       rows =
         from(t in TriggerEvent,
-          where:
-            t.agent_id == ^agent_id and t.status == "pending" and is_nil(t.delivered_at),
+          where: t.agent_id == ^agent_id and t.status == "pending" and is_nil(t.delivered_at),
           order_by: [asc: t.inserted_at],
           lock: "FOR UPDATE SKIP LOCKED"
         )

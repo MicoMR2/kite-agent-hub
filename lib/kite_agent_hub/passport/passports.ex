@@ -109,5 +109,4 @@ defmodule KiteAgentHub.Passport.Passports do
         |> Map.new(fn link -> {link.agent_id, link} end)
     end
   end
-
 end

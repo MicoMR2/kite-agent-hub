@@ -118,13 +118,16 @@ defmodule KiteAgentHub.Trading.BrokerStats do
 
           "sell" ->
             queue = Map.get(lots, order.symbol, [])
-            {pnl, leftover_queue} = consume_lots(queue, order.filled_qty, order.filled_avg_price, 0.0)
+
+            {pnl, leftover_queue} =
+              consume_lots(queue, order.filled_qty, order.filled_avg_price, 0.0)
 
             new_total = total + pnl
             new_wins = if pnl > 0, do: wins + 1, else: wins
             new_losses = if pnl < 0, do: losses + 1, else: losses
 
-            {Map.put(lots, order.symbol, leftover_queue), new_total, new_wins, new_losses, count + 1}
+            {Map.put(lots, order.symbol, leftover_queue), new_total, new_wins, new_losses,
+             count + 1}
 
           _ ->
             {lots, total, wins, losses, count}
@@ -137,7 +140,8 @@ defmodule KiteAgentHub.Trading.BrokerStats do
   defp consume_lots(queue, 0, _sell_price, acc), do: {acc, queue}
   defp consume_lots([], _qty_left, _sell_price, acc), do: {acc, []}
 
-  defp consume_lots([{lot_qty, lot_price} | rest], qty_left, sell_price, acc) when lot_qty <= qty_left do
+  defp consume_lots([{lot_qty, lot_price} | rest], qty_left, sell_price, acc)
+       when lot_qty <= qty_left do
     pnl = (sell_price - lot_price) * lot_qty
     consume_lots(rest, qty_left - lot_qty, sell_price, acc + pnl)
   end

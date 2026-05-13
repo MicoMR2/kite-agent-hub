@@ -50,6 +50,7 @@ defmodule KiteAgentHub.Kite.VaultBalance do
     case VaultConfig.address() do
       addr when is_binary(addr) and addr != "" ->
         now = System.system_time(:second)
+
         case :ets.lookup(@cache_table, :snapshot) do
           [{:snapshot, %{fetched_at_unix: ts} = snap}] when now - ts < @ttl_seconds ->
             {:ok, sanitize(snap)}

@@ -124,6 +124,7 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
   end
 
   defp escape(nil), do: ""
+
   defp escape(s) when is_binary(s) do
     s
     |> String.replace("&", "&amp;")
@@ -222,7 +223,9 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
   Notify the admin that a new access request has been submitted.
   """
   def deliver_access_request_notification(req) do
-    to = Application.get_env(:kite_agent_hub, :admin_notification_email, "support@kiteagenthub.com")
+    to =
+      Application.get_env(:kite_agent_hub, :admin_notification_email, "support@kiteagenthub.com")
+
     base_url = Application.get_env(:kite_agent_hub, :app_base_url, "https://kiteagenthub.com")
     review_url = base_url <> "/admin/access-requests"
     notes_block_text = if req.notes && req.notes != "", do: "Notes: #{req.notes}\n\n", else: ""
@@ -288,11 +291,7 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
         "We've got #{accent("you")}. Hang tight.",
         """
         <p>Hi #{escape(req.name)} — thanks for your interest in Kite Agent Hub. We received your access request and will review it personally, usually within a day.</p>
-        #{steps([
-          "We review your request and confirm fit.",
-          ~s|You receive a follow-up email with a one-time invite code locked to <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(req.email)}</span>.|,
-          "You finish signing up and deploy your first agent."
-        ])}
+        #{steps(["We review your request and confirm fit.", ~s|You receive a follow-up email with a one-time invite code locked to <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(req.email)}</span>.|, "You finish signing up and deploy your first agent."])}
         <p style="color:#94a3b8;font-size:13px;margin-top:22px;">Nothing to do right now — sit tight.</p>
         """
       )
@@ -329,11 +328,7 @@ defmodule KiteAgentHub.Accounts.UserNotifier do
           <tr><td style="padding:22px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.40);border-radius:14px;text-align:center;font-family:'JetBrains Mono','Courier New',monospace;font-size:22px;letter-spacing:0.16em;color:#4ade80;font-weight:600;">#{escape(plaintext_code)}</td></tr>
         </table>
         #{button("Sign up with this code →", register_url)}
-        #{steps([
-          "Click the button above (or paste the code on the signup page).",
-          ~s|We pre-fill your email as <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(email)}</span> — set a password.|,
-          "Confirm via the email we send you, then deploy your first agent."
-        ])}
+        #{steps(["Click the button above (or paste the code on the signup page).", ~s|We pre-fill your email as <span style="color:#ffffff;font-family:'JetBrains Mono',monospace;">#{escape(email)}</span> — set a password.|, "Confirm via the email we send you, then deploy your first agent."])}
         <p style="color:#94a3b8;font-size:13px;margin-top:22px;">14-day expiry. Single-use. Locked to this address — if it wasn't you, ignore.</p>
         """
       )

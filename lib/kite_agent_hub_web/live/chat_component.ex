@@ -112,7 +112,14 @@ defmodule KiteAgentHubWeb.ChatComponent do
           phx-target={@myself}
           class="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
         >
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+            />
+          </svg>
         </button>
       <% end %>
 
@@ -135,18 +142,40 @@ defmodule KiteAgentHubWeb.ChatComponent do
                     "text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-1 px-2 py-1 rounded-lg border",
                     if(@show_invite,
                       do: "text-white border-white/20 bg-white/[0.08]",
-                      else: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10"
+                      else:
+                        "text-emerald-400 border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10"
                     )
                   ]}
                 >
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                  <svg
+                    class="w-3 h-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                    />
                   </svg>
                   Invite Agents
                 </button>
               <% end %>
-              <button phx-click="toggle_chat" phx-target={@myself} class="text-gray-500 hover:text-white transition-colors">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              <button
+                phx-click="toggle_chat"
+                phx-target={@myself}
+                class="text-gray-500 hover:text-white transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
               </button>
             </div>
           </div>
@@ -154,7 +183,9 @@ defmodule KiteAgentHubWeb.ChatComponent do
           <%!-- Invite Panel --%>
           <%= if @show_invite do %>
             <div class="border-b border-white/10 bg-white/[0.01] px-4 py-3">
-              <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Select an agent to invite</p>
+              <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                Select an agent to invite
+              </p>
               <div class="space-y-1.5 max-h-48 overflow-y-auto">
                 <%= for agent <- @agents do %>
                   <button
@@ -171,7 +202,8 @@ defmodule KiteAgentHubWeb.ChatComponent do
                           "pending" -> "bg-yellow-400"
                           _ -> "bg-gray-500"
                         end
-                      ]}></span>
+                      ]}>
+                      </span>
                       <span class="text-xs font-semibold text-white truncate">{agent.name}</span>
                       <span class={[
                         "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border shrink-0",
@@ -194,11 +226,17 @@ defmodule KiteAgentHubWeb.ChatComponent do
           <% end %>
 
           <%!-- Messages --%>
-          <div id="chat-messages" class="h-[380px] overflow-y-auto px-4 py-3 space-y-3" phx-hook="ScrollBottom">
+          <div
+            id="chat-messages"
+            class="h-[380px] overflow-y-auto px-4 py-3 space-y-3"
+            phx-hook="ScrollBottom"
+          >
             <%= if @messages == [] do %>
               <div class="text-center mt-10 space-y-2">
                 <p class="text-gray-600 text-xs">No messages yet.</p>
-                <p class="text-gray-700 text-[10px]">Use "Invite Agents" to bring agents into this chat.</p>
+                <p class="text-gray-700 text-[10px]">
+                  Use "Invite Agents" to bring agents into this chat.
+                </p>
               </div>
             <% end %>
             <%= for msg <- @messages do %>
@@ -207,7 +245,9 @@ defmodule KiteAgentHubWeb.ChatComponent do
                 <span class={[
                   "text-[10px] font-bold uppercase tracking-widest mb-0.5",
                   label_color(msg.sender_type, agent_type)
-                ]}>{display_name_for_message(msg, @agents)}</span>
+                ]}>
+                  {display_name_for_message(msg, @agents)}
+                </span>
                 <div class={[
                   "max-w-[85%] min-w-0 rounded-2xl backdrop-blur-md px-3 py-2 text-xs leading-relaxed break-words overflow-hidden",
                   bubble_classes(msg.sender_type, agent_type)
@@ -230,7 +270,11 @@ defmodule KiteAgentHubWeb.ChatComponent do
           </div>
 
           <%!-- Input --%>
-          <form phx-submit="send_message" phx-target={@myself} class="border-t border-white/10 px-3 py-3 flex gap-2">
+          <form
+            phx-submit="send_message"
+            phx-target={@myself}
+            class="border-t border-white/10 px-3 py-3 flex gap-2"
+          >
             <input
               id="chat-text-input"
               type="text"

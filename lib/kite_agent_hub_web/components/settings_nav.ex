@@ -57,7 +57,8 @@ defmodule KiteAgentHubWeb.SettingsNav do
             class={[
               "px-4 py-3 text-xs font-black uppercase tracking-widest border-b-2 transition-all",
               @active == key && "text-white border-white",
-              @active != key && "text-gray-500 hover:text-white border-transparent hover:border-white/20"
+              @active != key &&
+                "text-gray-500 hover:text-white border-transparent hover:border-white/20"
             ]}
           >
             {label}

@@ -59,6 +59,7 @@ defmodule KiteAgentHub.Accounts.AgentPassportLinkTest do
       })
 
     refute cs.valid?
+
     assert {"must be a 0x-prefixed 40-hex-character EVM address", _} =
              cs.errors[:passport_wallet_address]
   end

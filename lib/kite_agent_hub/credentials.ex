@@ -189,7 +189,13 @@ defmodule KiteAgentHub.Credentials do
       credential ->
         case Repo.delete(credential) do
           {:ok, _} = ok ->
-            audit_if_live({:ok, {credential, :credential_deleted}}, actor_user_id, org_id, provider_str)
+            audit_if_live(
+              {:ok, {credential, :credential_deleted}},
+              actor_user_id,
+              org_id,
+              provider_str
+            )
+
             ok
 
           {:error, _} = err ->

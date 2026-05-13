@@ -28,7 +28,9 @@ defmodule KiteAgentHub.TradingUpdateTradeTest do
   describe "update_trade/2" do
     test "broadcasts :trade_updated on success", %{user: user, trade: trade} do
       assert {:ok, updated} =
-               as_user(user, fn -> Trading.update_trade(trade, %{platform_order_id: "abc-123"}) end)
+               as_user(user, fn ->
+                 Trading.update_trade(trade, %{platform_order_id: "abc-123"})
+               end)
 
       assert updated.platform_order_id == "abc-123"
       assert_receive {:trade_updated, ^updated}, 200

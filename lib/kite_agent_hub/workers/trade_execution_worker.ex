@@ -614,7 +614,9 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
 
   defp fetch_position_for(key_id, secret, env, symbol) do
     case AlpacaClient.positions(key_id, secret, env) do
-      {:ok, positions} -> {:ok, Enum.find(positions, fn p -> p.symbol == symbol end)}
+      {:ok, positions} ->
+        {:ok, Enum.find(positions, fn p -> p.symbol == symbol end)}
+
       {:error, reason} ->
         Logger.warning(
           "TradeExecutionWorker: positions fetch failed — #{inspect(reason)}, falling through"
@@ -717,7 +719,8 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
               data: encode_trade_calldata(trade)
             }
 
-            case TxSigner.sign(tx,
+            case TxSigner.sign(
+                   tx,
                    private_key,
                    chain_id: agent.chain_id || KiteAgentHub.Kite.ChainId.default()
                  ) do

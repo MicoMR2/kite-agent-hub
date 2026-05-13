@@ -7,25 +7,52 @@
     <link rel="icon" type="image/svg+xml" href={~p"/images/logo-mark.svg"} />
     <meta
       name="description"
-      content={assigns[:meta_description] || "Deploy autonomous AI trading agents on Alpaca and Kalshi. BYO-LLM, non-custodial by design, settled on Kite chain. KCI Edge Scoring rates every position 0–100."}
+      content={
+        assigns[:meta_description] ||
+          "Deploy autonomous AI trading agents on Alpaca and Kalshi. BYO-LLM, non-custodial by design, settled on Kite chain. KCI Edge Scoring rates every position 0–100."
+      }
     />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Kite Agent Hub" />
-    <meta property="og:title" content={assigns[:og_title] || assigns[:page_title] || "Kite Agent Hub — Autonomous AI trading agents"} />
+    <meta
+      property="og:title"
+      content={
+        assigns[:og_title] || assigns[:page_title] ||
+          "Kite Agent Hub — Autonomous AI trading agents"
+      }
+    />
     <meta
       property="og:description"
-      content={assigns[:meta_description] || "Deploy AI trading agents that execute on Alpaca and Kalshi, scored with KCI Edge Scoring, settled on Kite chain. BYO-LLM. Non-custodial."}
+      content={
+        assigns[:meta_description] ||
+          "Deploy AI trading agents that execute on Alpaca and Kalshi, scored with KCI Edge Scoring, settled on Kite chain. BYO-LLM. Non-custodial."
+      }
     />
-    <meta property="og:url" content={KiteAgentHubWeb.Endpoint.url() <> (assigns[:request_path] || "/")} />
+    <meta
+      property="og:url"
+      content={KiteAgentHubWeb.Endpoint.url() <> (assigns[:request_path] || "/")}
+    />
     <meta property="og:image" content={KiteAgentHubWeb.Endpoint.url() <> "/images/og-image.png"} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Kite Agent Hub — autonomous AI agents that trade while you sleep" />
+    <meta
+      property="og:image:alt"
+      content="Kite Agent Hub — autonomous AI agents that trade while you sleep"
+    />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={assigns[:og_title] || assigns[:page_title] || "Kite Agent Hub — Autonomous AI trading agents"} />
+    <meta
+      name="twitter:title"
+      content={
+        assigns[:og_title] || assigns[:page_title] ||
+          "Kite Agent Hub — Autonomous AI trading agents"
+      }
+    />
     <meta
       name="twitter:description"
-      content={assigns[:meta_description] || "Deploy AI trading agents on Alpaca and Kalshi, settled on Kite chain. BYO-LLM. Non-custodial."}
+      content={
+        assigns[:meta_description] ||
+          "Deploy AI trading agents on Alpaca and Kalshi, settled on Kite chain. BYO-LLM. Non-custodial."
+      }
     />
     <meta name="twitter:image" content={KiteAgentHubWeb.Endpoint.url() <> "/images/og-image.png"} />
     <%!-- Type pairing: Plus Jakarta Sans 600/700/800 (display — calm-but-premium,

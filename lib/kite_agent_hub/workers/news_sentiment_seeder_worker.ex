@@ -53,9 +53,7 @@ defmodule KiteAgentHub.Workers.NewsSentimentSeederWorker do
         run(org_id)
 
       {:error, :no_alpaca_org} ->
-        Logger.info(
-          "NewsSentimentSeederWorker: no org with Alpaca credentials found — skipping"
-        )
+        Logger.info("NewsSentimentSeederWorker: no org with Alpaca credentials found — skipping")
 
         :ok
     end

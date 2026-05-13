@@ -66,8 +66,10 @@ defmodule KiteAgentHub.Kite.GaslessClient do
     relayer = if network == :testnet, do: @testnet_relayer, else: @mainnet_relayer
 
     with {:ok, from_address} <- TxSigner.address_from_private_key(private_key_hex),
-         {:ok, sig} <- sign_transfer_auth(private_key_hex, from_address, to_address, amount_units, token),
-         {:ok, tx_hash} <- submit_to_relayer(relayer, token.address, from_address, to_address, amount_units, sig) do
+         {:ok, sig} <-
+           sign_transfer_auth(private_key_hex, from_address, to_address, amount_units, token),
+         {:ok, tx_hash} <-
+           submit_to_relayer(relayer, token.address, from_address, to_address, amount_units, sig) do
       {:ok, tx_hash}
     end
   end
@@ -95,14 +97,15 @@ defmodule KiteAgentHub.Kite.GaslessClient do
 
     with {:ok, priv_bytes} <- decode_private_key(private_key_hex),
          {:ok, {r, s, recovery_id}} <- ExSecp256k1.sign(digest, priv_bytes) do
-      {:ok, %{
-        v: recovery_id + 27,
-        r: "0x" <> Base.encode16(r, case: :lower),
-        s: "0x" <> Base.encode16(s, case: :lower),
-        valid_after: valid_after,
-        valid_before: valid_before,
-        nonce: "0x" <> Base.encode16(nonce, case: :lower)
-      }}
+      {:ok,
+       %{
+         v: recovery_id + 27,
+         r: "0x" <> Base.encode16(r, case: :lower),
+         s: "0x" <> Base.encode16(s, case: :lower),
+         valid_after: valid_after,
+         valid_before: valid_before,
+         nonce: "0x" <> Base.encode16(nonce, case: :lower)
+       }}
     else
       {:error, reason} -> {:error, "signing failed: #{inspect(reason)}"}
     end
@@ -166,7 +169,7 @@ defmodule KiteAgentHub.Kite.GaslessClient do
 
   # ABI-encodes bytes32: already 32 bytes, zero-pad shorter values on the left
   defp pad_bytes32(b) when byte_size(b) == 32, do: b
-  defp pad_bytes32(b) when byte_size(b) < 32, do: <<0::((32 - byte_size(b)) * 8)>> <> b
+  defp pad_bytes32(b) when byte_size(b) < 32, do: <<0::(32-byte_size(b))*8>> <> b
 
   # ABI-encodes uint256 as big-endian 32-byte value
   defp pad_uint256(0), do: <<0::256>>
@@ -175,7 +178,7 @@ defmodule KiteAgentHub.Kite.GaslessClient do
     hex = Integer.to_string(n, 16)
     hex = if rem(String.length(hex), 2) == 0, do: hex, else: "0" <> hex
     raw = Base.decode16!(hex, case: :upper)
-    <<0::((32 - byte_size(raw)) * 8)>> <> raw
+    <<0::(32-byte_size(raw))*8>> <> raw
   end
 
   # ABI-encodes address as 32 bytes (12 zero bytes + 20-byte address)

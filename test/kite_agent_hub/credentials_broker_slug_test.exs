@@ -56,7 +56,15 @@ defmodule KiteAgentHub.Credentials.BrokerSlugTest do
     test "new live slugs are accepted by the changeset" do
       org_id = Ecto.UUID.generate()
 
-      for slug <- ["alpaca", "alpaca_live", "kalshi", "kalshi_live", "oanda", "oanda_live", "polymarket"] do
+      for slug <- [
+            "alpaca",
+            "alpaca_live",
+            "kalshi",
+            "kalshi_live",
+            "oanda",
+            "oanda_live",
+            "polymarket"
+          ] do
         key_id =
           if slug == "polymarket",
             do: "0x" <> String.duplicate("a", 40),

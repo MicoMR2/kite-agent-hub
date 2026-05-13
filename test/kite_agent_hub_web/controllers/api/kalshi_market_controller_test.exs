@@ -20,14 +20,20 @@ defmodule KiteAgentHubWeb.API.KalshiMarketControllerTest do
 
     test "400 when min_score is out of range", %{conn: conn, agent: agent} do
       resp =
-        conn |> auth(agent) |> get(~p"/api/v1/market-data/kalshi?min_score=200") |> json_response(400)
+        conn
+        |> auth(agent)
+        |> get(~p"/api/v1/market-data/kalshi?min_score=200")
+        |> json_response(400)
 
       assert resp["error"] =~ "min_score"
     end
 
     test "400 when limit is out of range", %{conn: conn, agent: agent} do
       resp =
-        conn |> auth(agent) |> get(~p"/api/v1/market-data/kalshi?limit=100000") |> json_response(400)
+        conn
+        |> auth(agent)
+        |> get(~p"/api/v1/market-data/kalshi?limit=100000")
+        |> json_response(400)
 
       assert resp["error"] =~ "limit"
     end

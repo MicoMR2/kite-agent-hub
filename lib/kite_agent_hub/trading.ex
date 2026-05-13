@@ -729,13 +729,14 @@ defmodule KiteAgentHub.Trading do
         # contracts. Denominator for the dashboard "Return %" card.
         # COALESCE keeps the sum at 0 when one leg is nil instead of
         # nullifying the whole row.
-        total_notional: sum(
-          fragment(
-            "COALESCE(?, 0) * COALESCE(?, 0)",
-            t.fill_price,
-            t.contracts
-          )
-        ),
+        total_notional:
+          sum(
+            fragment(
+              "COALESCE(?, 0) * COALESCE(?, 0)",
+              t.fill_price,
+              t.contracts
+            )
+          ),
         win_count: sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", t.realized_pnl)),
         loss_count: sum(fragment("CASE WHEN ? < 0 THEN 1 ELSE 0 END", t.realized_pnl)),
         trade_count: count(t.id)

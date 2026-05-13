@@ -207,8 +207,11 @@ defmodule KiteAgentHub.Repo.Migrations.FixOrgMembershipsUserIdType do
     """
 
     execute "CREATE POLICY kite_agents_org_select ON kite_agents FOR SELECT USING (organization_id IN (SELECT current_user_org_ids()))"
+
     execute "CREATE POLICY kite_agents_org_insert ON kite_agents FOR INSERT WITH CHECK (organization_id IN (SELECT current_user_org_ids()))"
+
     execute "CREATE POLICY kite_agents_org_update ON kite_agents FOR UPDATE USING (organization_id IN (SELECT current_user_org_ids()))"
+
     execute "CREATE POLICY kite_agents_org_delete ON kite_agents FOR DELETE USING (organization_id IN (SELECT current_user_org_ids()))"
 
     execute """

@@ -355,7 +355,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
               Already have an account? Sign in
             </.link>
           <% else %>
-            <span class="text-gray-600">Step <%= step_number(@step) %> of 4</span>
+            <span class="text-gray-600">Step {step_number(@step)} of 4</span>
           <% end %>
           <span class="font-mono text-gray-600">v2.8 · {KiteAgentHub.Kite.ChainId.label()}</span>
         </div>
@@ -402,8 +402,10 @@ defmodule KiteAgentHubWeb.OnboardLive do
             "h-[3px] flex-1 rounded-full transition-all duration-300",
             if(n <= @current,
               do: "bg-[#22c55e] shadow-[0_0_8px_rgba(34,197,94,0.5)]",
-              else: "bg-white/[0.08]")
-          ]}></div>
+              else: "bg-white/[0.08]"
+            )
+          ]}>
+          </div>
         <% end %>
       </div>
     <% end %>
@@ -505,9 +507,9 @@ defmodule KiteAgentHubWeb.OnboardLive do
             <% end %>
           </div>
           <div class="min-w-0">
-            <div class="text-[13px] font-black text-white"><%= p.label %></div>
+            <div class="text-[13px] font-black text-white">{p.label}</div>
             <div class="mt-[2px] text-[11px] text-gray-400 leading-[1.4]">
-              <%= p.blurb %>
+              {p.blurb}
             </div>
           </div>
         </button>
@@ -569,7 +571,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
     ~H"""
     <div class="kah-card p-4">
       <div class="flex items-center justify-between mb-3">
-        <div class="text-[13px] font-black text-white"><%= @platform.label %></div>
+        <div class="text-[13px] font-black text-white">{@platform.label}</div>
         <%= if @saved do %>
           <span class="text-[10px] font-bold text-[#22c55e] uppercase tracking-widest">
             ✓ Connected
@@ -582,7 +584,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
         <div>
           <label class="kah-eyebrow block mb-[4px]">
-            <%= @platform.key_id_label %>
+            {@platform.key_id_label}
           </label>
           <input
             type="text"
@@ -596,7 +598,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
 
         <div>
           <label class="kah-eyebrow block mb-[4px]">
-            <%= @platform.secret_label %>
+            {@platform.secret_label}
           </label>
           <input
             type="password"
@@ -612,7 +614,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
             <label class="kah-eyebrow block mb-[4px]">Environment</label>
             <select name="credential[env]" class="kah-field-input">
               <%= for {label, value} <- @platform.env_choices do %>
-                <option value={value}><%= label %></option>
+                <option value={value}>{label}</option>
               <% end %>
             </select>
           </div>
@@ -625,7 +627,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
         <% end %>
 
         <button type="submit" class="kah-btn-ghost mt-[4px]">
-          <%= if @saved, do: "Update", else: "Save" %>
+          {if @saved, do: "Update", else: "Save"}
         </button>
       </form>
     </div>
@@ -713,7 +715,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
     ~H"""
     <p class="kah-eyebrow mt-4">Step 04 · Handoff</p>
     <h1 class="text-[26px] font-black text-white leading-[1.05] tracking-[-0.02em] mt-2">
-      Meet <%= @agent && @agent.name %>.
+      Meet {@agent && @agent.name}.
     </h1>
     <p class="mt-[8px] mb-[18px] text-[13px] text-gray-400 font-light leading-[1.6]">
       Pick a runner — Claude Code or Codex. Codex uses a local hidden token prompt
@@ -738,16 +740,16 @@ defmodule KiteAgentHubWeb.OnboardLive do
             phx-click="toggle_token"
             class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
           >
-            <%= if @reveal, do: "Hide", else: "Reveal" %>
+            {if @reveal, do: "Hide", else: "Reveal"}
           </button>
         </div>
       </div>
 
       <code class="block bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-[#22c55e] font-mono truncate">
         <%= if @reveal do %>
-          <%= @agent && @agent.api_token %>
+          {@agent && @agent.api_token}
         <% else %>
-          <%= mask_token(@agent && @agent.api_token) %>
+          {mask_token(@agent && @agent.api_token)}
         <% end %>
       </code>
     </div>
@@ -774,16 +776,20 @@ defmodule KiteAgentHubWeb.OnboardLive do
             phx-value-target="option_a"
             class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
           >
-            <%= if @reveal_option_a, do: "Hide", else: "Reveal" %>
+            {if @reveal_option_a, do: "Hide", else: "Reveal"}
           </button>
         </div>
       </div>
 
       <%= if @reveal_option_a do %>
         <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto"><%= claude_code_prompt(@agent) %></pre>
-        <p class="text-[10px] text-gray-600 mt-1">Includes the token — use only in a trusted local coding client, not public or shared chats.</p>
+        <p class="text-[10px] text-gray-600 mt-1">
+          Includes the token — use only in a trusted local coding client, not public or shared chats.
+        </p>
       <% else %>
-        <p class="text-[10px] text-gray-600">System prompt with your token embedded. Copy or reveal.</p>
+        <p class="text-[10px] text-gray-600">
+          System prompt with your token embedded. Copy or reveal.
+        </p>
       <% end %>
     </div>
 
@@ -792,7 +798,9 @@ defmodule KiteAgentHubWeb.OnboardLive do
       <div class="flex items-center justify-between mb-2">
         <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
           Option B — Run with Codex Terminal
-          <span class="ml-2 text-[9px] font-bold text-gray-500"><%= KiteAgentHubWeb.CodexPrompts.agent_type_label(@agent) %></span>
+          <span class="ml-2 text-[9px] font-bold text-gray-500">
+            {KiteAgentHubWeb.CodexPrompts.agent_type_label(@agent)}
+          </span>
         </span>
         <div class="flex items-center gap-3">
           <button
@@ -810,7 +818,7 @@ defmodule KiteAgentHubWeb.OnboardLive do
             phx-value-target="option_b"
             class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
           >
-            <%= if @reveal_option_b, do: "Hide", else: "Reveal" %>
+            {if @reveal_option_b, do: "Hide", else: "Reveal"}
           </button>
         </div>
       </div>
@@ -821,7 +829,8 @@ defmodule KiteAgentHubWeb.OnboardLive do
           <span class="text-yellow-400">Requires Codex Terminal / Codex CLI.</span>
           The command asks Terminal for your token privately before Codex starts; do not paste the token into Codex chat.
           ChatGPT browser, desktop, or mobile chat cannot keep the agent online — they cannot run the long-poll loop locally.
-          If <code class="text-gray-400">codex</code> is not recognized, install or open Codex Terminal and follow its OS-specific setup.
+          If <code class="text-gray-400">codex</code>
+          is not recognized, install or open Codex Terminal and follow its OS-specific setup.
           <%= if KiteAgentHubWeb.CodexPrompts.can_trade?(@agent) do %>
             <span class="text-yellow-400">Trade Agent — only Trade Agents can submit trades.</span>
           <% else %>
@@ -829,7 +838,9 @@ defmodule KiteAgentHubWeb.OnboardLive do
           <% end %>
         </p>
       <% else %>
-        <p class="text-[10px] text-gray-600">Self-contained shell command — hidden local token prompt + Codex launcher with the embedded prompt. Copy or reveal when ready.</p>
+        <p class="text-[10px] text-gray-600">
+          Self-contained shell command — hidden local token prompt + Codex launcher with the embedded prompt. Copy or reveal when ready.
+        </p>
       <% end %>
     </div>
 
@@ -885,5 +896,4 @@ defmodule KiteAgentHubWeb.OnboardLive do
     your agent can submit trades — the prompt cannot override it.
     """
   end
-
 end

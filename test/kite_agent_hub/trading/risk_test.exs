@@ -20,6 +20,7 @@ defmodule KiteAgentHub.Trading.RiskTest do
 
     test "user override returns user_defined" do
       cfg = %{"per_trade_notional_cap_usd" => "1500"}
+
       assert {:ok, decimal, :user_defined} =
                Risk.per_trade_notional_cap(%KiteAgent{risk_config: cfg})
 

@@ -50,7 +50,8 @@ defmodule KiteAgentHub.Chat do
   end
 
   @doc "Send a message from a user. Credentials are stripped in the changeset before persistence."
-  @spec send_user_message(Ecto.UUID.t(), map(), String.t()) :: {:ok, message()} | {:error, Ecto.Changeset.t()}
+  @spec send_user_message(Ecto.UUID.t(), map(), String.t()) ::
+          {:ok, message()} | {:error, Ecto.Changeset.t()}
   def send_user_message(org_id, user, text) do
     attrs = %{
       text: text,
@@ -64,7 +65,8 @@ defmodule KiteAgentHub.Chat do
   end
 
   @doc "Send a message from an agent. Used by the REST chat endpoint and internal triggers."
-  @spec send_agent_message(Ecto.UUID.t(), map(), String.t()) :: {:ok, message()} | {:error, Ecto.Changeset.t()}
+  @spec send_agent_message(Ecto.UUID.t(), map(), String.t()) ::
+          {:ok, message()} | {:error, Ecto.Changeset.t()}
   def send_agent_message(org_id, agent, text) do
     attrs = %{
       text: text,
@@ -78,7 +80,8 @@ defmodule KiteAgentHub.Chat do
   end
 
   @doc "Send a system message (trade activity, connection events, etc)."
-  @spec send_system_message(Ecto.UUID.t(), String.t()) :: {:ok, message()} | {:error, Ecto.Changeset.t()}
+  @spec send_system_message(Ecto.UUID.t(), String.t()) ::
+          {:ok, message()} | {:error, Ecto.Changeset.t()}
   def send_system_message(org_id, text) do
     attrs = %{
       text: text,

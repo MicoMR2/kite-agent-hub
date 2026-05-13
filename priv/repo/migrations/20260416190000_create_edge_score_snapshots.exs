@@ -4,8 +4,10 @@ defmodule KiteAgentHub.Repo.Migrations.CreateEdgeScoreSnapshots do
   def change do
     create table(:edge_score_snapshots, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :organization_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
         null: false
+
       add :ticker, :string, null: false
       add :platform, :string, null: false
       add :score, :integer, null: false

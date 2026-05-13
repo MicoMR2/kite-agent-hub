@@ -41,12 +41,19 @@ defmodule KiteAgentHub.Chat.ChatMessage do
   # Strip any potential secrets from message text
   defp strip_credentials(changeset) do
     case get_change(changeset, :text) do
-      nil -> changeset
+      nil ->
+        changeset
+
       text ->
-        cleaned = text
-        |> String.replace(~r/-----BEGIN[A-Z ]+KEY-----[\s\S]*?-----END[A-Z ]+KEY-----/, "[REDACTED KEY]")
-        |> String.replace(~r/sk-[a-zA-Z0-9]{20,}/, "[REDACTED]")
-        |> String.replace(~r/swm_[a-zA-Z0-9]{20,}/, "[REDACTED]")
+        cleaned =
+          text
+          |> String.replace(
+            ~r/-----BEGIN[A-Z ]+KEY-----[\s\S]*?-----END[A-Z ]+KEY-----/,
+            "[REDACTED KEY]"
+          )
+          |> String.replace(~r/sk-[a-zA-Z0-9]{20,}/, "[REDACTED]")
+          |> String.replace(~r/swm_[a-zA-Z0-9]{20,}/, "[REDACTED]")
+
         put_change(changeset, :text, cleaned)
     end
   end
