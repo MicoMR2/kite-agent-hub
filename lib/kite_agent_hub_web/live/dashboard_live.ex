@@ -1723,36 +1723,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp quote_spread(_), do: nil
 
-  # OANDA position rows are %{"long" => %{units, ...}, "short" => %{...}}.
-  # Pick whichever side has non-zero units.
-  defp position_side(%{"long" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
-    do: "long"
-
-  defp position_side(%{"short" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
-    do: "short"
-
-  defp position_side(pos), do: Oanda.field(pos, "side", "—")
-
-  defp position_units(%{"long" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
-    do: u
-
-  defp position_units(%{"short" => %{"units" => u}}) when is_binary(u) and u != "0" and u != "",
-    do: u
-
-  defp position_units(pos), do: Oanda.field(pos, "units", "—")
-
-  defp position_unrealized_pl(%{"unrealizedPL" => pl}) when is_binary(pl), do: pl
-
-  defp position_unrealized_pl(%{"long" => %{"unrealizedPL" => pl}})
-       when is_binary(pl) and pl != "0",
-       do: pl
-
-  defp position_unrealized_pl(%{"short" => %{"unrealizedPL" => pl}})
-       when is_binary(pl) and pl != "0",
-       do: pl
-
-  defp position_unrealized_pl(_), do: "0"
-
   # ── Forex position card helpers (msg 8983 Phorari ack) ─────────────────
   #
   # OANDA position rows carry both `long` and `short` legs in the same
@@ -2215,9 +2185,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp parse_decimals(_), do: 18
-
-  defp win_rate(_, 0), do: "0%"
-  defp win_rate(wins, total), do: "#{Float.round(wins / total * 100, 1)}%"
 
   # Wrap BrokerStats.live_stats in a try/rescue so a broker API failure
   # (timeout, 500, unexpected response shape) can't crash the LiveView
