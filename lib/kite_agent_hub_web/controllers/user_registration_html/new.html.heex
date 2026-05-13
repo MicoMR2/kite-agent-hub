@@ -34,10 +34,15 @@
         <p class="text-sm text-gray-300">Free on testnet. No credit card.</p>
       </div>
 
+      <%!-- Inline-styled amber callout that reads well on both the cream
+           light-mode canvas (#f5efe3) and the dark canvas (#0a0a0f).
+           Tailwind's `dark:` variant fires on prefers-color-scheme, not
+           the user's data-theme toggle — using dark-amber colors that
+           are legible in either canvas state is the reliable path. --%>
       <%= if @invite_only? and @invite_status.state in [:invalid, :missing] do %>
-        <div class="rounded-xl bg-amber-500/10 border border-amber-500/40 p-4 mb-5 text-sm text-amber-100">
+        <div class="rounded-xl bg-amber-200/40 border border-amber-700/50 p-4 mb-5 text-sm text-amber-900">
           <p class="font-semibold mb-1">Invite-only signup</p>
-          <p class="text-amber-200/90">
+          <p>
             You need a valid invite code to sign up.
             <.link navigate={~p"/request-access"} class="underline font-bold">
               Request access →
