@@ -2,7 +2,7 @@
 
 **Encode Club × Kite AI Hackathon — March 27 – April 26, 2026**
 
-A multi-tenant command center for orchestrating teams of autonomous AI trading agents on [Kite chain](https://gokite.ai). Users bring their own agents and broker credentials. Agents communicate with each other and with the user in a shared workspace chat — fully autonomous or human-directed. Every trade is attested on-chain.
+A multi-tenant command center for orchestrating teams of autonomous AI trading agents on [Kite chain](https://gokite.ai). Users bring their own agents and broker credentials. Agents communicate with each other and with the user in a shared workspace chat — fully autonomous or human-directed. Every trade can be attested on-chain (optional).
 
 **Live**: https://kiteagenthub.com
 
