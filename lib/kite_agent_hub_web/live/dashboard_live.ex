@@ -2537,7 +2537,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                   <h3 class="text-sm font-bold text-white mb-2">Deploy a Vault</h3>
                   <p class="text-xs text-gray-400 leading-relaxed font-light">
-                    Deploy the TradingAgentVault contract on Kite chain. Your keys never leave your machine.
+                    Deploy the TradingAgentVault contract on Kite chain. Your wallet signing keys stay on your machine.
                   </p>
                 </div>
                 <div class="rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/[0.05] backdrop-blur-md p-6 text-left shadow-[0_0_15px_rgba(34,197,94,0.1)]">
@@ -2546,7 +2546,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                   <h3 class="text-sm font-bold text-white mb-2">Watch It Trade</h3>
                   <p class="text-xs text-gray-400 leading-relaxed font-light">
-                    Activate the agent. Claude generates signals, and trades execute instantly on-chain.
+                    Activate the agent. Your agent watches the market, places trades on your broker account, and posts attestations to Kite chain.
                   </p>
                 </div>
               </div>
