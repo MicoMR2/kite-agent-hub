@@ -19,7 +19,14 @@ defmodule KiteAgentHub.Kite.TickerScorer do
     - score < 50  → :no
   """
 
-  @type bar :: %{t: any(), o: float() | nil, h: float() | nil, l: float() | nil, c: float() | nil, v: integer()}
+  @type bar :: %{
+          t: any(),
+          o: float() | nil,
+          h: float() | nil,
+          l: float() | nil,
+          c: float() | nil,
+          v: integer()
+        }
   @type score :: %{
           ticker: String.t(),
           score: non_neg_integer(),

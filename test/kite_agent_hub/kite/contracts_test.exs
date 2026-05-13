@@ -81,30 +81,49 @@ defmodule KiteAgentHub.Kite.ContractsTest do
 
       on_exit(fn ->
         if prior_env_testnet, do: System.put_env("KITE_TREASURY_ADDRESS", prior_env_testnet)
-        if prior_env_mainnet, do: System.put_env("KITE_TREASURY_ADDRESS_MAINNET", prior_env_mainnet)
-        if prior_testnet, do: Application.put_env(:kite_agent_hub, :kite_treasury_address, prior_testnet)
-        if prior_mainnet, do: Application.put_env(:kite_agent_hub, :kite_treasury_address_mainnet, prior_mainnet)
+
+        if prior_env_mainnet,
+          do: System.put_env("KITE_TREASURY_ADDRESS_MAINNET", prior_env_mainnet)
+
+        if prior_testnet,
+          do: Application.put_env(:kite_agent_hub, :kite_treasury_address, prior_testnet)
+
+        if prior_mainnet,
+          do: Application.put_env(:kite_agent_hub, :kite_treasury_address_mainnet, prior_mainnet)
       end)
 
       :ok
     end
 
     test "mainnet with no env set returns :mainnet_treasury_unconfigured — no testnet fallback" do
-      Application.put_env(:kite_agent_hub, :kite_treasury_address, "0x4049c35f45F772FE0cB207a9905eBD55C0635714")
+      Application.put_env(
+        :kite_agent_hub,
+        :kite_treasury_address,
+        "0x4049c35f45F772FE0cB207a9905eBD55C0635714"
+      )
 
       assert {:error, :mainnet_treasury_unconfigured} = Contracts.treasury_address(@mainnet)
     end
 
     test "mainnet returns the configured address when set" do
-      Application.put_env(:kite_agent_hub, :kite_treasury_address_mainnet, "0xMAINNETADDRESS_PLACEHOLDER")
+      Application.put_env(
+        :kite_agent_hub,
+        :kite_treasury_address_mainnet,
+        "0xMAINNETADDRESS_PLACEHOLDER"
+      )
 
       assert {:ok, "0xMAINNETADDRESS_PLACEHOLDER"} = Contracts.treasury_address(@mainnet)
     end
 
     test "testnet returns its address when set" do
-      Application.put_env(:kite_agent_hub, :kite_treasury_address, "0x4049c35f45F772FE0cB207a9905eBD55C0635714")
+      Application.put_env(
+        :kite_agent_hub,
+        :kite_treasury_address,
+        "0x4049c35f45F772FE0cB207a9905eBD55C0635714"
+      )
 
-      assert {:ok, "0x4049c35f45F772FE0cB207a9905eBD55C0635714"} = Contracts.treasury_address(@testnet)
+      assert {:ok, "0x4049c35f45F772FE0cB207a9905eBD55C0635714"} =
+               Contracts.treasury_address(@testnet)
     end
 
     test "unknown chain returns :unknown_chain" do

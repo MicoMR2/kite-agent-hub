@@ -55,9 +55,7 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
 
       {:ok, {:settle_no_tx, trade}} ->
         Repo.with_user(owner_user_id, fn ->
-          Logger.info(
-            "SettlementWorker: trade #{trade.id} has no tx_hash, settling as confirmed"
-          )
+          Logger.info("SettlementWorker: trade #{trade.id} has no tx_hash, settling as confirmed")
 
           Trading.settle_trade(trade, Trading.compute_realized_pnl_for_sell(trade))
           :ok
@@ -71,9 +69,7 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
         case RPC.get_transaction_receipt(tx_hash) do
           {:ok, %{"status" => "0x1"}} ->
             Repo.with_user(owner_user_id, fn ->
-              Logger.info(
-                "SettlementWorker: tx #{tx_hash} confirmed, settling trade #{trade.id}"
-              )
+              Logger.info("SettlementWorker: tx #{tx_hash} confirmed, settling trade #{trade.id}")
 
               Trading.settle_trade(trade, Trading.compute_realized_pnl_for_sell(trade))
               :ok
@@ -143,5 +139,4 @@ defmodule KiteAgentHub.Workers.SettlementWorker do
     |> limit(1)
     |> Repo.one()
   end
-
 end

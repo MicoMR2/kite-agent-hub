@@ -108,7 +108,8 @@ defmodule KiteAgentHub.Kite.Contracts do
   @spec treasury_address(integer()) ::
           {:ok, String.t()} | {:error, :mainnet_treasury_unconfigured | :unknown_chain}
   def treasury_address(@testnet_id) do
-    case System.get_env("KITE_TREASURY_ADDRESS") || Application.get_env(:kite_agent_hub, :kite_treasury_address) do
+    case System.get_env("KITE_TREASURY_ADDRESS") ||
+           Application.get_env(:kite_agent_hub, :kite_treasury_address) do
       v when is_binary(v) and byte_size(v) > 0 -> {:ok, v}
       _ -> {:error, :testnet_treasury_unconfigured}
     end

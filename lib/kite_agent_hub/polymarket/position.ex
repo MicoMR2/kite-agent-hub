@@ -51,8 +51,6 @@ defmodule KiteAgentHub.Polymarket.Position do
     |> validate_format(:market_id, ~r/^(0x[a-fA-F0-9]+|[0-9a-fA-F\-]{8,})$/,
       message: "must be a hex hash or uuid-like id"
     )
-    |> validate_format(:token_id, ~r/^[0-9a-fA-Fx\-]+$/,
-      message: "must be numeric or hex"
-    )
+    |> validate_format(:token_id, ~r/^[0-9a-fA-Fx\-]+$/, message: "must be numeric or hex")
   end
 end

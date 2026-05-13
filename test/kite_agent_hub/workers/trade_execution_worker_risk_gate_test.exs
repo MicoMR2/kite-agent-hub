@@ -133,5 +133,4 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorkerRiskGateTest do
       end
     end
   end
-
 end

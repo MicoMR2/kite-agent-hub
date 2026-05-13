@@ -28,7 +28,8 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     %{
       id: "oanda",
       label: "OANDA (Practice)",
-      hint: "Practice account at api-fxpractice.oanda.com. Generate a Personal Access Token from My Account → Manage API Access.",
+      hint:
+        "Practice account at api-fxpractice.oanda.com. Generate a Personal Access Token from My Account → Manage API Access.",
       key_label: "Display Name",
       secret_label: "Personal Access Token"
     }
@@ -38,28 +39,32 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
     %{
       id: "alpaca_live",
       label: "Alpaca (Live)",
-      hint: "Real-money account at api.alpaca.markets. Orders placed with this key move real funds.",
+      hint:
+        "Real-money account at api.alpaca.markets. Orders placed with this key move real funds.",
       key_label: "API Key ID",
       secret_label: "API Secret Key"
     },
     %{
       id: "kalshi_live",
       label: "Kalshi (Live)",
-      hint: "Real-money account at api.elections.kalshi.com. Orders placed with this key move real funds.",
+      hint:
+        "Real-money account at api.elections.kalshi.com. Orders placed with this key move real funds.",
       key_label: "API Key ID",
       secret_label: "RSA Private Key (PEM)"
     },
     %{
       id: "oanda_live",
       label: "OANDA (Live)",
-      hint: "Real-money account at api-fxtrade.oanda.com. Orders placed with this key move real funds.",
+      hint:
+        "Real-money account at api-fxtrade.oanda.com. Orders placed with this key move real funds.",
       key_label: "Display Name",
       secret_label: "Personal Access Token"
     },
     %{
       id: "polymarket",
       label: "Polymarket (Live)",
-      hint: "Polymarket is live-money only — there is no paper / sandbox endpoint. Relayer credentials are stored; wallet signing happens client-side.",
+      hint:
+        "Polymarket is live-money only — there is no paper / sandbox endpoint. Relayer credentials are stored; wallet signing happens client-side.",
       key_label: "Relayer Address (0x…)",
       secret_label: "Relayer API Key"
     }
@@ -168,8 +173,13 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       live_slot? and not confirmed? ->
         {:noreply,
          socket
-         |> assign(:form_errors, %{live_confirm: ["You must confirm this is real money before saving."]})
-         |> put_flash(:error, "Live-money keys need the 'I understand' checkbox before they can save.")}
+         |> assign(:form_errors, %{
+           live_confirm: ["You must confirm this is real money before saving."]
+         })
+         |> put_flash(
+           :error,
+           "Live-money keys need the 'I understand' checkbox before they can save."
+         )}
 
       reuse_conflict? and not reuse_confirmed? ->
         {:noreply,
@@ -179,7 +189,10 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
              "This key_id matches the existing #{counterpart} slot. Confirm this is intentional (likely a paste mistake)."
            ]
          })
-         |> put_flash(:error, "Same key_id is already saved on the counterpart slot. Confirm to proceed.")}
+         |> put_flash(
+           :error,
+           "Same key_id is already saved on the counterpart slot. Confirm to proceed."
+         )}
 
       true ->
         save_credential(socket, org, provider, key_id, secret, env, params)
@@ -207,7 +220,6 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   end
 
   defp save_credential(socket, org, provider, key_id, secret, env, params) do
-
     attrs =
       %{
         "key_id" => key_id,
@@ -217,7 +229,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
       |> maybe_put(params, "account_id")
       |> maybe_put(params, "server")
 
-    actor_user_id = socket.assigns.current_scope && socket.assigns.current_scope.user && socket.assigns.current_scope.user.id
+    actor_user_id =
+      socket.assigns.current_scope && socket.assigns.current_scope.user &&
+        socket.assigns.current_scope.user.id
 
     result =
       try do
@@ -251,7 +265,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
   def handle_event("delete", %{"provider" => provider}, socket) do
     org = socket.assigns.org
 
-    actor_user_id = socket.assigns.current_scope && socket.assigns.current_scope.user && socket.assigns.current_scope.user.id
+    actor_user_id =
+      socket.assigns.current_scope && socket.assigns.current_scope.user &&
+        socket.assigns.current_scope.user.id
 
     try do
       Credentials.delete_credential(org.id, provider, actor_user_id)
@@ -399,7 +415,9 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                       class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30 font-mono"
                     />
                     <%= if provider.id in ["oanda", "oanda_live"] do %>
-                      <p class="text-[10px] text-gray-500 mt-1">Display name only — not sent to OANDA.</p>
+                      <p class="text-[10px] text-gray-500 mt-1">
+                        Display name only — not sent to OANDA.
+                      </p>
                     <% end %>
                     <%= if err = get_in(@form_errors, [:key_id, Access.at(0)]) do %>
                       <p class="text-xs text-red-400 mt-1">{err}</p>
@@ -476,9 +494,16 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                       <label class={[
                         "flex-1 cursor-pointer rounded-xl border px-4 py-3 text-center transition-all",
                         current_env == "paper" && "border-emerald-500/40 bg-emerald-500/10",
-                        current_env != "paper" && "border-white/10 bg-white/[0.02] hover:border-white/20"
+                        current_env != "paper" &&
+                          "border-white/10 bg-white/[0.02] hover:border-white/20"
                       ]}>
-                        <input type="radio" name="env" value="paper" checked={current_env == "paper"} class="sr-only" />
+                        <input
+                          type="radio"
+                          name="env"
+                          value="paper"
+                          checked={current_env == "paper"}
+                          class="sr-only"
+                        />
                         <span class="text-xs font-black uppercase tracking-widest text-white">
                           {if provider.id == "kalshi", do: "Demo", else: "Paper"}
                         </span>
@@ -487,10 +512,19 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                       <label class={[
                         "flex-1 cursor-pointer rounded-xl border px-4 py-3 text-center transition-all",
                         current_env == "live" && "border-red-500/40 bg-red-500/10",
-                        current_env != "live" && "border-white/10 bg-white/[0.02] hover:border-white/20"
+                        current_env != "live" &&
+                          "border-white/10 bg-white/[0.02] hover:border-white/20"
                       ]}>
-                        <input type="radio" name="env" value="live" checked={current_env == "live"} class="sr-only" />
-                        <span class="text-xs font-black uppercase tracking-widest text-white">Live</span>
+                        <input
+                          type="radio"
+                          name="env"
+                          value="live"
+                          checked={current_env == "live"}
+                          class="sr-only"
+                        />
+                        <span class="text-xs font-black uppercase tracking-widest text-white">
+                          Live
+                        </span>
                         <p class="text-[10px] text-gray-500 mt-1">Real funds — trades are final</p>
                       </label>
                     </div>
@@ -520,9 +554,12 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                       <span class={[
                         "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border",
                         existing.env == "live" && "text-red-400 border-red-500/30 bg-red-500/10",
-                        existing.env != "live" && "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                        existing.env != "live" &&
+                          "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
                       ]}>
-                        {if existing.env == "live", do: "Live", else: (if provider.id == "kalshi", do: "Demo", else: "Paper")}
+                        {if existing.env == "live",
+                          do: "Live",
+                          else: if(provider.id == "kalshi", do: "Demo", else: "Paper")}
                       </span>
                     <% else %>
                       <span class="text-gray-700 italic text-xs">No key stored</span>
@@ -576,7 +613,8 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                 <div class="flex items-center gap-2">
                   <%= if configured do %>
                     <span class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-red-300">
-                      <span class="w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_6px_#ef4444]"></span>
+                      <span class="w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_6px_#ef4444]">
+                      </span>
                       Live · connected
                     </span>
                   <% else %>
@@ -654,7 +692,8 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                   <label class="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 cursor-pointer">
                     <input type="checkbox" name="live_confirm" value="true" class="mt-0.5" />
                     <span class="text-xs text-red-100 leading-relaxed">
-                      <strong class="font-bold">I understand this is real money.</strong> Orders placed with this key will execute against a funded brokerage account and move real funds. There is no paper-trading fallback once this key is wired up.
+                      <strong class="font-bold">I understand this is real money.</strong>
+                      Orders placed with this key will execute against a funded brokerage account and move real funds. There is no paper-trading fallback once this key is wired up.
                     </span>
                   </label>
                   <%= if err = get_in(@form_errors, [:live_confirm, Access.at(0)]) do %>
@@ -670,10 +709,13 @@ defmodule KiteAgentHubWeb.ApiKeysLive do
                     <label class="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 cursor-pointer">
                       <input type="checkbox" name="reuse_confirm" value="true" class="mt-0.5" />
                       <span class="text-xs text-amber-100 leading-relaxed">
-                        <strong class="font-bold">This key matches my paper / sandbox slot.</strong> I am intentionally using the same key_id for live trading and this is not a paste mistake.
+                        <strong class="font-bold">This key matches my paper / sandbox slot.</strong>
+                        I am intentionally using the same key_id for live trading and this is not a paste mistake.
                       </span>
                     </label>
-                    <p class="text-xs text-amber-300">{get_in(@form_errors, [:reuse_confirm, Access.at(0)])}</p>
+                    <p class="text-xs text-amber-300">
+                      {get_in(@form_errors, [:reuse_confirm, Access.at(0)])}
+                    </p>
                   <% end %>
 
                   <div class="flex items-center gap-3 pt-1">

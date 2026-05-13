@@ -211,8 +211,7 @@ if config_env() == :prod do
   # Routing modules (KiteAttestationWorker, GaslessClient, TxSigner)
   # continue to carry explicit testnet/mainnet constants for dispatch.
   config :kite_agent_hub,
-    kite_chain_id:
-      System.get_env("KITE_CHAIN_ID", "2368") |> String.to_integer()
+    kite_chain_id: System.get_env("KITE_CHAIN_ID", "2368") |> String.to_integer()
 
   # KAH ops-owned vault Passport address (passport-handoff §3).
   # Receives Rail B (per-trade x402 fee) payments. Loaded from

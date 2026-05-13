@@ -22,9 +22,9 @@ defmodule KiteAgentHub.Repo.Migrations.AddTradeRecordsAgentStatusIndex do
 
   def change do
     create_if_not_exists index(
-                          :trade_records,
-                          [:kite_agent_id, :status],
-                          concurrently: true
-                        )
+                           :trade_records,
+                           [:kite_agent_id, :status],
+                           concurrently: true
+                         )
   end
 end

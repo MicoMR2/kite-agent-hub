@@ -42,7 +42,10 @@ defmodule KiteAgentHubWeb.API.EdgeScoresHistoryControllerTest do
 
     test "400 when hours is out of range", %{conn: conn, agent: agent} do
       resp =
-        conn |> auth(agent) |> get(~p"/api/v1/edge-scores/history?hours=500") |> json_response(400)
+        conn
+        |> auth(agent)
+        |> get(~p"/api/v1/edge-scores/history?hours=500")
+        |> json_response(400)
 
       assert resp["error"] =~ "hours"
     end

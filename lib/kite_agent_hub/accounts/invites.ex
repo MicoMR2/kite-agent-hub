@@ -103,8 +103,12 @@ defmodule KiteAgentHub.Accounts.Invites do
     |> where([c], c.code_hash == ^hash)
     |> Repo.one()
     |> case do
-      nil -> {:error, :invalid}
-      %InviteCode{used_at: %DateTime{}} -> {:error, :used}
+      nil ->
+        {:error, :invalid}
+
+      %InviteCode{used_at: %DateTime{}} ->
+        {:error, :used}
+
       %InviteCode{expires_at: exp} = c ->
         if DateTime.compare(exp, now) == :lt, do: {:error, :expired}, else: {:ok, c}
     end

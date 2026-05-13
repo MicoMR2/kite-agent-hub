@@ -84,7 +84,10 @@ defmodule KiteAgentHub.Trading.ChainChangeTest do
     test "false when env unset" do
       prior = Application.get_env(:kite_agent_hub, :agent_private_key_mainnet)
       Application.delete_env(:kite_agent_hub, :agent_private_key_mainnet)
-      on_exit(fn -> if prior, do: Application.put_env(:kite_agent_hub, :agent_private_key_mainnet, prior) end)
+
+      on_exit(fn ->
+        if prior, do: Application.put_env(:kite_agent_hub, :agent_private_key_mainnet, prior)
+      end)
 
       # Also bypass System.get_env fallback.
       System.delete_env("AGENT_PRIVATE_KEY_MAINNET")

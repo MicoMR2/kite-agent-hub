@@ -23,6 +23,7 @@ defmodule KiteAgentHub.Credentials.Cipher do
   @doc "Decrypt {ciphertext, iv, tag}. Returns {:ok, plaintext} or {:error, :decryption_failed}."
   def decrypt(ciphertext, iv, tag) do
     key = encryption_key()
+
     case :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, @aad, tag, false) do
       :error -> {:error, :decryption_failed}
       plaintext -> {:ok, plaintext}
@@ -33,7 +34,9 @@ defmodule KiteAgentHub.Credentials.Cipher do
     case System.get_env("CREDENTIAL_ENCRYPTION_KEY") do
       nil ->
         # Dev fallback: derive 32 bytes from SECRET_KEY_BASE
-        base = Application.get_env(:kite_agent_hub, KiteAgentHubWeb.Endpoint)[:secret_key_base] || ""
+        base =
+          Application.get_env(:kite_agent_hub, KiteAgentHubWeb.Endpoint)[:secret_key_base] || ""
+
         :crypto.hash(:sha256, base)
 
       hex when byte_size(hex) >= 64 ->
@@ -42,8 +45,14 @@ defmodule KiteAgentHub.Credentials.Cipher do
       _short ->
         # Misconfigured key — fall back to dev key and log a warning
         require Logger
-        Logger.warning("Cipher: CREDENTIAL_ENCRYPTION_KEY must be >= 64 hex chars. Using dev fallback.")
-        base = Application.get_env(:kite_agent_hub, KiteAgentHubWeb.Endpoint)[:secret_key_base] || ""
+
+        Logger.warning(
+          "Cipher: CREDENTIAL_ENCRYPTION_KEY must be >= 64 hex chars. Using dev fallback."
+        )
+
+        base =
+          Application.get_env(:kite_agent_hub, KiteAgentHubWeb.Endpoint)[:secret_key_base] || ""
+
         :crypto.hash(:sha256, base)
     end
   end

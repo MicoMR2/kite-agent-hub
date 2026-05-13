@@ -9,8 +9,6 @@ defmodule KiteAgentHub.Repo.Migrations.AddAttestationTxHashToTradeRecords do
       add :attestation_tx_hash, :string
     end
 
-    create index(:trade_records, [:attestation_tx_hash],
-             where: "attestation_tx_hash IS NOT NULL"
-           )
+    create index(:trade_records, [:attestation_tx_hash], where: "attestation_tx_hash IS NOT NULL")
   end
 end

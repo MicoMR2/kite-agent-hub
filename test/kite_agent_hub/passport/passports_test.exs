@@ -50,7 +50,10 @@ defmodule KiteAgentHub.Passport.PassportsTest do
     end
 
     test "rejects JWT-shaped passport_agent_id (2+ dots, >500 bytes)", %{user: user, agent: agent} do
-      jwt = "h" <> String.duplicate("a", 200) <> "." <> String.duplicate("b", 200) <> "." <> String.duplicate("c", 200)
+      jwt =
+        "h" <>
+          String.duplicate("a", 200) <>
+          "." <> String.duplicate("b", 200) <> "." <> String.duplicate("c", 200)
 
       attrs = %{
         "passport_user_id" => "user_abc",

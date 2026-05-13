@@ -46,7 +46,10 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
            agent = Trading.get_agent!(agent_id)
 
            if agent.status not in ["active", "paused"] do
-             Logger.info("PositionSyncWorker: agent #{agent_id} is #{agent.status}, skipping sync")
+             Logger.info(
+               "PositionSyncWorker: agent #{agent_id} is #{agent.status}, skipping sync"
+             )
+
              {:cancel, "agent not active or paused"}
            else
              open_trades = Trading.list_open_trades(agent.id)

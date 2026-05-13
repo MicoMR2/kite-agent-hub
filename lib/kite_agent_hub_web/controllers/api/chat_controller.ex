@@ -31,7 +31,9 @@ defmodule KiteAgentHubWeb.API.ChatController do
           conn |> put_status(:created) |> json(%{ok: true, message: serialize(message)})
 
         {:error, _} ->
-          conn |> put_status(:unprocessable_entity) |> json(%{ok: false, error: "failed to send message"})
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{ok: false, error: "failed to send message"})
       end
     else
       {:error, :unauthorized} -> unauthorized(conn)

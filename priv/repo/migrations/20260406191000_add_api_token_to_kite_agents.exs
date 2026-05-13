@@ -12,8 +12,9 @@ defmodule KiteAgentHub.Repo.Migrations.AddApiTokenToKiteAgents do
 
     # Backfill existing agents with random tokens
     execute """
-    UPDATE kite_agents SET api_token = 'kite_' || encode(gen_random_bytes(24), 'hex')
-    WHERE api_token IS NULL
-    """, ""
+            UPDATE kite_agents SET api_token = 'kite_' || encode(gen_random_bytes(24), 'hex')
+            WHERE api_token IS NULL
+            """,
+            ""
   end
 end

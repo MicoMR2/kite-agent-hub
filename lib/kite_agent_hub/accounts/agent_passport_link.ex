@@ -87,7 +87,11 @@ defmodule KiteAgentHub.Accounts.AgentPassportLink do
     case get_change(changeset, field) do
       value when is_binary(value) ->
         if byte_size(value) >= @jwt_min_length and dot_count(value) >= 2 do
-          add_error(changeset, field, "looks like a credential — paste only public Passport identifiers")
+          add_error(
+            changeset,
+            field,
+            "looks like a credential — paste only public Passport identifiers"
+          )
         else
           changeset
         end

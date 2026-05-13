@@ -1337,7 +1337,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
          assign(
            socket,
            :kalshi_action_flash,
-           {:error, "Ticker required (uppercase alphanumeric + dashes, e.g. KXETHD-25NOV30-B3500)."}
+           {:error,
+            "Ticker required (uppercase alphanumeric + dashes, e.g. KXETHD-25NOV30-B3500)."}
          )}
 
       side not in ["yes", "no"] ->
@@ -1816,8 +1817,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
     sign = if v >= 0, do: "+", else: "−"
     sign <> "$" <> :erlang.float_to_binary(abs(v) * 1.0, decimals: 2)
   end
-
-  defp forex_fmt_pct(nil), do: "—"
 
   defp forex_fmt_pct(v) when is_number(v) do
     sign = if v >= 0, do: "+", else: "−"
@@ -2742,9 +2741,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <%= if return_pct do %>
                             <% pct_chip_cls =
                               cond do
-                                return_pct > 0 -> "text-[#22c55e] bg-[#22c55e]/[0.10] border-[#22c55e]/40"
-                                return_pct < 0 -> "text-[#ef4444] bg-[#ef4444]/[0.10] border-[#ef4444]/40"
-                                true -> "text-gray-300 bg-white/[0.04] border-white/15"
+                                return_pct > 0 ->
+                                  "text-[#22c55e] bg-[#22c55e]/[0.10] border-[#22c55e]/40"
+
+                                return_pct < 0 ->
+                                  "text-[#ef4444] bg-[#ef4444]/[0.10] border-[#ef4444]/40"
+
+                                true ->
+                                  "text-gray-300 bg-white/[0.04] border-white/15"
                               end %>
                             <span class={"px-2 py-0.5 rounded-full text-xs font-mono font-bold border " <> pct_chip_cls}>
                               {fmt_signed_pct(return_pct)}
@@ -2778,8 +2782,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <% @pnl_stats && @pnl_stats.trade_count > 0 && return_pct -> %>
                           <p class={[
                             "text-2xl sm:text-3xl font-black tracking-tight break-all",
-                            return_pct > 0 && "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
-                            return_pct < 0 && "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
+                            return_pct > 0 &&
+                              "text-[#22c55e] drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]",
+                            return_pct < 0 &&
+                              "text-[#ef4444] drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]",
                             return_pct == 0.0 && "text-gray-300"
                           ]}>
                             {fmt_signed_pct(return_pct)}
@@ -2788,7 +2794,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             on ${Decimal.round(@pnl_stats.total_notional, 2)} traded
                           </p>
                         <% true -> %>
-                          <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">—</p>
+                          <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight">
+                            —
+                          </p>
                           <p class="text-[10px] text-gray-600 mt-2 font-mono tracking-widest uppercase">
                             No Data
                           </p>
@@ -2821,7 +2829,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           {@wallet_balance_eth}
                         </p>
                         <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">
-                          KITE ({KiteAgentHub.Kite.ChainId.label(@selected_agent && @selected_agent.chain_id)})
+                          KITE ({KiteAgentHub.Kite.ChainId.label(
+                            @selected_agent && @selected_agent.chain_id
+                          )})
                         </p>
                       <% else %>
                         <p class="text-2xl sm:text-3xl font-black text-gray-700 tracking-tight animate-pulse">
@@ -2863,7 +2873,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </div>
                       <%= if @selected_agent && @selected_agent.wallet_address do %>
                         <a
-                          href={explorer_address_url(@selected_agent.wallet_address, @selected_agent.chain_id)}
+                          href={
+                            explorer_address_url(
+                              @selected_agent.wallet_address,
+                              @selected_agent.chain_id
+                            )
+                          }
                           target="_blank"
                           rel="noopener noreferrer"
                           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
@@ -3066,7 +3081,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                judges' "settles on Kite chain + attestation" proof. --%>
                             <%= if trade.attestation_tx_hash do %>
                               <a
-                                href={explorer_tx_url(trade.attestation_tx_hash, @selected_agent.chain_id)}
+                                href={
+                                  explorer_tx_url(trade.attestation_tx_hash, @selected_agent.chain_id)
+                                }
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 class="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono inline-flex items-center gap-1"
@@ -3241,7 +3258,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                     <%= if @selected_agent.wallet_address do %>
                       <a
-                        href={explorer_address_url(@selected_agent.wallet_address, @selected_agent.chain_id)}
+                        href={
+                          explorer_address_url(
+                            @selected_agent.wallet_address,
+                            @selected_agent.chain_id
+                          )
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
@@ -3300,7 +3322,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </div>
                           <div class="col-span-2 md:col-span-3 min-w-0">
                             <a
-                              href={explorer_tx_url(att.attestation_tx_hash, @selected_agent.chain_id)}
+                              href={
+                                explorer_tx_url(att.attestation_tx_hash, @selected_agent.chain_id)
+                              }
                               target="_blank"
                               rel="noopener noreferrer"
                               class="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors"
@@ -3381,7 +3405,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                     <%= if @selected_agent.wallet_address do %>
                       <a
-                        href={explorer_address_url(@selected_agent.wallet_address, @selected_agent.chain_id)}
+                        href={
+                          explorer_address_url(
+                            @selected_agent.wallet_address,
+                            @selected_agent.chain_id
+                          )
+                        }
                         target="_blank"
                         class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
                       >
@@ -3401,7 +3430,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                     <%= if @selected_agent.vault_address do %>
                       <a
-                        href={explorer_address_url(@selected_agent.vault_address, @selected_agent.chain_id)}
+                        href={
+                          explorer_address_url(
+                            @selected_agent.vault_address,
+                            @selected_agent.chain_id
+                          )
+                        }
                         target="_blank"
                         class="text-xs text-[#22c55e] hover:underline mt-2 inline-block font-mono"
                       >
@@ -4171,7 +4205,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           KalshiClient · {@selected_agent.name}
                         </span>
                       </div>
-                      <form phx-submit="kalshi_quick_trade" class="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+                      <form
+                        phx-submit="kalshi_quick_trade"
+                        class="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end"
+                      >
                         <div class="sm:col-span-2">
                           <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
                             Ticker
@@ -4195,7 +4232,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             phx-change="kalshi_quick_trade_side"
                             class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
                           >
-                            <option value="yes" selected={@kalshi_quick_trade_side == "yes"}>Yes</option>
+                            <option value="yes" selected={@kalshi_quick_trade_side == "yes"}>
+                              Yes
+                            </option>
                             <option value="no" selected={@kalshi_quick_trade_side == "no"}>No</option>
                           </select>
                         </div>
@@ -4262,7 +4301,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         "text-xs font-mono tabular-nums " <>
                           if(data.total_settled_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
                       }>
-                        <%= if data.total_settled_pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(data.total_settled_pnl), decimals: 2)} · {length(data.settlements)} settled
+                        {if data.total_settled_pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
+                          abs(data.total_settled_pnl), decimals: 2)} · {length(data.settlements)} settled
                       </span>
                     </div>
                     <%= if length(data.settlements) > 1 do %>
@@ -4308,7 +4348,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% else %>
                       <div class="py-10 text-center">
                         <p class="text-sm text-gray-600">
-                          <%= if data.settlements == [], do: "No settled positions yet.", else: "Need at least 2 settled positions to chart P&L." %>
+                          {if data.settlements == [],
+                            do: "No settled positions yet.",
+                            else: "Need at least 2 settled positions to chart P&L."}
                         </p>
                       </div>
                     <% end %>
@@ -5055,7 +5097,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <% up? = view.pct_move >= 0 %>
                         <% pl_color = if view.upl >= 0, do: "text-emerald-400", else: "text-red-400" %>
                         <% pct_color = if up?, do: "text-emerald-400", else: "text-red-400" %>
-                        <% pct_bg = if up?, do: "bg-emerald-500/10 border-emerald-500/30", else: "bg-red-500/10 border-red-500/30" %>
+                        <% pct_bg =
+                          if up?,
+                            do: "bg-emerald-500/10 border-emerald-500/30",
+                            else: "bg-red-500/10 border-red-500/30" %>
                         <% direction_color =
                           if view.side == "long",
                             do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300",
@@ -5098,15 +5143,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                           <div class="grid grid-cols-3 gap-2 text-[11px]">
                             <div>
-                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">Entry</p>
-                              <p class="text-gray-200 font-mono tabular-nums">{forex_fmt_price(view.entry)}</p>
+                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">
+                                Entry
+                              </p>
+                              <p class="text-gray-200 font-mono tabular-nums">
+                                {forex_fmt_price(view.entry)}
+                              </p>
                             </div>
                             <div>
-                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">Current</p>
-                              <p class="text-white font-mono tabular-nums">{forex_fmt_price(view.current)}</p>
+                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">
+                                Current
+                              </p>
+                              <p class="text-white font-mono tabular-nums">
+                                {forex_fmt_price(view.current)}
+                              </p>
                             </div>
                             <div class="text-right">
-                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">P&amp;L</p>
+                              <p class="text-gray-500 uppercase tracking-widest font-mono mb-0.5">
+                                P&amp;L
+                              </p>
                               <p class={"font-mono tabular-nums font-bold " <> pl_color}>
                                 {forex_fmt_money(view.upl)}
                               </p>
@@ -5284,7 +5339,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
           <%!-- Portfolio Breakdown Tab — cross-broker pie + headline stats --%>
           <%= if @active_tab == :portfolio do %>
             <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-              <% breakdown = portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account, @pnl_stats) %>
+              <% breakdown =
+                portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account, @pnl_stats) %>
 
               <%!-- Headline stats: total value + combined P&L --%>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -5296,7 +5352,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     ${:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">
-                    Across {Enum.count(breakdown.slices, & &1.value > 0)}/{length(breakdown.slices)} connected brokers
+                    Across {Enum.count(breakdown.slices, &(&1.value > 0))}/{length(breakdown.slices)} connected brokers
                   </p>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
@@ -5307,7 +5363,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     "text-2xl font-black tabular-nums " <>
                       if(breakdown.combined_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
                   }>
-                    <%= if breakdown.combined_pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(breakdown.combined_pnl), decimals: 2)}
+                    {if breakdown.combined_pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
+                      abs(breakdown.combined_pnl), decimals: 2)}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">
                     Alpaca realized + Kalshi settled + ForEx unrealized.
@@ -5326,7 +5383,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         {slice.label}
                       </p>
                       <p class="text-[10px] text-gray-600 mt-1">
-                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value, decimals: 2)}
+                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value,
+                          decimals: 2
+                        )}
                       </p>
                   <% end %>
                 </div>
@@ -5356,12 +5415,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       >
                         <circle r="40" cx="0" cy="0" fill="#0a0a0f" stroke="#1f1f2e" stroke-width="2" />
                         <%= for slice <- breakdown.slices, slice.value > 0 do %>
-                          <%
-                            circumference = 2 * 3.141592653589793 * 36
-                            slice_len = circumference * slice.percent / 100
-                            gap_len = circumference - slice_len
-                            offset = -circumference * slice.cumulative_percent / 100
-                          %>
+                          <% circumference = 2 * 3.141592653589793 * 36
+                          slice_len = circumference * slice.percent / 100
+                          gap_len = circumference - slice_len
+                          offset = -circumference * slice.cumulative_percent / 100 %>
                           <circle
                             r="36"
                             cx="0"
@@ -5401,7 +5458,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <span class={
                                 if(slice.pnl >= 0, do: "text-emerald-400", else: "text-red-400")
                               }>
-                                <%= if slice.pnl >= 0, do: "+", else: "" %>${:erlang.float_to_binary(abs(slice.pnl), decimals: 2)}
+                                {if slice.pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
+                                  abs(slice.pnl), decimals: 2)}
                               </span>
                             </div>
                           </div>
@@ -5536,8 +5594,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </p>
                       <pre class="text-[10px] font-mono bg-black/60 rounded p-2 border border-white/5 text-emerald-300">sandbox_mode = "workspace-write"
 
-[sandbox_workspace_write]
-network_access = true</pre>
+    [sandbox_workspace_write]
+    network_access = true</pre>
                     </div>
                   </details>
 
@@ -5612,7 +5670,7 @@ network_access = true</pre>
                         {item.summary}
                       </p>
                       <p class="text-[10px] text-gray-600 mt-1">
-                        <%= if item.created_at, do: item.created_at, else: "" %>
+                        {if item.created_at, do: item.created_at, else: ""}
                         <%= if item.symbols != [] do %>
                           · {Enum.join(item.symbols, ", ")}
                         <% end %>
@@ -5967,7 +6025,7 @@ network_access = true</pre>
 
     largest =
       slices
-      |> Enum.filter(& &1.value > 0)
+      |> Enum.filter(&(&1.value > 0))
       |> Enum.max_by(& &1.value, fn -> nil end)
 
     # Combined P&L per Mico's spec: must reflect ALL connected

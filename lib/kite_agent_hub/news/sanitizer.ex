@@ -120,7 +120,10 @@ defmodule KiteAgentHub.News.Sanitizer do
   defp strip_unsafe_unicode(s) do
     s
     |> String.replace(~r/[\x00-\x08\x0B-\x1F\x7F]/, "")
-    |> String.replace(~r/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{E0000}-\x{E007F}]/u, "")
+    |> String.replace(
+      ~r/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{E0000}-\x{E007F}]/u,
+      ""
+    )
   end
 
   defp truncate_bytes(s, max) do

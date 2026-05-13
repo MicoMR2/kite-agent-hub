@@ -85,12 +85,13 @@ defmodule KiteAgentHub.Kite.Blockscout do
         balance_wei = data["coin_balance"] || "0"
         balance_eth = wei_to_eth(balance_wei)
 
-        {:ok, %{
-          balance_wei: balance_wei,
-          balance_eth: balance_eth,
-          tx_count: data["transactions_count"] || 0,
-          token_transfers_count: data["token_transfers_count"] || 0
-        }}
+        {:ok,
+         %{
+           balance_wei: balance_wei,
+           balance_eth: balance_eth,
+           tx_count: data["transactions_count"] || 0,
+           token_transfers_count: data["token_transfers_count"] || 0
+         }}
 
       err ->
         err

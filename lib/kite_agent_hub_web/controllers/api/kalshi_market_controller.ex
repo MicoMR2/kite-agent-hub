@@ -60,7 +60,8 @@ defmodule KiteAgentHubWeb.API.KalshiMarketController do
          {:ok, status} <- fetch_status(params),
          {:ok, {key_id, pem, env}} <-
            Credentials.fetch_secret_with_env(agent.organization_id, :kalshi),
-         {:ok, markets} <- KalshiClient.list_markets(key_id, pem, status: status, limit: limit, env: env) do
+         {:ok, markets} <-
+           KalshiClient.list_markets(key_id, pem, status: status, limit: limit, env: env) do
       scored = KalshiMarketScorer.score_markets(markets, min_score)
 
       conn

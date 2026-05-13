@@ -38,7 +38,8 @@ defmodule KiteAgentHub.KciCoverageTest do
       assert insight_count() == 1
     end
 
-    test "auto_cancel_stuck_trades/1 records an insight per cancelled row", %{user: user} = scope do
+    test "auto_cancel_stuck_trades/1 records an insight per cancelled row",
+         %{user: user} = scope do
       old =
         DateTime.utc_now() |> DateTime.add(-7200, :second) |> DateTime.truncate(:second)
 

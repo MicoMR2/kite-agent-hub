@@ -154,7 +154,10 @@ defmodule KiteAgentHubWeb.API.TriggersControllerTest do
   end
 
   describe "PubSub wake (CS ask 6 + Phorari 9126)" do
-    test "an emit during long-poll wakes the waiter before the timeout", %{conn: conn, agent: agent} do
+    test "an emit during long-poll wakes the waiter before the timeout", %{
+      conn: conn,
+      agent: agent
+    } do
       # Bump long-poll high enough that timeout doesn't fire before the
       # emit lands, but low enough that the test fails fast if the
       # broadcast never reaches the waiter.

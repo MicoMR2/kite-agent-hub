@@ -11,7 +11,11 @@ defmodule KiteAgentHub.Kite.ContractsChainRoutingTest do
   describe "treasury_address/1 — mainnet fail-closed" do
     setup do
       prior = Application.get_env(:kite_agent_hub, :kite_treasury_address_mainnet)
-      on_exit(fn -> Application.put_env(:kite_agent_hub, :kite_treasury_address_mainnet, prior) end)
+
+      on_exit(fn ->
+        Application.put_env(:kite_agent_hub, :kite_treasury_address_mainnet, prior)
+      end)
+
       :ok
     end
 
@@ -122,6 +126,7 @@ defmodule KiteAgentHub.Kite.ContractsChainRoutingTest do
         |> elem(1)
 
       mainnet_addrs = Contracts.allowed_tokens(@mainnet) |> Enum.map(&elem(&1, 1))
+
       refute testnet_kite_addr in mainnet_addrs,
              "testnet KITE ERC-20 address must not appear in mainnet allowlist"
     end

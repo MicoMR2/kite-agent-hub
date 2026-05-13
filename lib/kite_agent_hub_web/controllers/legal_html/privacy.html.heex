@@ -2,7 +2,10 @@
 <p class="text-sm text-gray-500 mb-8">Effective {@effective_date}</p>
 
 <p>
-  This Privacy Policy explains what data Kite Agent Hub ("KAH") collects, how it is used, and the controls you have over it. By using KAH you agree to this policy along with our <a href="/terms" class="underline">Terms of Service</a>.
+  This Privacy Policy explains what data Kite Agent Hub ("KAH") collects, how it is used, and the controls you have over it. By using KAH you agree to this policy along with our <a
+    href="/terms"
+    class="underline"
+  >Terms of Service</a>.
 </p>
 
 <h2 class="text-xl font-semibold mt-10 mb-3">1. Account Data</h2>
@@ -15,8 +18,12 @@
   Each workspace owns its own agents, trades, and broker credentials. We store:
 </p>
 <ul class="list-disc pl-6 space-y-1">
-  <li>Agent metadata (name, type, status) and a generated API token used to authenticate agent calls.</li>
-  <li>Trade records (symbol, side, action, quantity, fill price, status, realized P&amp;L, timestamps, and any platform order IDs).</li>
+  <li>
+    Agent metadata (name, type, status) and a generated API token used to authenticate agent calls.
+  </li>
+  <li>
+    Trade records (symbol, side, action, quantity, fill price, status, realized P&amp;L, timestamps, and any platform order IDs).
+  </li>
   <li>Optional Kite chain attestation hashes for settled trades.</li>
 </ul>
 
@@ -32,21 +39,30 @@
 
 <h2 class="text-xl font-semibold mt-10 mb-3">5. Kite Collective Intelligence (KCI)</h2>
 <p>
-  KCI is workspace opt-in and disabled by default. When a workspace opts in, KAH stores <strong>anonymized, bucketed</strong> trade outcome features in a shared learning table:
+  KCI is workspace opt-in and disabled by default. When a workspace opts in, KAH stores
+  <strong>anonymized, bucketed</strong>
+  trade outcome features in a shared learning table:
 </p>
 <ul class="list-disc pl-6 space-y-1">
-  <li>HMAC-SHA256 source hashes (org and trade) keyed off a dedicated server-side salt — one-way, not reversible to your account.</li>
-  <li>Agent type, platform, market class, side, action, terminal status, outcome bucket (profit / loss / flat / cancelled / failed).</li>
+  <li>
+    HMAC-SHA256 source hashes (org and trade) keyed off a dedicated server-side salt — one-way, not reversible to your account.
+  </li>
+  <li>
+    Agent type, platform, market class, side, action, terminal status, outcome bucket (profit / loss / flat / cancelled / failed).
+  </li>
   <li>Bucketed notional and hold-time windows.</li>
   <li>The week the trade was observed.</li>
 </ul>
 <p>
-  KCI <strong>never</strong> stores raw user IDs, agent IDs, organization IDs, exact trade IDs, raw chat content, broker credentials, API tokens, raw strategy text, or free-form trade reasons. Disabling KCI for a workspace immediately stops future contribution and purges that workspace's prior anonymized contributions via the org hash. KCI is decision-support context, not financial advice, and does not guarantee profit.
+  KCI <strong>never</strong>
+  stores raw user IDs, agent IDs, organization IDs, exact trade IDs, raw chat content, broker credentials, API tokens, raw strategy text, or free-form trade reasons. Disabling KCI for a workspace immediately stops future contribution and purges that workspace's prior anonymized contributions via the org hash. KCI is decision-support context, not financial advice, and does not guarantee profit.
 </p>
 
 <h2 class="text-xl font-semibold mt-10 mb-3">6. Cookies &amp; Sessions</h2>
 <p>
-  We use a single signed session cookie to keep you logged in. We do not use third-party advertising cookies. Theme preference (light / dark) is stored in <code>localStorage</code> on your device.
+  We use a single signed session cookie to keep you logged in. We do not use third-party advertising cookies. Theme preference (light / dark) is stored in
+  <code>localStorage</code>
+  on your device.
 </p>
 
 <h2 class="text-xl font-semibold mt-10 mb-3">7. Email</h2>
@@ -64,7 +80,9 @@
   <li>Disconnect a broker at any time from the API Keys settings page.</li>
   <li>Rotate or delete an agent (and revoke its token) from the Agents settings page.</li>
   <li>Toggle KCI on or off per workspace at any time.</li>
-  <li>Request account deletion via the support channel; we will remove your account data and purge any KCI contributions tied to your workspace.</li>
+  <li>
+    Request account deletion via the support channel; we will remove your account data and purge any KCI contributions tied to your workspace.
+  </li>
 </ul>
 
 <h2 class="text-xl font-semibold mt-10 mb-3">10. Changes</h2>

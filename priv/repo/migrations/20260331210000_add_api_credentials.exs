@@ -4,7 +4,10 @@ defmodule KiteAgentHub.Repo.Migrations.AddApiCredentials do
   def change do
     create table(:api_credentials, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :org_id, references(:organizations, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :org_id, references(:organizations, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :provider, :string, null: false
       add :key_id, :string, null: false
       add :encrypted_secret, :binary, null: false

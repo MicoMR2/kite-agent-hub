@@ -270,9 +270,18 @@ defmodule KiteAgentHubWeb.AgentsLive do
   def handle_event("select_chain", %{"agent_id" => id} = params, socket) do
     chain_id =
       case params["chain_id"] do
-        n when is_integer(n) -> n
-        s when is_binary(s) -> case Integer.parse(s), do: ({n, ""} -> n; _ -> nil)
-        _ -> nil
+        n when is_integer(n) ->
+          n
+
+        s when is_binary(s) ->
+          case Integer.parse(s),
+            do: (
+              {n, ""} -> n
+              _ -> nil
+            )
+
+        _ ->
+          nil
       end
 
     valid_chains = ChainId.valid_chain_ids()
@@ -312,14 +321,23 @@ defmodule KiteAgentHubWeb.AgentsLive do
 
       {:error, :mainnet_unavailable} ->
         {:noreply,
-         put_flash(socket, :error, "Mainnet is not available on this instance (operator must set AGENT_PRIVATE_KEY_MAINNET).")}
+         put_flash(
+           socket,
+           :error,
+           "Mainnet is not available on this instance (operator must set AGENT_PRIVATE_KEY_MAINNET)."
+         )}
 
       {:error, :mainnet_confirmation_required} ->
         {:noreply,
          put_flash(socket, :error, "Switching to Mainnet requires the confirmation checkbox.")}
 
       {:error, :cooldown} ->
-        {:noreply, put_flash(socket, :error, "Chain switches are rate-limited to one per minute per agent. Try again shortly.")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Chain switches are rate-limited to one per minute per agent. Try again shortly."
+         )}
 
       {:error, %Ecto.Changeset{} = cs} ->
         require Logger
@@ -341,11 +359,17 @@ defmodule KiteAgentHubWeb.AgentsLive do
   # gates run BEFORE Repo.update.
   defp check_mainnet_gate(chain_id, params, mainnet) do
     cond do
-      chain_id != mainnet -> :ok
-      not ChainId.mainnet_available?() -> {:error, :mainnet_unavailable}
-      not (Map.get(params, "mainnet_confirm") in ["true", "on", true]) ->
+      chain_id != mainnet ->
+        :ok
+
+      not ChainId.mainnet_available?() ->
+        {:error, :mainnet_unavailable}
+
+      Map.get(params, "mainnet_confirm") not in ["true", "on", true] ->
         {:error, :mainnet_confirmation_required}
-      true -> :ok
+
+      true ->
+        :ok
     end
   end
 
@@ -395,8 +419,11 @@ defmodule KiteAgentHubWeb.AgentsLive do
 
   defp passport_warning(agent) do
     case Passports.get_active_link(agent.id) do
-      nil -> ""
-      _ -> "Note: this agent has an active Passport link — the wallet may be chain-specific; unlink + relink if needed."
+      nil ->
+        ""
+
+      _ ->
+        "Note: this agent has an active Passport link — the wallet may be chain-specific; unlink + relink if needed."
     end
   end
 
@@ -544,9 +571,7 @@ defmodule KiteAgentHubWeb.AgentsLive do
             type="checkbox"
             name="risk_config[auto_exit_enabled]"
             value="true"
-            checked={
-              Map.get(@agent.risk_config || %{}, "auto_exit_enabled", false) in [true, "true"]
-            }
+            checked={Map.get(@agent.risk_config || %{}, "auto_exit_enabled", false) in [true, "true"]}
             class="h-4 w-4 mt-0.5 rounded border-white/20 bg-black/40"
           />
           <span class="text-xs text-gray-300">
@@ -936,7 +961,10 @@ defmodule KiteAgentHubWeb.AgentsLive do
                               Mainnet · {ChainId.mainnet()}
                             </button>
                           <% else %>
-                            <div class="px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest text-gray-600 bg-white/[0.02] cursor-not-allowed text-center" title="Operator must set AGENT_PRIVATE_KEY_MAINNET to enable Mainnet">
+                            <div
+                              class="px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest text-gray-600 bg-white/[0.02] cursor-not-allowed text-center"
+                              title="Operator must set AGENT_PRIVATE_KEY_MAINNET to enable Mainnet"
+                            >
                               Mainnet · disabled
                             </div>
                           <% end %>
@@ -949,7 +977,8 @@ defmodule KiteAgentHubWeb.AgentsLive do
                           <label class="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 cursor-pointer">
                             <input type="checkbox" name="mainnet_confirm" value="true" class="mt-0.5" />
                             <span class="text-[11px] text-red-100 leading-relaxed">
-                              <strong class="font-bold">I understand switching to Mainnet</strong> will route trades using my live brokerage credentials and settle fees on Kite Mainnet.
+                              <strong class="font-bold">I understand switching to Mainnet</strong>
+                              will route trades using my live brokerage credentials and settle fees on Kite Mainnet.
                             </span>
                           </label>
                         <% end %>
@@ -995,7 +1024,9 @@ defmodule KiteAgentHubWeb.AgentsLive do
                           <p class="text-[11px] text-gray-400 mt-1">
                             Install kpass locally; KAH never sees your key.
                           </p>
-                          <code class="block font-mono text-[11px] text-emerald-200 bg-black/40 rounded-xl px-3 py-2 mt-2 break-all">curl -fsSL https://agentpassport.ai/install.sh | bash</code>
+                          <code class="block font-mono text-[11px] text-emerald-200 bg-black/40 rounded-xl px-3 py-2 mt-2 break-all">
+                            curl -fsSL https://agentpassport.ai/install.sh | bash
+                          </code>
                         </div>
 
                         <form phx-submit="link_passport" class="space-y-2">
@@ -1011,7 +1042,9 @@ defmodule KiteAgentHubWeb.AgentsLive do
                               class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-white focus:outline-none focus:border-white/30"
                             />
                             <p
-                              :if={err = get_in(@passport_form_errors, [:passport_user_id, Access.at(0)])}
+                              :if={
+                                err = get_in(@passport_form_errors, [:passport_user_id, Access.at(0)])
+                              }
                               class="text-[11px] text-red-400 mt-1"
                             >
                               {err}
@@ -1028,7 +1061,10 @@ defmodule KiteAgentHubWeb.AgentsLive do
                               class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-white focus:outline-none focus:border-white/30"
                             />
                             <p
-                              :if={err = get_in(@passport_form_errors, [:passport_agent_id, Access.at(0)])}
+                              :if={
+                                err =
+                                  get_in(@passport_form_errors, [:passport_agent_id, Access.at(0)])
+                              }
                               class="text-[11px] text-red-400 mt-1"
                             >
                               {err}
@@ -1046,7 +1082,13 @@ defmodule KiteAgentHubWeb.AgentsLive do
                               class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
                             />
                             <p
-                              :if={err = get_in(@passport_form_errors, [:passport_wallet_address, Access.at(0)])}
+                              :if={
+                                err =
+                                  get_in(@passport_form_errors, [
+                                    :passport_wallet_address,
+                                    Access.at(0)
+                                  ])
+                              }
                               class="text-[11px] text-red-400 mt-1"
                             >
                               {err}
