@@ -326,6 +326,22 @@ html[data-theme="light"] [class~="text-amber-300/80"] {
   color: #92400e !important; /* amber-800 */
 }
 
+/* Risk disclosure band uses semi-transparent amber tones tuned for dark
+   backgrounds; on cream they wash out. Force darker amber + a stronger
+   tint so the disclosure remains readable in light mode. */
+html[data-theme="light"] [class~="text-amber-100"] {
+  color: #78350f !important; /* amber-900 */
+}
+html[data-theme="light"] [class~="text-amber-200/90"] {
+  color: #92400e !important; /* amber-800 */
+}
+html[data-theme="light"] [class~="bg-amber-500/[0.06]"] {
+  background-color: #fef3c7 !important; /* amber-100 */
+}
+html[data-theme="light"] [class~="border-amber-500/40"] {
+  border-color: #d97706 !important; /* amber-600 */
+}
+
 /* Pre-existing copy uses `from-gray-100 to-gray-500` for gradient text.
    Both stops are too light on cream. Re-anchor on darker stops. */
 html[data-theme="light"] [class~="from-gray-100"] {
