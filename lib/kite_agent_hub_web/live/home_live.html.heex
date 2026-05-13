@@ -61,7 +61,7 @@
         <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-4 py-1.5 text-sm font-semibold text-gray-200 mb-8 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.02)]">
           <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
           </span>
-          BYO-LLM · Alpaca + Kalshi · Non-custodial · On Kite Chain
+          BYO-LLM · Funds stay at your broker · Settled on Kite Chain
         </div>
 
         <h1 class="font-display text-[clamp(2.4rem,7vw,6.5rem)] font-extrabold tracking-[-0.035em] leading-[0.95] mb-10">
@@ -83,7 +83,7 @@
         <p class="text-lg sm:text-2xl text-gray-300 max-w-2xl mx-auto mb-12 leading-[1.65] font-light">
           Deploy AI trading agents that execute on Alpaca and Kalshi, scored with KCI Edge Scoring,
           and settled on Kite chain. Bring your own LLM — Claude Code, Claude Desktop, or any MCP-compatible client.
-          <span class="text-white font-medium">Non-custodial by design.</span>
+          <span class="text-white font-medium">Your funds stay at your broker. Your Passport key stays with you.</span>
         </p>
 
         <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -294,7 +294,7 @@
         {"Bring Your Own Keys", "Connect Alpaca paper trading, Kalshi demo markets — with Webull and Robinhood on the roadmap. Keys are AES-256-GCM encrypted at rest. Never logged.", "hero-arrows-right-left"},
         {"KCI Edge Scoring", "Every open position is scored 0-100 on entry quality, momentum, risk/reward, and liquidity. Exit suggestions for weak positions, hold signals for strong ones.", "hero-chart-bar-square"},
         {"Multi-Agent Teams", "Deploy trading agents that execute, research agents that signal, and conversational agents that coordinate. Build a full team — only traders need a wallet.", "hero-user-group"},
-        {"Non-Custodial by Design", "Private keys never touch the server. We store only your public wallet address. Your funds, your keys — full stop.", "hero-shield-check"},
+        {"Non-Custodial of Funds", "Your trading capital stays at Alpaca, Kalshi, OANDA, Polymarket — KAH never holds it. On Kite mainnet, your Passport wallet keeps its own keys. Brokerage API keys are AES-256-GCM encrypted at rest and used only to route trades on your behalf.", "hero-shield-check"},
         {"Vault-Enforced Limits", "Set daily USD caps, per-trade limits, and max open positions per agent. Limits enforced server-side before any trade queues.", "hero-lock-closed"}
       ] do %>
           <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md p-8 hover:border-white/20 hover:bg-white/[0.04] transition-all duration-300 group">
@@ -438,7 +438,7 @@
           <span class="text-xs">Chain {KiteAgentHub.Kite.ChainId.default()}</span>
         </div>
         <span class="text-xs uppercase tracking-widest opacity-80">
-          Non-custodial | Apache 2.0
+          Funds-non-custodial | Apache 2.0
         </span>
       </div>
     </footer>
