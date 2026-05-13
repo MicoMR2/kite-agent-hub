@@ -2546,7 +2546,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                   <h3 class="text-sm font-bold text-white mb-2">Watch It Trade</h3>
                   <p class="text-xs text-gray-400 leading-relaxed font-light">
-                    Activate the agent. Claude generates signals, and trades execute instantly on-chain.
+                    Activate the agent. Your agent watches the market, places trades on your broker account, and posts attestations to Kite chain.
                   </p>
                 </div>
               </div>
