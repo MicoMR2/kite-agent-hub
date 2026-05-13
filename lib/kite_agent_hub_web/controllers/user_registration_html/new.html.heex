@@ -11,8 +11,20 @@
     </div>
 
     <div class="relative w-full max-w-md">
+      <%!-- Back-to-home link so the register page isn't a dead-end. --%>
+      <div class="mb-6 text-left">
+        <.link
+          navigate={~p"/"}
+          class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors font-medium"
+        >
+          <span aria-hidden="true">←</span>
+          Back to home
+        </.link>
+      </div>
       <div class="text-center mb-8">
-        <.kah_logo class="w-14 h-14 mx-auto mb-6 drop-shadow-[0_0_24px_rgba(34,197,94,0.55)]" />
+        <.link navigate={~p"/"} aria-label="Kite Agent Hub home">
+          <.kah_logo class="w-14 h-14 mx-auto mb-6 drop-shadow-[0_0_24px_rgba(34,197,94,0.55)]" />
+        </.link>
         <%= if @invite_only? and @invite_status.state == :valid do %>
           <div class="inline-flex items-center gap-2 rounded-full border border-[#22c55e]/30 bg-[#22c55e]/[0.08] px-3 py-1 text-[11px] font-semibold text-[#22c55e] mb-5 backdrop-blur-sm">
             <span class="h-1.5 w-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
@@ -34,10 +46,15 @@
         <p class="text-sm text-gray-300">Free on testnet. No credit card.</p>
       </div>
 
+      <%!-- Inline-styled amber callout that reads well on both the cream
+           light-mode canvas (#f5efe3) and the dark canvas (#0a0a0f).
+           Tailwind's `dark:` variant fires on prefers-color-scheme, not
+           the user's data-theme toggle — using dark-amber colors that
+           are legible in either canvas state is the reliable path. --%>
       <%= if @invite_only? and @invite_status.state in [:invalid, :missing] do %>
-        <div class="rounded-xl bg-amber-500/10 border border-amber-500/40 p-4 mb-5 text-sm text-amber-100">
+        <div class="rounded-xl bg-amber-200/40 border border-amber-700/50 p-4 mb-5 text-sm text-amber-900">
           <p class="font-semibold mb-1">Invite-only signup</p>
-          <p class="text-amber-200/90">
+          <p>
             You need a valid invite code to sign up.
             <.link navigate={~p"/request-access"} class="underline font-bold">
               Request access →
@@ -160,7 +177,7 @@
             <button
               type="submit"
               phx-disable-with="Creating account..."
-              class="w-full py-3.5 rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600/[0.18] to-purple-600/[0.18] hover:from-violet-600/30 hover:to-purple-600/30 text-violet-200 hover:text-white font-bold text-sm transition-all shadow-[0_0_25px_rgba(139,92,246,0.18)] hover:-translate-y-0.5 transform mt-2 backdrop-blur-md"
+              class="w-full py-3.5 rounded-xl border border-violet-500/70 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold text-sm transition-all shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:-translate-y-0.5 transform mt-2"
             >
               Create account →
             </button>
