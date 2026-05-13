@@ -79,7 +79,7 @@ When a credential is needed to make a broker API call:
 2. The cipher decrypts in memory using the runtime key
 3. The plaintext is used to construct the outbound HTTP request
 4. The plaintext binary is dereferenced as soon as the request returns
-5. **At no point is the plaintext written to log lines, error messages, audit log entries, telemetry, or any persisted store.** Log redaction guards are present in the credentials context (see CyberSec ask 6 in `Credentials.broker_slug_for/2`).
+5. **At no point is the plaintext written to log lines, error messages, audit log entries, telemetry, or any persisted store.** Log redaction guards are present in the credentials context — see `Credentials.broker_slug_for/2`, which logs only the broker root and agent id, never secret values.
 
 ---
 
