@@ -109,6 +109,22 @@ defmodule KiteAgentHubWeb.API.TradesController do
   # trade flow. `none`/`subscription` rails skip the gate entirely
   # (zero-regression for existing agents).
   defp maybe_enforce_x402(conn, %{payment_rail: "per_trade"} = agent) do
+    if Decimal.eq?(KiteAgentHub.Passport.X402.current_fee(), Decimal.new("0.00")) do
+      require Logger
+
+      Logger.info(
+        "x402: zero-fee bypass agent_id=#{agent.id} route=/api/v1/trades"
+      )
+
+      {:cont, conn}
+    else
+      enforce_x402_receipt(conn, agent)
+    end
+  end
+
+  defp maybe_enforce_x402(conn, _agent), do: {:cont, conn}
+
+  defp enforce_x402_receipt(conn, agent) do
     receipt = get_payment_receipt_header(conn)
 
     case receipt do
@@ -146,8 +162,6 @@ defmodule KiteAgentHubWeb.API.TradesController do
         end
     end
   end
-
-  defp maybe_enforce_x402(conn, _agent), do: {:cont, conn}
 
   defp respond_402(conn, agent) do
     case KiteAgentHub.Passport.X402.payment_required_response(agent) do
