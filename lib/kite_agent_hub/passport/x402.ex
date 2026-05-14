@@ -30,6 +30,17 @@ defmodule KiteAgentHub.Passport.X402 do
   @default_fee_usdc Decimal.new("0.00")
 
   @doc """
+  Active per-trade x402 fee. Single source of truth shared by the 402
+  response builder and the controller-side zero-fee bypass (CyberSec
+  9769 / 9774). When this returns `0.00`, the controller skips receipt
+  enforcement; any non-zero value requires a valid X-Payment-Receipt.
+  Post-hackathon this becomes runtime config (Application.get_env or
+  DB-backed) — separate PR + re-audit at that point.
+  """
+  @spec current_fee() :: Decimal.t()
+  def current_fee, do: @default_fee_usdc
+
+  @doc """
   Build the 402 envelope KAH returns when a per-trade agent posts a
   trade without a valid receipt. Returns `nil` when the vault
   address isn't configured — the controller should fall back to a
@@ -45,7 +56,7 @@ defmodule KiteAgentHub.Passport.X402 do
             scheme: "x402-v0",
             asset: "USDC",
             chain_id: ChainId.default(),
-            amount: Decimal.to_string(@default_fee_usdc),
+            amount: Decimal.to_string(current_fee()),
             payee: addr,
             resource: @resource_descriptor,
             description:
