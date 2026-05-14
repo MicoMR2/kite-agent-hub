@@ -49,6 +49,10 @@ defmodule KiteAgentHub.Kite.Contracts do
   @spec rpc_url(integer()) :: String.t()
   def rpc_url(@testnet_id), do: @testnet_rpc
   def rpc_url(@mainnet_id), do: @mainnet_rpc
+  # Catch-all: callers passing nil or an unknown chain_id (env typo,
+  # stale row) get the testnet endpoint rather than a FunctionClauseError
+  # crash. testnet stays the safe default for the demo period.
+  def rpc_url(_), do: @testnet_rpc
 
   @doc """
   Blockscout / Kitescan explorer base URL for the given chain id.
@@ -56,6 +60,7 @@ defmodule KiteAgentHub.Kite.Contracts do
   @spec explorer_url(integer()) :: String.t()
   def explorer_url(@testnet_id), do: @testnet_explorer
   def explorer_url(@mainnet_id), do: @mainnet_explorer
+  def explorer_url(_), do: @testnet_explorer
 
   @doc """
   Gasless relayer URL for the given chain id. Wraps the unified
@@ -64,6 +69,7 @@ defmodule KiteAgentHub.Kite.Contracts do
   @spec gasless_relayer_url(integer()) :: String.t()
   def gasless_relayer_url(@testnet_id), do: @gasless_relayer_base <> "/testnet"
   def gasless_relayer_url(@mainnet_id), do: @gasless_relayer_base <> "/mainnet"
+  def gasless_relayer_url(_), do: @gasless_relayer_base <> "/testnet"
 
   @doc """
   Tokens this platform recognizes for the given chain id. Each entry
@@ -88,6 +94,8 @@ defmodule KiteAgentHub.Kite.Contracts do
       {"USDT", @usdt_mainnet, 6}
     ]
   end
+
+  def allowed_tokens(_), do: []
 
   @doc """
   Whether the chain id treats KITE as the native coin (eth_getBalance)

@@ -95,7 +95,7 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
 
   defp log_vault_balance(agent) do
     if agent.vault_address do
-      case RPC.get_balance(agent.vault_address) do
+      case RPC.get_balance(agent.vault_address, rpc_chain(agent.chain_id)) do
         {:ok, wei} ->
           eth = wei / :math.pow(10, 18)
 
@@ -116,4 +116,7 @@ defmodule KiteAgentHub.Workers.PositionSyncWorker do
   defp resolve_owner(agent_id) do
     Repo.owner_user_id_for_agent(agent_id)
   end
+
+  defp rpc_chain(2366), do: :mainnet
+  defp rpc_chain(_), do: :testnet
 end

@@ -214,7 +214,10 @@ defmodule KiteAgentHubWeb.TradesLive do
 
   defp platform_color_class(_), do: "kah-platform-kite"
 
-  defp attestation_url(hash), do: "https://testnet.kitescan.ai/tx/" <> hash
+  defp attestation_url(hash, chain_id) do
+    base = KiteAgentHub.Kite.Contracts.explorer_url(chain_id || KiteAgentHub.Kite.ChainId.default())
+    base <> "/tx/" <> (hash || "")
+  end
 
   @impl true
   def render(assigns) do
@@ -399,7 +402,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                         <td class="hidden sm:table-cell px-4 py-4 text-center whitespace-nowrap">
                           <%= if trade.attestation_tx_hash do %>
                             <a
-                              href={attestation_url(trade.attestation_tx_hash)}
+                              href={attestation_url(trade.attestation_tx_hash, @selected_agent && @selected_agent.chain_id)}
                               target="_blank"
                               rel="noopener noreferrer"
                               title={"Kite chain attestation: " <> trade.attestation_tx_hash}
@@ -423,7 +426,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                           <% else %>
                             <%= if trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) do %>
                               <a
-                                href={"https://testnet.kitescan.ai/tx/#{trade.tx_hash}"}
+                                href={attestation_url(trade.tx_hash, @selected_agent && @selected_agent.chain_id)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={"Kite intent transaction: " <> trade.tx_hash}
