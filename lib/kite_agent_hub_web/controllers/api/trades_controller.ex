@@ -600,7 +600,9 @@ defmodule KiteAgentHubWeb.API.TradesController do
       attestation_tx_hash: trade.attestation_tx_hash,
       attestation_explorer_url:
         if(trade.attestation_tx_hash,
-          do: "https://testnet.kitescan.ai/tx/" <> trade.attestation_tx_hash
+          do:
+            KiteAgentHub.Kite.Contracts.explorer_url(KiteAgentHub.Kite.ChainId.default()) <>
+              "/tx/" <> trade.attestation_tx_hash
         ),
       reason: trade.reason,
       inserted_at: trade.inserted_at

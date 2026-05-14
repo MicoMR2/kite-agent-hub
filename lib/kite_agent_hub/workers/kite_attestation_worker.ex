@@ -249,6 +249,8 @@ defmodule KiteAgentHub.Workers.KiteAttestationWorker do
     end
   end
 
+  defp fetch_treasury_address(_), do: {:error, :unknown_chain}
+
   defp persist_tx_hash(trade, tx_hash) do
     # Specialized changeset path: attestation_tx_hash is lock-on-write.
     # Trading.set_trade_attestation/2 broadcasts :trade_updated so the

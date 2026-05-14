@@ -20,14 +20,21 @@ defmodule KiteAgentHub.Kite.Blockscout do
   Fetch recent transactions for a wallet address.
   Returns {:ok, [tx_map]} or {:error, reason}.
   """
-  def transactions(address, limit \\ 10) do
-    case get("/addresses/#{address}/transactions") do
+  def transactions(address, limit \\ 10),
+    do: transactions(address, limit, ChainId.default())
+
+  def transactions(address, limit, chain_id) when is_integer(chain_id) do
+    case get_for_chain("/addresses/#{address}/transactions", chain_id) do
       {:ok, %{"items" => items}} when is_list(items) ->
         txs =
           items
           |> Enum.take(limit)
           |> Enum.map(&parse_tx/1)
 
+        {:ok, txs}
+
+      {:ok, items} when is_list(items) ->
+        txs = items |> Enum.take(limit) |> Enum.map(&parse_tx/1)
         {:ok, txs}
 
       {:ok, _} ->

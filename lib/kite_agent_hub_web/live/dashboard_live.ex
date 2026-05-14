@@ -838,7 +838,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
     txs =
       if agent && agent.wallet_address do
         try do
-          case KiteAgentHub.Kite.Blockscout.transactions(agent.wallet_address, 10) do
+          case KiteAgentHub.Kite.Blockscout.transactions(
+                 agent.wallet_address,
+                 10,
+                 agent.chain_id || KiteAgentHub.Kite.ChainId.default()
+               ) do
             {:ok, txs} -> txs
             _ -> []
           end
@@ -2084,7 +2088,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     if wallet_capable?(agent) do
       Task.async(fn ->
         try do
-          case RPC.get_balance(agent.wallet_address) do
+          case RPC.get_balance(agent.wallet_address, rpc_chain(agent.chain_id)) do
             {:ok, wei} -> {:wallet_balance, wei}
             _ -> {:wallet_balance, nil}
           end
@@ -6332,10 +6336,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp explorer_tx_url(tx_hash, chain_id) do
-    KiteAgentHub.Kite.Contracts.explorer_url(chain_id || 2368) <> "/tx/" <> tx_hash
+    KiteAgentHub.Kite.Contracts.explorer_url(chain_id || 2368) <> "/tx/" <> (tx_hash || "")
   end
 
   defp explorer_address_url(address, chain_id) do
-    KiteAgentHub.Kite.Contracts.explorer_url(chain_id || 2368) <> "/address/" <> address
+    KiteAgentHub.Kite.Contracts.explorer_url(chain_id || 2368) <>
+      "/address/" <> (address || "")
   end
+
+  defp rpc_chain(2366), do: :mainnet
+  defp rpc_chain(_), do: :testnet
 end
