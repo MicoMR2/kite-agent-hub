@@ -74,7 +74,7 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
   }
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{id: job_id, args: args}) do
     agent_id = args["agent_id"]
     agent = Trading.get_agent!(agent_id)
 
@@ -95,17 +95,27 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
         {:cancel, "agent not active"}
 
       agent.payment_rail == "per_trade" ->
-        # Runtime fail-closed (CyberSec ask 1, msg 9180/9181). Per-trade
-        # agents must execute client-side via the trigger_events
-        # outbox; reaching this worker means a dispatch-routing bug
-        # leaked a per_trade intent into the KAH-custodial broker
-        # path. Cancel rather than execute — defense in depth on top
-        # of the AgentRunner.dispatch_trade_intent/3 branch (PR-4a).
-        Logger.warning(
-          "TradeExecutionWorker: agent #{agent_id} is payment_rail=per_trade — refusing server-side execution (CS ask 1)"
-        )
+        # Mirror of the x402 zero-fee bypass in TradesController
+        # (PR #395 / CyberSec 9774). When the platform x402 fee is
+        # $0.00, per_trade agents have no economic constraint forcing
+        # client-side execution, so route them through the same
+        # KAH-custodial path as `none`/`subscription` rails for the
+        # demo window. Non-zero fees re-engage the original fail-
+        # closed cancel (CyberSec 9797 condition #4).
+        if Decimal.eq?(KiteAgentHub.Passport.X402.current_fee(), Decimal.new("0.00")) do
+          Logger.info(
+            "x402: zero-fee bypass agent_id=#{agent_id} job_id=#{job_id} route=worker.execute"
+          )
 
-        {:cancel, "per_trade_agent_must_use_client_execution"}
+          owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
+          execute_trade(agent, args, owner_user_id)
+        else
+          Logger.warning(
+            "TradeExecutionWorker: agent #{agent_id} is payment_rail=per_trade — refusing server-side execution (CS ask 1)"
+          )
+
+          {:cancel, "per_trade_agent_must_use_client_execution"}
+        end
 
       true ->
         owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
