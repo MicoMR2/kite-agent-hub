@@ -109,11 +109,13 @@ defmodule KiteAgentHubWeb.API.TradesController do
   # trade flow. `none`/`subscription` rails skip the gate entirely
   # (zero-regression for existing agents).
   defp maybe_enforce_x402(conn, %{payment_rail: "per_trade"} = agent) do
-    if Decimal.eq?(KiteAgentHub.Passport.X402.current_fee(), Decimal.new("0.00")) do
+    chain_id = agent.chain_id || KiteAgentHub.Kite.ChainId.default()
+
+    if Decimal.eq?(KiteAgentHub.Passport.X402.current_fee(chain_id), Decimal.new("0.00")) do
       require Logger
 
       Logger.info(
-        "x402: zero-fee bypass agent_id=#{agent.id} route=/api/v1/trades"
+        "x402: zero-fee bypass agent_id=#{agent.id} chain_id=#{chain_id} route=/api/v1/trades"
       )
 
       {:cont, conn}
