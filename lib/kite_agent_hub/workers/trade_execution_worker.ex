@@ -97,21 +97,25 @@ defmodule KiteAgentHub.Workers.TradeExecutionWorker do
       agent.payment_rail == "per_trade" ->
         # Mirror of the x402 zero-fee bypass in TradesController
         # (PR #395 / CyberSec 9774). When the platform x402 fee is
-        # $0.00, per_trade agents have no economic constraint forcing
-        # client-side execution, so route them through the same
-        # KAH-custodial path as `none`/`subscription` rails for the
-        # demo window. Non-zero fees re-engage the original fail-
-        # closed cancel (CyberSec 9797 condition #4).
-        if Decimal.eq?(KiteAgentHub.Passport.X402.current_fee(), Decimal.new("0.00")) do
+        # $0.00 for the agent's chain, per_trade agents have no
+        # economic constraint forcing client-side execution, so route
+        # them through the same KAH-custodial path as `none`/
+        # `subscription` rails for the demo window. Non-zero fees
+        # re-engage the original fail-closed cancel (CyberSec 9797
+        # condition #4). Chain-aware so flipping mainnet to paid
+        # doesn't accidentally re-open the bypass on testnet.
+        chain_id = agent.chain_id || KiteAgentHub.Kite.ChainId.default()
+
+        if Decimal.eq?(KiteAgentHub.Passport.X402.current_fee(chain_id), Decimal.new("0.00")) do
           Logger.info(
-            "x402: zero-fee bypass agent_id=#{agent_id} job_id=#{job_id} route=worker.execute"
+            "x402: zero-fee bypass agent_id=#{agent_id} chain_id=#{chain_id} job_id=#{job_id} route=worker.execute"
           )
 
           owner_user_id = Orgs.get_org_owner_user_id(agent.organization_id)
           execute_trade(agent, args, owner_user_id)
         else
           Logger.warning(
-            "TradeExecutionWorker: agent #{agent_id} is payment_rail=per_trade — refusing server-side execution (CS ask 1)"
+            "TradeExecutionWorker: agent #{agent_id} is payment_rail=per_trade chain_id=#{chain_id} — refusing server-side execution (CS ask 1)"
           )
 
           {:cancel, "per_trade_agent_must_use_client_execution"}

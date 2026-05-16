@@ -26,19 +26,39 @@ defmodule KiteAgentHub.Passport.X402 do
   # callers never get to choose it (CyberSec ask #4 from msg 9076).
   @resource_descriptor "/api/v1/trades"
 
-  # Hackathon fee. Zero today; flipped post-hackathon via config.
-  @default_fee_usdc Decimal.new("0.00")
+  # Chain-aware hackathon fees. Testnet is always free (judge sandbox
+  # + paper-trading tier). Mainnet is the paid rail but stays at 0.00
+  # until Mico flips the activation toggle post-hackathon — see
+  # Phorari 9818 + CyberSec 9808. Catch-all is fail-safe (free, not
+  # paid) so an unknown chain can never silently start charging.
+  @testnet_chain_id 2368
+  @mainnet_chain_id 2366
+  @testnet_fee_usdc Decimal.new("0.00")
+  @mainnet_fee_usdc Decimal.new("0.00")
+  @fallback_fee_usdc Decimal.new("0.00")
 
   @doc """
-  Active per-trade x402 fee. Single source of truth shared by the 402
-  response builder and the controller-side zero-fee bypass (CyberSec
-  9769 / 9774). When this returns `0.00`, the controller skips receipt
-  enforcement; any non-zero value requires a valid X-Payment-Receipt.
-  Post-hackathon this becomes runtime config (Application.get_env or
-  DB-backed) — separate PR + re-audit at that point.
+  Active per-trade x402 fee for the given chain. Single source of truth
+  shared by the 402 response builder and the controller/worker zero-fee
+  bypasses (CyberSec 9769 / 9774 / 9808). When this returns `0.00`,
+  callers skip receipt enforcement; any non-zero value requires a valid
+  X-Payment-Receipt.
+
+  Phorari 9818 spec: explicit testnet/mainnet clauses with a fail-safe
+  catch-all that defaults to free, not paid.
+  """
+  @spec current_fee(integer() | nil) :: Decimal.t()
+  def current_fee(@testnet_chain_id), do: @testnet_fee_usdc
+  def current_fee(@mainnet_chain_id), do: @mainnet_fee_usdc
+  def current_fee(_), do: @fallback_fee_usdc
+
+  @doc """
+  Backwards-compatible default-chain fee. Resolves the platform default
+  chain via `ChainId.default/0` so existing tests/scripts that don't
+  thread an agent through keep working.
   """
   @spec current_fee() :: Decimal.t()
-  def current_fee, do: @default_fee_usdc
+  def current_fee, do: current_fee(ChainId.default())
 
   @doc """
   Build the 402 envelope KAH returns when a per-trade agent posts a
@@ -47,7 +67,9 @@ defmodule KiteAgentHub.Passport.X402 do
   503 in that case (Phorari direction msg 9079).
   """
   @spec payment_required_response(map()) :: map() | nil
-  def payment_required_response(_agent) do
+  def payment_required_response(agent) do
+    chain_id = agent_chain_id(agent)
+
     case VaultConfig.address() do
       addr when is_binary(addr) and byte_size(addr) > 0 ->
         %{
@@ -55,8 +77,8 @@ defmodule KiteAgentHub.Passport.X402 do
           x402: %{
             scheme: "x402-v0",
             asset: "USDC",
-            chain_id: ChainId.default(),
-            amount: Decimal.to_string(current_fee()),
+            chain_id: chain_id,
+            amount: Decimal.to_string(current_fee(chain_id)),
             payee: addr,
             resource: @resource_descriptor,
             description:
@@ -115,6 +137,13 @@ defmodule KiteAgentHub.Passport.X402 do
 
   ## ── Internals ──────────────────────────────────────────────────────────
 
+  # Per-agent chain resolution with fallback to the platform default.
+  # An agent row with a nil/missing chain_id (legacy seeds, fresh
+  # inserts) falls back to ChainId.default/0 — same precedence the rest
+  # of the codebase uses (Contracts.rpc_url, KiteAttestationWorker).
+  defp agent_chain_id(%{chain_id: cid}) when is_integer(cid), do: cid
+  defp agent_chain_id(_), do: ChainId.default()
+
   defp decode_receipt(receipt) do
     case Base.decode64(receipt) do
       {:ok, raw_json} ->
@@ -159,5 +188,8 @@ defmodule KiteAgentHub.Passport.X402 do
     end
   end
 
-  defp fetch_amount(_), do: {:ok, @default_fee_usdc}
+  # Receipts without an explicit amount are treated as paying the
+  # platform-default chain's fee — keeps parsing backwards-compatible
+  # with pre-chain-aware kpass clients.
+  defp fetch_amount(_), do: {:ok, current_fee(ChainId.default())}
 end
