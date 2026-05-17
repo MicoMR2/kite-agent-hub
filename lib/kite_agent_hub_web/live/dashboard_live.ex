@@ -4388,7 +4388,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             style="z-index: 5; color: #ffffff;"
                           >
                             <span data-crosshair-time class="mr-2" style="color: #d1d5db;"></span>
-                            <span data-crosshair-price class="font-semibold" style="color: #ffffff;"></span>
+                            <span data-crosshair-price class="font-semibold" style="color: #ffffff;">
+                            </span>
                           </div>
                         </div>
                         <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
@@ -5596,7 +5597,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           style="z-index: 5; color: #ffffff;"
                         >
                           <span data-crosshair-time class="mr-2" style="color: #d1d5db;"></span>
-                          <span data-crosshair-price class="font-semibold" style="color: #ffffff;"></span>
+                          <span data-crosshair-price class="font-semibold" style="color: #ffffff;">
+                          </span>
                         </div>
                       </div>
                       <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
@@ -5873,7 +5875,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           style="z-index: 5; color: #ffffff;"
                         >
                           <span data-crosshair-time class="mr-2" style="color: #d1d5db;"></span>
-                          <span data-crosshair-price class="font-semibold" style="color: #ffffff;"></span>
+                          <span data-crosshair-price class="font-semibold" style="color: #ffffff;">
+                          </span>
                         </div>
                       </div>
                       <%!-- X-axis time labels --%>
@@ -6292,6 +6295,39 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <span class="text-[11px] font-mono text-gray-400">
                                 @ {trade.fill_price}
                               </span>
+                            <% end %>
+                            <%= cond do %>
+                              <% trade.attestation_tx_hash -> %>
+                                <a
+                                  href={
+                                    explorer_tx_url(
+                                      trade.attestation_tx_hash,
+                                      @selected_agent && @selected_agent.chain_id
+                                    )
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={"Kite chain attestation: " <> trade.attestation_tx_hash}
+                                  class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                                >
+                                  ✓ on-chain
+                                </a>
+                              <% trade.tx_hash && String.match?(trade.tx_hash, ~r/^0x[0-9a-fA-F]{64}$/) -> %>
+                                <a
+                                  href={
+                                    explorer_tx_url(
+                                      trade.tx_hash,
+                                      @selected_agent && @selected_agent.chain_id
+                                    )
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={"Kite intent transaction: " <> trade.tx_hash}
+                                  class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
+                                >
+                                  tx ↗
+                                </a>
+                              <% true -> %>
                             <% end %>
                             <span class={[
                               "text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border",
