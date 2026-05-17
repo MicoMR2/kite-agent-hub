@@ -4293,9 +4293,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 x2="0"
                                 y2="1"
                               >
-                                <stop offset="0%" stop-color={stroke} stop-opacity="0.42" />
-                                <stop offset="60%" stop-color={stroke} stop-opacity="0.12" />
+                                <stop offset="0%" stop-color={stroke} stop-opacity="0.55" />
+                                <stop offset="60%" stop-color={stroke} stop-opacity="0.18" />
                                 <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                              </linearGradient>
+                              <%!-- Premium stroke gradient: teal at the bottom
+                                   of the chart -> brand amber at the top.
+                                   Phorari 13843 — richer look than a single
+                                   emerald/red shade. --%>
+                              <linearGradient
+                                id="chart-line-gradient"
+                                x1="0"
+                                y1="1"
+                                x2="0"
+                                y2="0"
+                              >
+                                <stop offset="0%" stop-color="#0d9488" />
+                                <stop offset="100%" stop-color="#f59e0b" />
                               </linearGradient>
                               <filter
                                 id="alpaca-equity-glow"
@@ -4304,7 +4318,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 width="120%"
                                 height="160%"
                               >
-                                <feGaussianBlur stdDeviation="2.2" result="blur" />
+                                <feGaussianBlur stdDeviation="2.85" result="blur" />
                                 <feMerge>
                                   <feMergeNode in="blur" />
                                   <feMergeNode in="SourceGraphic" />
@@ -4336,9 +4350,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 <text
                                   x="648"
                                   y={tick.y + 3}
-                                  fill="rgba(156,163,175,0.7)"
-                                  font-size="9"
-                                  font-family="ui-monospace, monospace"
+                                  fill="rgba(100,116,139,0.85)"
+                                  font-size="11"
+                                  font-family="Space Grotesk, ui-sans-serif, system-ui, sans-serif"
                                   text-anchor="start"
                                 >
                                   ${tick.label}
@@ -4356,8 +4370,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <path
                                 d={c.path_d}
                                 fill="none"
-                                stroke={stroke}
-                                stroke-width="2.25"
+                                stroke="url(#chart-line-gradient)"
+                                stroke-width="2.5"
                                 stroke-linejoin="round"
                                 stroke-linecap="round"
                                 vector-effect="non-scaling-stroke"
@@ -5494,9 +5508,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         >
                           <defs>
                             <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stop-color={stroke} stop-opacity="0.42" />
-                              <stop offset="60%" stop-color={stroke} stop-opacity="0.12" />
+                              <stop offset="0%" stop-color={stroke} stop-opacity="0.55" />
+                              <stop offset="60%" stop-color={stroke} stop-opacity="0.18" />
                               <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                            </linearGradient>
+                            <linearGradient
+                              id="chart-line-gradient"
+                              x1="0"
+                              y1="1"
+                              x2="0"
+                              y2="0"
+                            >
+                              <stop offset="0%" stop-color="#0d9488" />
+                              <stop offset="100%" stop-color="#f59e0b" />
                             </linearGradient>
                             <filter
                               id="forex-nav-glow"
@@ -5505,7 +5529,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               width="120%"
                               height="160%"
                             >
-                              <feGaussianBlur stdDeviation="2.2" result="blur" />
+                              <feGaussianBlur stdDeviation="2.85" result="blur" />
                               <feMerge>
                                 <feMergeNode in="blur" />
                                 <feMergeNode in="SourceGraphic" />
@@ -5534,9 +5558,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <text
                                 x="648"
                                 y={tick.y + 3}
-                                fill="rgba(156,163,175,0.7)"
-                                font-size="9"
-                                font-family="ui-monospace, monospace"
+                                fill="rgba(100,116,139,0.85)"
+                                font-size="11"
+                                font-family="Space Grotesk, ui-sans-serif, system-ui, sans-serif"
                                 text-anchor="start"
                               >
                                 ${tick.label}
@@ -5554,8 +5578,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             <path
                               d={c.path_d}
                               fill="none"
-                              stroke={stroke}
-                              stroke-width="2.25"
+                              stroke="url(#chart-line-gradient)"
+                              stroke-width="2.5"
                               stroke-linejoin="round"
                               stroke-linecap="round"
                               vector-effect="non-scaling-stroke"
@@ -5745,9 +5769,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         >
                           <defs>
                             <linearGradient id="forex-chart-fill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stop-color={stroke} stop-opacity="0.42" />
-                              <stop offset="60%" stop-color={stroke} stop-opacity="0.12" />
+                              <stop offset="0%" stop-color={stroke} stop-opacity="0.55" />
+                              <stop offset="60%" stop-color={stroke} stop-opacity="0.18" />
                               <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                            </linearGradient>
+                            <linearGradient
+                              id="chart-line-gradient"
+                              x1="0"
+                              y1="1"
+                              x2="0"
+                              y2="0"
+                            >
+                              <stop offset="0%" stop-color="#0d9488" />
+                              <stop offset="100%" stop-color="#f59e0b" />
                             </linearGradient>
                             <%!-- Soft drop-shadow glow under the price path —
                                  server SVG filter only, no JS. CyberSec 13796 ②. --%>
@@ -5758,7 +5792,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               width="120%"
                               height="160%"
                             >
-                              <feGaussianBlur stdDeviation="2.2" result="blur" />
+                              <feGaussianBlur stdDeviation="2.85" result="blur" />
                               <feMerge>
                                 <feMergeNode in="blur" />
                                 <feMergeNode in="SourceGraphic" />
@@ -5783,9 +5817,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <text
                                 x="648"
                                 y={tick.y + 3}
-                                fill="rgba(156,163,175,0.7)"
-                                font-size="9"
-                                font-family="ui-monospace, monospace"
+                                fill="rgba(100,116,139,0.85)"
+                                font-size="11"
+                                font-family="Space Grotesk, ui-sans-serif, system-ui, sans-serif"
                                 text-anchor="start"
                               >
                                 {tick.label}
@@ -5816,8 +5850,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             <path
                               d={c.path_d}
                               fill="none"
-                              stroke={stroke}
-                              stroke-width="2.25"
+                              stroke="url(#chart-line-gradient)"
+                              stroke-width="2.5"
                               stroke-linejoin="round"
                               stroke-linecap="round"
                               vector-effect="non-scaling-stroke"
