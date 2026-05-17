@@ -24,6 +24,24 @@ defmodule KiteAgentHub.CollectiveIntelligence.MethodSeeder do
   Insight generation: `insights_for_m007/2`
     * Uses `Seeder.insights_from_bars/2` with forex-specific opts.
     * Returns `[]` when conditions are NOT met — caller inserts nothing.
+
+  ## M-011 → M-017 (OANDA institutional playbook stubs)
+
+  Cataloged here so `MethodBacktestWorker` can dispatch by ID once
+  per-method backtest logic ships. Each stub returns `false` from its
+  `mXXX_conditions_met?/2` predicate so the worker safely skips it
+  today — no synthetic insights are generated yet. Real backtest
+  conditions ship in per-method follow-on PRs.
+
+  | ID    | Method                        | Signal headline                                                   |
+  |-------|-------------------------------|-------------------------------------------------------------------|
+  | M-011 | London Open Breakout          | Break of Asian-session range at 07:00–08:00 UTC, volume spike     |
+  | M-012 | NY/London Overlap Mean-Rev    | 13:00–17:00 UTC, ADX-14 < 20, fade extremes to session VWAP       |
+  | M-013 | Risk-Off Positioning          | VIX > 25 or DXY > 103 → short risk pairs, long safe-havens        |
+  | M-014 | CB-Divergence Trend           | Long hiking-CB currency vs short cutting-CB currency, weekly hold |
+  | M-015 | Event Straddle (NFP/CPI/FOMC) | OCO bracket 20 pips out, 30 min before scheduled release          |
+  | M-016 | Trend Following               | Daily 200-MA + MACD signal cross on majors                        |
+  | M-017 | Classical Patterns (Brandt)   | Confirmed H&S / triangle / flag with volume confirmation          |
   """
 
   alias KiteAgentHub.CollectiveIntelligence.Seeder
@@ -94,6 +112,43 @@ defmodule KiteAgentHub.CollectiveIntelligence.MethodSeeder do
 
   @doc "Return the seed version string for M-007 insights."
   def seed_version, do: @seed_version
+
+  # ── M-011 → M-017 stubs (institutional FX playbook) ────────────────────────────
+  #
+  # Each predicate returns `false` until per-method backtest logic
+  # ships. `MethodBacktestWorker` dispatches by method ID, so leaving
+  # the stub in place means the worker simply records zero insights
+  # for that method — no crash, no synthetic data, no behavioral
+  # surprise. Replace `do: false` with the real signal check in the
+  # follow-on PR.
+
+  @doc "M-011 London Open Breakout — stub until per-method backtest logic ships."
+  @spec m011_conditions_met?(list(), keyword()) :: boolean()
+  def m011_conditions_met?(_bars, _opts \\ []), do: false
+
+  @doc "M-012 NY/London Overlap Mean-Reversion — stub until per-method backtest logic ships."
+  @spec m012_conditions_met?(list(), keyword()) :: boolean()
+  def m012_conditions_met?(_bars, _opts \\ []), do: false
+
+  @doc "M-013 Risk-Off Positioning — stub until per-method backtest logic ships."
+  @spec m013_conditions_met?(list(), keyword()) :: boolean()
+  def m013_conditions_met?(_bars, _opts \\ []), do: false
+
+  @doc "M-014 CB-Divergence Trend — stub until per-method backtest logic ships."
+  @spec m014_conditions_met?(list(), keyword()) :: boolean()
+  def m014_conditions_met?(_bars, _opts \\ []), do: false
+
+  @doc "M-015 Event Straddle (NFP/CPI/FOMC) — stub until per-method backtest logic ships."
+  @spec m015_conditions_met?(list(), keyword()) :: boolean()
+  def m015_conditions_met?(_bars, _opts \\ []), do: false
+
+  @doc "M-016 Trend Following — stub until per-method backtest logic ships."
+  @spec m016_conditions_met?(list(), keyword()) :: boolean()
+  def m016_conditions_met?(_bars, _opts \\ []), do: false
+
+  @doc "M-017 Classical Patterns (Brandt) — stub until per-method backtest logic ships."
+  @spec m017_conditions_met?(list(), keyword()) :: boolean()
+  def m017_conditions_met?(_bars, _opts \\ []), do: false
 
   # ── Private ───────────────────────────────────────────────────────────────────
 

@@ -18,12 +18,12 @@ defmodule KiteAgentHub.Trading.AgentContext do
   ## Options
 
     * `:base_url` — KAH API base URL (default: `"https://kite-agent-hub.fly.dev"`)
-    * `:platforms` — list of platforms to include (default: `[:alpaca, :kalshi]`)
+    * `:platforms` — list of platforms to include (default: `[:alpaca, :kalshi, :oanda]`)
   """
   @spec generate(KiteAgent.t(), keyword()) :: String.t()
   def generate(%KiteAgent{} = agent, opts \\ []) do
     base_url = Keyword.get(opts, :base_url, "https://kite-agent-hub.fly.dev")
-    platforms = Keyword.get(opts, :platforms, [:alpaca, :kalshi])
+    platforms = Keyword.get(opts, :platforms, [:alpaca, :kalshi, :oanda])
     agent_type = agent.agent_type || "trading"
 
     case agent_type do
@@ -61,6 +61,7 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
+    #{platform_section(:oanda, platforms)}
     #{collective_intelligence_section(agent)}
 
     ## Edge Scoring (QRB Methodology)
@@ -134,6 +135,7 @@ defmodule KiteAgentHub.Trading.AgentContext do
 
     #{platform_section(:alpaca, platforms)}
     #{platform_section(:kalshi, platforms)}
+    #{platform_section(:oanda, platforms)}
     #{collective_intelligence_section(agent)}
 
     ## Your Job
@@ -210,6 +212,65 @@ defmodule KiteAgentHub.Trading.AgentContext do
       - Methods: Oracle Lag, Closing Line Value
       - Prices in cents (1-99), contracts are binary YES/NO
       - Position sizing: Quarter-Kelly, max 10% bankroll per market
+      """
+    else
+      ""
+    end
+  end
+
+  # OANDA / Forex playbook. Built from the team's 2026-05-17 research
+  # convergence pulling Soros (reflexivity), Druckenmiller (CB-rate
+  # divergence), Kovner (tight stops, run winners), Lipschutz (ATR
+  # stops, asymmetric R:R), PTJ (1% account risk), Marcus (rule-based
+  # discipline), Al Brooks (price-action read), Kathy Lien (catalyst +
+  # S/R), Brandt (classical patterns), plus the academic three-factor
+  # frame (carry, trend, value).
+  #
+  # M-007 through M-010 are the existing QRB OANDA methods documented
+  # in the QRB Active Methods table above and gated by EdgeScorer.
+  # M-011 through M-017 are the institutional-grade additions wired in
+  # here so the prompt builder injects them on every decision cycle.
+  #
+  # TODO: the daily drawdown circuit (-3% halt new entries, -5%
+  # flatten) is delivered here as a behavioral prompt rule only. The
+  # server-enforced version with an audit log on every blocked entry
+  # is scoped as a follow-on PR (Phorari msg 14025, CyberSec msg
+  # 14024). Until that lands, the rule depends on the agent honoring
+  # the prompt — verify with a paper drawdown test, do not assume
+  # it is hard-enforced.
+  defp platform_section(:oanda, platforms) do
+    if :oanda in platforms or "forex" in platforms or :forex in platforms do
+      """
+      ## OANDA (Forex Practice)
+      - 28 majors + crosses on api-fxpractice.oanda.com, OANDA v20 REST
+      - Sub-pip pricing, units-based sizing (1,000 EUR_USD = 1 micro lot)
+      - Settles per fill; orders are market + FOK by default
+
+      ### Institutional Playbook — Methods M-011 → M-017
+      | ID    | Method                        | Signal / Entry                                                            | Stop                      | R:R target |
+      |-------|-------------------------------|---------------------------------------------------------------------------|---------------------------|------------|
+      | M-011 | London Open Breakout          | Break of Asian-session high/low at 07:00–08:00 UTC, rising volume         | Opposite side Asian range | 1:2        |
+      | M-012 | NY/London Overlap Mean-Rev    | 13:00–17:00 UTC, ADX-14 < 20, fade extremes back to session VWAP          | 1.5× ATR-14               | 1:2        |
+      | M-013 | Risk-Off Positioning          | VIX > 25 or DXY > 103 — short AUD/USD, NZD/USD; long USD/JPY, USD/CHF     | Pair daily ATR            | 1:3        |
+      | M-014 | CB-Divergence Trend           | Long currency of hiking CB vs short of cutting CB; hold 1–4 weeks         | Recent swing low/high     | 1:3        |
+      | M-015 | Event Straddle (NFP/CPI/FOMC) | OCO bracket 20 pips above/below pre-release price, 30 min before print    | Reverse-side bracket      | 1:2        |
+      | M-016 | Trend Following               | Daily close above/below 200-MA + MACD signal cross on majors              | Last swing pivot          | 1:3        |
+      | M-017 | Classical Patterns (Brandt)   | Confirmed H&S / triangle / flag with volume confirmation                  | Pattern invalidation pt   | 1:3        |
+
+      ### Hard Loss-Avoidance Rules — Non-Negotiable
+      - Max 1% NAV risked per trade · max 2% NAV notional on any single pair
+      - **Net USD exposure ≤ 15% NAV** (correlation pyramiding kills accounts: EUR/USD long + GBP/USD long + USD/JPY short = stacked USD short)
+      - Daily DD circuit: **-3% halts new entries**, **-5% flatten all positions** (behavioral this sprint; server-enforced version is a follow-on)
+      - Spread filter: skip if current spread > 3× pair's normal — liquidity is thin, fills will slip
+      - Time filter: **no new entries 21:00–07:00 UTC** (post-NY thin liquidity); **skip Tokyo lunch 02:00–04:00 UTC** (lowest weekly liquidity)
+      - News blackout: no new entries ±30 min around NFP / CPI / FOMC / ECB / BoE unless M-015 straddle is the explicit play
+      - Stops: 1.5× ATR-14 OR structural invalidation, whichever is closer. Move stops ONLY tighter (in winner's favor), never wider.
+      - R:R ≥ 1:2 to enter; reject setups below threshold. Target 1:3 where the structure supports it.
+      - Anti-martingale: never add to losers. Scale into winners only after first partial trail.
+      - Limit orders over market orders for entry — slippage control on planned setups.
+
+      ### Discipline Rule (Marcus)
+      Never freelance off the playbook. Size up to the existing caps on top-conviction setups; never above. If the setup does not match an M-007 → M-017 signal, do not trade — flat is a position.
       """
     else
       ""
