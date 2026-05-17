@@ -13,7 +13,6 @@ defmodule KiteAgentHubWeb.API.EdgeScoresController do
   """
   use KiteAgentHubWeb, :controller
 
-  alias KiteAgentHub.Trading
   alias KiteAgentHub.Kite.PortfolioEdgeScorer
 
   def index(conn, _params) do
@@ -41,18 +40,13 @@ defmodule KiteAgentHubWeb.API.EdgeScoresController do
     end
   end
 
-  # Auth is via the secret agent api_token ONLY. Wallet addresses are
-  # public on-chain and must never be accepted as a credential.
+  # Auth is enforced at the :api pipeline plug (`AuthenticateAgent`).
+  # This helper just reads the resolved agent from `conn.assigns`
+  # so the existing `with`-chain call sites keep working unchanged.
   defp authenticate(conn) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] ->
-        case Trading.get_agent_by_token(token) do
-          nil -> {:error, :unauthorized}
-          agent -> {:ok, agent}
-        end
-
-      _ ->
-        {:error, :unauthorized}
+    case conn.assigns[:current_agent] do
+      %_{} = agent -> {:ok, agent}
+      _ -> {:error, :unauthorized}
     end
   end
 

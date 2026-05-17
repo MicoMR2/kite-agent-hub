@@ -29,7 +29,7 @@ defmodule KiteAgentHubWeb.API.TriggersControllerTest do
   describe "GET /api/v1/triggers/pending — auth" do
     test "401 without Authorization header", %{conn: conn} do
       conn = get(conn, ~p"/api/v1/triggers/pending")
-      assert json_response(conn, 401)["error"] == "unauthorized"
+      assert json_response(conn, 401)["error"] == "invalid api key"
     end
 
     test "401 on malformed Authorization scheme", %{conn: conn, agent: agent} do
@@ -38,7 +38,7 @@ defmodule KiteAgentHubWeb.API.TriggersControllerTest do
         |> put_req_header("authorization", "Token " <> agent.api_token)
         |> get(~p"/api/v1/triggers/pending")
 
-      assert json_response(conn, 401)["error"] == "unauthorized"
+      assert json_response(conn, 401)["error"] == "invalid api key"
     end
 
     test "401 on unknown token", %{conn: conn} do
@@ -47,7 +47,7 @@ defmodule KiteAgentHubWeb.API.TriggersControllerTest do
         |> auth("not_a_real_token")
         |> get(~p"/api/v1/triggers/pending")
 
-      assert json_response(conn, 401)["error"] == "unauthorized"
+      assert json_response(conn, 401)["error"] == "invalid api key"
     end
   end
 
@@ -127,7 +127,7 @@ defmodule KiteAgentHubWeb.API.TriggersControllerTest do
     test "401 without Authorization", %{conn: conn, agent: agent} do
       event = insert_event!(agent)
       conn = post(conn, ~p"/api/v1/triggers/#{event.id}/ack")
-      assert json_response(conn, 401)["error"] == "unauthorized"
+      assert json_response(conn, 401)["error"] == "invalid api key"
     end
 
     test "204 on same-agent ack of a known event", %{conn: conn, agent: agent} do

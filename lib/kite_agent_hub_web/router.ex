@@ -15,6 +15,7 @@ defmodule KiteAgentHubWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug KiteAgentHubWeb.Plugs.AuthenticateAgent
   end
 
   scope "/", KiteAgentHubWeb do
