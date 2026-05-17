@@ -506,7 +506,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # tabs poll at 30s — broker portfolio state does not change as fast
   # and a tighter cadence would burn the DB pool needlessly.
   defp schedule_tab_refresh(:forex),
-    do: Process.send_after(self(), {:tab_refresh, :forex}, 10_000)
+    # 30s cadence (was 10s) — same as Alpaca/Kalshi. The faster tick was
+    # too aggressive once the tab grew anime.js CountUp hooks: every
+    # refresh re-rendered the hero + KPI strip and the animations made
+    # the tab feel like it was reloading constantly (Mico 10027).
+    do: Process.send_after(self(), {:tab_refresh, :forex}, 30_000)
 
   defp schedule_tab_refresh(tab) do
     Process.send_after(self(), {:tab_refresh, tab}, 30_000)
