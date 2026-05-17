@@ -2338,6 +2338,31 @@ defmodule KiteAgentHubWeb.DashboardLive do
   @per_trade_fee_kite "0.00001"
   defp per_trade_fee_kite, do: @per_trade_fee_kite
 
+  # Render a Decimal P&L with up to 8 fractional digits, stripping trailing
+  # zeros. Mico 9891: at the prior 4-decimal precision a tiny attestation
+  # amount like 0.00001 KITE truncated to "0.0000" in the trade feed.
+  # Using a wider precision with trim keeps regular dollar P&L compact
+  # ("1.5" instead of "1.50000000") while exposing sub-cent values.
+  defp format_compact_pnl(nil), do: "—"
+
+  defp format_compact_pnl(%Decimal{} = d) do
+    d
+    |> Decimal.round(8)
+    |> Decimal.to_string(:normal)
+    |> trim_trailing_zeros()
+  end
+
+  defp format_compact_pnl(n) when is_integer(n), do: format_compact_pnl(n / 1.0)
+  defp format_compact_pnl(n) when is_float(n), do: format_compact_pnl(Decimal.from_float(n))
+
+  defp trim_trailing_zeros(str) do
+    if String.contains?(str, ".") do
+      str |> String.trim_trailing("0") |> String.trim_trailing(".")
+    else
+      str
+    end
+  end
+
   # Static gas-cost estimate per attestation tx. Computed from the
   # hardcoded KiteAttestationWorker @gas_limit (30_000) and the
   # TxSigner default gas_price (1 gwei = 10^9 wei). CyberSec-cleared
@@ -2401,14 +2426,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
               >
                 <.icon name="hero-cog-6-tooth" class="w-5 h-5" />
               </button>
-              <%= if @selected_agent do %>
-                <button
-                  phx-click="show_agent_context"
-                  class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 text-xs font-bold uppercase tracking-widest text-emerald-400 hover:text-emerald-300 transition-all"
-                >
-                  <.icon name="hero-document-text" class="w-3.5 h-3.5" /> Agent Context
-                </button>
-              <% end %>
+              <%!-- Agent Context moved to per-agent Settings (Mico 9898) — was misleading at the dashboard-global level since context is per agent. --%>
               <.link
                 navigate={~p"/users/settings"}
                 class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
@@ -2441,15 +2459,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </span>
               </div>
             <% end %>
-            <%= if @selected_agent do %>
-              <button
-                phx-click={JS.hide(to: "#mobile-nav-drawer") |> JS.push("show_agent_context")}
-                class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-emerald-400 hover:bg-white/[0.05] transition-colors min-h-[44px] text-left"
-              >
-                <.icon name="hero-document-text" class="w-5 h-5 shrink-0" />
-                <span class="text-sm font-semibold">Agent Context</span>
-              </button>
-            <% end %>
+            <%!-- Agent Context moved to /users/settings/agents per-agent panel (Mico 9898). --%>
             <.link
               navigate={~p"/users/settings"}
               class="flex items-center gap-3 px-3 py-3 rounded-xl text-gray-300 hover:bg-white/[0.05] transition-colors min-h-[44px]"
@@ -3094,10 +3104,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
                                 Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
                               ]}>
-                                {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${Decimal.round(
-                                  trade.realized_pnl,
-                                  4
-                                )}
+                                {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${format_compact_pnl(trade.realized_pnl)}
                               </p>
                             <% end %>
                             <%!-- PR #101: Kite chain attestation receipt. Every settled
@@ -3400,10 +3407,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 Decimal.lt?(att.display_pnl, 0) && "text-[#ef4444]",
                                 Decimal.eq?(att.display_pnl, 0) && "text-gray-500"
                               ]}>
-                                {if Decimal.gt?(att.display_pnl, 0), do: "+"}${Decimal.round(
-                                  att.display_pnl,
-                                  4
-                                )}
+                                {if Decimal.gt?(att.display_pnl, 0), do: "+"}${format_compact_pnl(att.display_pnl)}
                               </p>
                             <% else %>
                               <p class="text-xs text-gray-600 font-mono">—</p>

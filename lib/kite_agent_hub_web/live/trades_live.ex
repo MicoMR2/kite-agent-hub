@@ -6,6 +6,13 @@ defmodule KiteAgentHubWeb.TradesLive do
 
   @page_size 25
 
+  # Hard whitelist for sortable columns and filter values. User input
+  # from `phx-value-col` / `phx-value-platform` is matched against
+  # these atoms before being passed to Ecto's `order_by` or `where`.
+  # Anything off-list is silently ignored — never raw input to the DB.
+  @sort_whitelist ~w[inserted_at fill_price contracts platform status action market notional_usd realized_pnl]a
+  @platform_whitelist ~w[all alpaca kalshi polymarket oanda oanda_practice forex]
+
   @impl true
   def mount(_params, _session, socket) do
     # Mount hardening (kah_lv_rescue): every DB call must rescue, or
@@ -29,6 +36,9 @@ defmodule KiteAgentHubWeb.TradesLive do
      |> assign(:selected_agent, nil)
      |> assign(:trades, [])
      |> assign(:status_filter, "all")
+     |> assign(:platform_filter, "all")
+     |> assign(:sort_by, :inserted_at)
+     |> assign(:sort_dir, :desc)
      |> assign(:page, 1)
      |> assign(:has_more, false)}
   end
@@ -91,12 +101,50 @@ defmodule KiteAgentHubWeb.TradesLive do
     {:noreply, push_patch(socket, to: ~p"/trades?agent_id=#{agent_id}&status=#{status}")}
   end
 
+  def handle_event("filter_platform", %{"platform" => platform}, socket)
+      when platform in @platform_whitelist do
+    socket =
+      socket
+      |> assign(:platform_filter, platform)
+      |> assign(:page, 1)
+      |> reload_trades_with_current_filters()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("filter_platform", _params, socket), do: {:noreply, socket}
+
+  def handle_event("sort", %{"col" => col}, socket) do
+    col_atom = String.to_existing_atom(col)
+
+    if col_atom in @sort_whitelist do
+      new_dir =
+        cond do
+          socket.assigns.sort_by == col_atom and socket.assigns.sort_dir == :desc -> :asc
+          socket.assigns.sort_by == col_atom and socket.assigns.sort_dir == :asc -> :desc
+          true -> :desc
+        end
+
+      {:noreply,
+       socket
+       |> assign(:sort_by, col_atom)
+       |> assign(:sort_dir, new_dir)
+       |> assign(:page, 1)
+       |> reload_trades_with_current_filters()}
+    else
+      {:noreply, socket}
+    end
+  rescue
+    # String.to_existing_atom raises if the atom is not interned —
+    # treat that as an unknown column (out-of-whitelist) and ignore.
+    ArgumentError -> {:noreply, socket}
+  end
+
   def handle_event("load_more", _params, socket) do
     next_page = socket.assigns.page + 1
     agent_id = socket.assigns.selected_agent.id
-    status = socket.assigns.status_filter
 
-    new_trades = load_trades(agent_id, status, next_page)
+    new_trades = load_trades_for(socket, agent_id, next_page)
 
     {:noreply,
      socket
@@ -126,8 +174,47 @@ defmodule KiteAgentHubWeb.TradesLive do
 
   def handle_info(_, socket), do: {:noreply, socket}
 
+  # ── Components ────────────────────────────────────────────────────────────────
+
+  # Clickable column header for the trades table. Renders an arrow that
+  # reflects the current sort direction when the column is active.
+  # Column atoms are passed by call site (compile-time constants), so the
+  # `phx-value-col` value is never user-controlled.
+  attr :label, :string, required: true
+  attr :col, :atom, required: true
+  attr :classes, :string, required: true
+  attr :sort_by, :atom, required: true
+  attr :sort_dir, :atom, required: true
+
+  defp sort_header(assigns) do
+    ~H"""
+    <th class={[@classes, "text-[10px] font-bold uppercase tracking-widest whitespace-nowrap"]}>
+      <button
+        phx-click="sort"
+        phx-value-col={Atom.to_string(@col)}
+        class={[
+          "inline-flex items-center gap-1 transition-colors",
+          if(@sort_by == @col, do: "text-white", else: "text-gray-500 hover:text-gray-300")
+        ]}
+        title={"Sort by " <> @label}
+      >
+        {@label}
+        <span class={if(@sort_by == @col, do: "opacity-100", else: "opacity-0 group-hover:opacity-40")}>
+          <%= cond do %>
+            <% @sort_by == @col and @sort_dir == :desc -> %>↓
+            <% @sort_by == @col and @sort_dir == :asc -> %>↑
+            <% true -> %>↕
+          <% end %>
+        </span>
+      </button>
+    </th>
+    """
+  end
+
   # ── Helpers ───────────────────────────────────────────────────────────────────
 
+  # Legacy 3-arg load (still called by handle_params on agent switch — keeps
+  # the existing status param flow intact).
   defp load_trades(agent_id, "all", page) do
     Trading.list_trades_with_display_pnl(agent_id,
       limit: @page_size,
@@ -143,17 +230,78 @@ defmodule KiteAgentHubWeb.TradesLive do
     )
   end
 
+  # Filter-aware load used by sort + platform filter + load_more so they
+  # respect the user's current sort and platform without going through
+  # push_patch (these are stateful assigns, not URL state).
+  defp load_trades_for(socket, agent_id, page) do
+    opts = current_filter_opts(socket, page)
+
+    agent_id
+    |> Trading.list_trades_with_display_pnl(opts)
+    |> maybe_resort_by_display_pnl(socket.assigns.sort_by, socket.assigns.sort_dir)
+  end
+
+  # `display_pnl` is a Trading-context Elixir computation (FIFO from
+  # settled fills) — it isn't a DB column, so when the user sorts by
+  # P&L the server can't ORDER BY it directly. We sort by `:realized_pnl`
+  # at the DB level (close enough for paging), then re-sort the loaded
+  # page in memory by display_pnl so what the user sees matches what
+  # they clicked.
+  defp maybe_resort_by_display_pnl(trades, :realized_pnl, dir) do
+    Enum.sort_by(trades, &display_pnl_key/1, sort_compare(dir))
+  end
+
+  defp maybe_resort_by_display_pnl(trades, _other, _dir), do: trades
+
+  defp display_pnl_key(%{display_pnl: %Decimal{} = d}), do: Decimal.to_float(d)
+  defp display_pnl_key(_), do: 0.0
+
+  defp sort_compare(:asc), do: &<=/2
+  defp sort_compare(_), do: &>=/2
+
+  defp current_filter_opts(socket, page) do
+    [
+      limit: @page_size,
+      offset: (page - 1) * @page_size,
+      order_by: socket.assigns.sort_by,
+      order_dir: socket.assigns.sort_dir
+    ]
+    |> maybe_put(:status, socket.assigns.status_filter, "all")
+    |> maybe_put(:platform, socket.assigns.platform_filter, "all")
+  end
+
+  defp maybe_put(opts, _key, sentinel, sentinel), do: opts
+  defp maybe_put(opts, key, value, _sentinel), do: Keyword.put(opts, key, value)
+
+  defp reload_trades_with_current_filters(socket) do
+    agent_id = socket.assigns.selected_agent && socket.assigns.selected_agent.id
+
+    if agent_id do
+      trades = load_trades_for(socket, agent_id, 1)
+
+      socket
+      |> assign(:trades, trades)
+      |> assign(:has_more, length(trades) == @page_size)
+    else
+      socket
+    end
+  end
+
   defp reload_visible_trades(socket, agent_id) do
     selected_id = socket.assigns.selected_agent && socket.assigns.selected_agent.id
 
     if selected_id == agent_id do
       limit = max(socket.assigns.page, 1) * @page_size
-      opts = [limit: limit, offset: 0]
 
       opts =
-        if socket.assigns.status_filter == "all",
-          do: opts,
-          else: Keyword.put(opts, :status, socket.assigns.status_filter)
+        [
+          limit: limit,
+          offset: 0,
+          order_by: socket.assigns.sort_by,
+          order_dir: socket.assigns.sort_dir
+        ]
+        |> maybe_put(:status, socket.assigns.status_filter, "all")
+        |> maybe_put(:platform, socket.assigns.platform_filter, "all")
 
       Trading.list_trades_with_display_pnl(agent_id, opts)
     else
@@ -193,7 +341,11 @@ defmodule KiteAgentHubWeb.TradesLive do
   defp format_notional(nil), do: "—"
   defp format_notional(n), do: "$#{Decimal.round(n, 2)}"
 
-  defp platform_label(nil), do: "Kite"
+  # Failed/cancelled trades sometimes arrive with a nil platform value
+  # before the broker adapter has had a chance to tag the record. Show
+  # "Unknown" rather than defaulting to "Kite" — the latter falsely
+  # implies an on-chain trade and confused users (Mico 9894).
+  defp platform_label(nil), do: "Unknown"
   defp platform_label(platform), do: platform |> String.replace("_", " ") |> String.upcase()
 
   defp platform_pill_class(platform) do
@@ -306,40 +458,96 @@ defmodule KiteAgentHubWeb.TradesLive do
 
           <%!-- Trade Table --%>
           <div class="flex-1 min-w-0">
+            <%!-- Active Agent banner (Mico 9894 #3) — makes it unmissable which
+            agent's trades are on screen, especially when scrolling the table
+            past the sidebar. --%>
+            <%= if @selected_agent do %>
+              <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/[0.08] to-emerald-500/[0.01] px-6 py-4 shadow-[0_0_20px_rgba(34,197,94,0.08)]">
+                <div class="min-w-0">
+                  <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">
+                    Viewing trades for
+                  </p>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <h2 class="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">
+                      {@selected_agent.name}
+                    </h2>
+                    <span class={[
+                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase tracking-widest",
+                      @selected_agent.status == "active" &&
+                        "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
+                      @selected_agent.status == "paused" &&
+                        "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+                      @selected_agent.status == "pending" &&
+                        "bg-gray-500/10 border-gray-500/20 text-gray-400",
+                      @selected_agent.status == "error" &&
+                        "bg-[#ef4444]/10 border-[#ef4444]/20 text-[#ef4444]"
+                    ]}>
+                      <span class={[
+                        "w-1.5 h-1.5 rounded-full",
+                        @selected_agent.status == "active" &&
+                          "bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse",
+                        @selected_agent.status == "paused" && "bg-yellow-400",
+                        @selected_agent.status == "pending" && "bg-gray-500",
+                        @selected_agent.status == "error" && "bg-[#ef4444]"
+                      ]}>
+                      </span>
+                      {@selected_agent.status}
+                    </span>
+                    <%= if @selected_agent.agent_type do %>
+                      <span class={[
+                        "text-[10px] px-2 py-0.5 rounded border uppercase tracking-widest font-bold",
+                        case @selected_agent.agent_type do
+                          "trading" -> "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                          "research" -> "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                          _ -> "bg-purple-500/10 border-purple-500/20 text-purple-400"
+                        end
+                      ]}>
+                        {@selected_agent.agent_type}
+                      </span>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+            <%!-- Platform filter (Mico 9894 #2) — server-side whitelist enforced
+            in handle_event before any Ecto where call. --%>
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                Platform
+              </span>
+              <%= for {label, val} <- [{"All", "all"}, {"Alpaca", "alpaca"}, {"Kalshi", "kalshi"}, {"Polymarket", "polymarket"}, {"Forex", "oanda"}] do %>
+                <button
+                  phx-click="filter_platform"
+                  phx-value-platform={val}
+                  class={[
+                    "px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition-all",
+                    @platform_filter == val &&
+                      "bg-white/10 border-white/20 text-white shadow-[0_0_10px_rgba(255,255,255,0.04)]",
+                    @platform_filter != val &&
+                      "bg-transparent border-white/5 text-gray-500 hover:text-white hover:bg-white/5"
+                  ]}
+                >
+                  {label}
+                </button>
+              <% end %>
+            </div>
+
             <div class="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md overflow-x-auto">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-white/10 bg-black/20">
-                    <th class="text-left px-3 py-3 sm:px-6 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Market
-                    </th>
-                    <th class="hidden lg:table-cell text-left px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Platform
-                    </th>
-                    <th class="text-left px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Action
-                    </th>
-                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Qty
-                    </th>
-                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Fill
-                    </th>
-                    <th class="hidden sm:table-cell text-right px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Notional
-                    </th>
-                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      P&L
-                    </th>
-                    <th class="text-center px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Status
-                    </th>
+                    <.sort_header label="Market" col={:market} classes="text-left px-3 py-3 sm:px-6 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="Platform" col={:platform} classes="hidden lg:table-cell text-left px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="Action" col={:action} classes="text-left px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="Qty" col={:contracts} classes="text-right px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="Fill" col={:fill_price} classes="text-right px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="Notional" col={:notional_usd} classes="hidden sm:table-cell text-right px-4 py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="P&L" col={:realized_pnl} classes="text-right px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
+                    <.sort_header label="Status" col={:status} classes="text-center px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
                     <th class="hidden sm:table-cell text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Chain
                     </th>
-                    <th class="hidden md:table-cell text-right px-3 py-3 sm:px-6 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      Time
-                    </th>
+                    <.sort_header label="Time" col={:inserted_at} classes="hidden md:table-cell text-right px-3 py-3 sm:px-6 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-white/5">

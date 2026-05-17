@@ -54,12 +54,66 @@ defmodule KiteAgentHubWeb.AgentsLive do
      |> assign(:passport_links, passport_links)
      |> assign(:passport_form_errors, %{})
      |> assign(:expanded_passport_id, nil)
+     |> assign(:context_for_agent_id, nil)
+     |> assign(:context_text, nil)
+     |> assign(:context_news, [])
      |> assign(:vault_address, VaultConfig.address())}
   end
 
   @impl true
   def handle_event("edit", %{"id" => id}, socket) do
     {:noreply, assign(socket, editing_id: id, form_errors: %{})}
+  end
+
+  # Inline Agent Context viewer — moved off the dashboard front page per
+  # Mico 9898. Context belongs with the agent it describes, not the
+  # global nav. Generates the same KiteAgentHub.Trading.AgentContext
+  # output the dashboard modal used to show, plus recent sanitized
+  # news headlines for the agent's open positions.
+  def handle_event("view_agent_context", %{"id" => id}, socket) do
+    with agent when not is_nil(agent) <- find_owned_agent(socket, id) do
+      try do
+        context = KiteAgentHub.Trading.AgentContext.generate(agent)
+        news = recent_news_for_agent(agent)
+
+        {:noreply,
+         socket
+         |> assign(:context_for_agent_id, agent.id)
+         |> assign(:context_text, context)
+         |> assign(:context_news, news)}
+      rescue
+        e ->
+          require Logger
+          Logger.warning("AgentsLive view_agent_context crashed: #{inspect(e)}")
+          {:noreply, put_flash(socket, :error, "Could not load agent context.")}
+      end
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Agent not found.")}
+    end
+  end
+
+  def handle_event("close_agent_context", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:context_for_agent_id, nil)
+     |> assign(:context_text, nil)
+     |> assign(:context_news, [])}
+  end
+
+  defp recent_news_for_agent(agent) do
+    symbols =
+      agent.id
+      |> KiteAgentHub.Trading.list_open_trades()
+      |> Enum.map(& &1.market)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+
+    KiteAgentHub.News.Buffer.recent(symbols)
+  rescue
+    e ->
+      require Logger
+      Logger.warning("AgentsLive: news fetch failed: #{Exception.message(e)}")
+      []
   end
 
   def handle_event("cancel_edit", _params, socket) do
@@ -815,6 +869,24 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     >
                       Edit
                     </button>
+                    <%!-- Per-agent Agent Context viewer (moved from dashboard nav, Mico 9898). --%>
+                    <%= if @context_for_agent_id == agent.id do %>
+                      <button
+                        phx-click="close_agent_context"
+                        class="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-widest text-emerald-300 hover:bg-emerald-500/20"
+                      >
+                        Hide Context
+                      </button>
+                    <% else %>
+                      <button
+                        :if={agent.status != "archived"}
+                        phx-click="view_agent_context"
+                        phx-value-id={agent.id}
+                        class="px-3 py-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-[10px] font-bold uppercase tracking-widest text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/40"
+                      >
+                        View Context
+                      </button>
+                    <% end %>
                     <button
                       :if={agent.status != "archived"}
                       phx-click="rotate_token"
@@ -833,6 +905,44 @@ defmodule KiteAgentHubWeb.AgentsLive do
                     </button>
                   </div>
                 </div>
+
+                <%!-- Agent Context inline panel — only renders for the agent
+                whose Context button was clicked. --%>
+                <%= if @context_for_agent_id == agent.id do %>
+                  <div class="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.04] p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                      <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                        Agent Context
+                      </p>
+                      <button
+                        phx-click="close_agent_context"
+                        class="text-[10px] text-gray-500 hover:text-white uppercase tracking-widest font-bold"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <%= if @context_text do %>
+                      <pre class="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap break-words font-mono bg-black/30 border border-white/5 rounded-lg p-3 max-h-96 overflow-y-auto"><%= @context_text %></pre>
+                    <% else %>
+                      <p class="text-xs text-gray-500">No context available for this agent yet.</p>
+                    <% end %>
+                    <%= if @context_news != [] do %>
+                      <div>
+                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-2">
+                          Recent news for open positions
+                        </p>
+                        <ul class="space-y-1.5">
+                          <%= for item <- @context_news do %>
+                            <li class="text-[11px] text-gray-400 leading-snug">
+                              <span class="text-gray-600 font-mono mr-1">·</span>
+                              {Map.get(item, :title) || Map.get(item, :headline) || inspect(item)}
+                            </li>
+                          <% end %>
+                        </ul>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
 
                 <div class="grid grid-cols-2 gap-3 pt-3 border-t border-white/5 text-[11px]">
                   <div>
