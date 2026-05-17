@@ -365,20 +365,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
         :forex ->
           send(self(), :load_forex)
           schedule_tab_refresh(:forex)
-          # Warmup burst: 3 extra :load_forex ticks at 2s intervals so
-          # the Session NAV sparkline accumulates 4 samples in the
-          # first ~6 seconds. Without this the user stares at the
-          # "Building chart…" placeholder for a full 30s waiting on the
-          # regular refresh cadence (Mico 10037). We send bare
-          # `:load_forex` (not the `{:tab_refresh, :forex}` envelope)
-          # so the warmup never re-arms the 30s scheduler — if it did
-          # we'd end up with 4 stacked timers all firing 30s later. The
-          # cost of firing the OANDA fetch even if the user switches
-          # tabs in the first 6s is a small handful of extra requests
-          # against an already-rate-limited practice account.
-          Process.send_after(self(), :load_forex, 2_000)
-          Process.send_after(self(), :load_forex, 4_000)
-          Process.send_after(self(), :load_forex, 6_000)
+          # Warmup chaining is handled inside the `:load_forex`
+          # handler — after each successful fetch it enqueues the
+          # next tick iff the buffer still needs samples AND the user
+          # is still on this tab. The previous parallel +2/+4/+6s
+          # burst was discarded by the `forex_fetching` guard whenever
+          # the first OANDA fetch took >2s (common case), so the
+          # buffer never crossed the 2-sample threshold and the
+          # sparkline stayed in "Building chart…" (Mico 10112 +
+          # CyberSec 10113).
           assign(socket, :forex_loading, true)
 
         :portfolio ->
@@ -1087,6 +1082,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
     pricing = Map.get(pricing_by_instrument, symbol)
 
     nav_history = append_forex_nav_sample(socket.assigns[:forex_nav_history] || [], account)
+
+    # Warmup chain (Mico 10112 + CyberSec 10113): the parallel +2/+4/+6s
+    # burst from earlier was eaten by the `forex_fetching` guard
+    # whenever the first OANDA fetch took >2s. Instead, each successful
+    # fetch now queues the next one 2s later — but only while the user
+    # is still on the Forex tab AND the buffer is still short of the
+    # 4-sample warmup target. Once we have 4 samples the chain stops
+    # and the regular 30s `:tab_refresh` cadence takes over. Each
+    # fetch starts after the previous one finishes, so the guard
+    # never drops a warmup tick.
+    if socket.assigns[:active_tab] == :forex and length(nav_history) < 4 do
+      Process.send_after(self(), :load_forex, 2_000)
+    end
 
     {:noreply,
      socket
