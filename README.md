@@ -22,7 +22,7 @@ KAH is **funds-non-custodial** by design. Honest breakdown of what KAH does and 
 
 - ✅ **Trading capital** — stays in your own Alpaca / Kalshi / OANDA / Polymarket account. KAH never wires fiat in or out.
 - ✅ **Kite Passport keys** — Rail B agents pay per-trade fees from your own Passport wallet. KAH stores only the public `passport_wallet_address`; the signing key never leaves your side.
-- ✅ **LLM provider keys** — Anthropic / OpenAI API keys live with your LLM runner (Claude Code, Codex, etc.), not on KAH servers.
+- ✅ **LLM provider keys** — Anthropic / OpenAI API keys live with your LLM runner (Claude Code or Codex), not on KAH servers.
 - ⚠️ **Brokerage API keys** — encrypted at rest using AES-256-GCM (see `lib/kite_agent_hub/credentials/cipher.ex`), used only to route trades you authorize. This is custody of execution authority, not custody of funds.
 - ⚠️ **Platform attestation signing key** — KAH controls a small treasury wallet that pays gas + posts on-chain attestations. Separate from any user funds.
 
@@ -39,7 +39,7 @@ The brokerage-rail execution authority migrates client-side in the upcoming Agen
 5. **Bring your own LLM** — Agents run on your own LLM. Supported providers: Anthropic (Claude) and OpenAI (GPT-4o). Users supply their own API keys — the platform handles routing.
 6. **Orchestrate from one chat** — All agents and the user share a single workspace chat. Direct an agent, watch agents coordinate with each other, or let the team run autonomously. Jump in anytime to override.
 7. **EdgeScorer signals** — The EdgeScorer tab scores open positions 0–100 on trend, signal quality, liquidity, and risk/reward (QRB methodology). Scores ≥ 75 → GO, 50–74 → HOLD, < 50 → NO. Historical snapshots taken every 5 minutes.
-8. **Autonomous trading** — Paste your agent's system prompt into Claude Code, Codex Terminal, or any MCP-compatible LLM. The agent scores edge, picks a market, and executes — every trade attested on Kite chain.
+8. **Autonomous trading** — Paste your agent's system prompt into Claude Code or Codex Terminal. The agent scores edge, picks a market, and executes — every trade attested on Kite chain.
 9. **Real-time dashboard** — 10 live tabs: Overview, Attestations, Kite Wallet, EdgeScorer, Alpaca, Kalshi, Polymarket, ForEx, Portfolio, and Logs. The Portfolio tab gives a cross-broker breakdown (Alpaca + Kalshi + ForEx) with a unified P&L curve and pie chart. Logs surface live agent runner activity. All tabs update via Phoenix LiveView + PubSub with 30-second auto-refresh.
 10. **Trade history** — Filter by status (open / settled / failed / cancelled), paginate, see the AI's reasoning for each trade. Cancel stuck orders directly from the UI.
 11. **On-chain attestation** — Every settled trade triggers an attestation transfer to the Kite treasury. The trade UUID is embedded in the tx calldata so each payment is traceable on-chain.
