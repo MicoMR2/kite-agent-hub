@@ -2668,23 +2668,26 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 >
                   <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
                 </.link>
+                <%!-- Connect CTA: solid emerald fill so the body copy stays
+                readable in both light and dark themes (Mico 9924). Headline
+                arrow removed — only the pulsing ↓ remains. --%>
                 <a
                   href="#connect-your-agent"
-                  class="mt-3 group block w-full rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-500/10 to-emerald-500/[0.04] hover:from-emerald-500/15 hover:to-emerald-500/[0.06] hover:border-emerald-400/60 px-4 py-4 shadow-[0_0_24px_rgba(34,197,94,0.12)] hover:shadow-[0_0_32px_rgba(34,197,94,0.22)] transition-all"
+                  class="mt-3 group block w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-5 py-5 shadow-[0_0_32px_rgba(34,197,94,0.28)] hover:shadow-[0_0_44px_rgba(34,197,94,0.45)] transition-all"
                 >
-                  <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center justify-between gap-4">
                     <div class="min-w-0">
-                      <p class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-0.5">
+                      <p class="text-[11px] font-black text-white/80 uppercase tracking-widest mb-1">
                         Ready to trade?
                       </p>
-                      <p class="text-sm font-bold text-white leading-tight">
-                        Set up your agent below to start →
+                      <p class="text-base sm:text-lg font-black text-white leading-snug">
+                        Set up your agent below to start
                       </p>
-                      <p class="text-[11px] text-emerald-200/70 mt-0.5 leading-snug">
+                      <p class="text-xs text-white/90 mt-1 leading-snug">
                         Copy your agent's prompt into Claude Code or Codex Terminal and it starts running.
                       </p>
                     </div>
-                    <span class="text-2xl text-emerald-400 animate-pulse drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
+                    <span class="text-3xl text-white animate-pulse drop-shadow-[0_0_10px_rgba(255,255,255,0.6)]">
                       ↓
                     </span>
                   </div>
