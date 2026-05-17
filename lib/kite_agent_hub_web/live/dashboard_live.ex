@@ -2532,12 +2532,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
             </.link>
             <div class="flex items-center gap-4">
               <%!-- Persistent "agents make mistakes" reminder (Mico 10039).
-                   Always visible in the top nav next to the BLOCK ticker
-                   so users don't have to scroll to the Connect section to
-                   see it. Plain `text-yellow-300` and `bg-yellow-500/[0.08]`
-                   read fine in both dark and light themes (the app's light
-                   palette overrides keep accent yellow legible). --%>
-              <div class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/[0.08] text-[10px] font-bold uppercase tracking-widest text-yellow-300 whitespace-nowrap" title="Review every trade and chat — these are autonomous agents and they make mistakes.">
+                   Always visible in the top nav next to the BLOCK ticker.
+                   Keyed to the `text-amber-200/90` + `bg-amber-500/[0.06]`
+                   + `border-amber-500/40` palette the risk-disclosure band
+                   already uses; those have explicit `html[data-theme="light"]`
+                   overrides (assets/css/app.css:332-343) so the pill stays
+                   legible on the cream canvas (Mico 10094). Original
+                   `text-yellow-300` was dark-canvas-only and washed out
+                   on white. --%>
+              <div class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-500/40 bg-amber-500/[0.06] text-[10px] uppercase tracking-widest text-amber-200/90 whitespace-nowrap" title="Review every trade and chat — these are autonomous agents and they make mistakes.">
                 <span aria-hidden="true">⚠</span>
                 <span>Agents make mistakes</span>
               </div>
@@ -2573,7 +2576,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <%!-- Agent Context moved to per-agent Settings (Mico 9898) — was misleading at the dashboard-global level since context is per agent. --%>
               <.link
                 navigate={~p"/users/settings"}
-                class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-all"
+                class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-xs uppercase tracking-widest text-gray-400 hover:text-white transition-all"
               >
                 <.icon name="hero-cog-6-tooth" class="w-3.5 h-3.5" /> Settings
               </.link>
@@ -2647,7 +2650,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 phx-click="switch_tab"
                 phx-value-tab={tab_key}
                 class={[
-                  "inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  "inline-flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-xs uppercase tracking-widest transition-all whitespace-nowrap",
                   dashboard_tab_class(tab_key, @active_tab == String.to_atom(tab_key))
                 ]}
               >
@@ -2808,7 +2811,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                 <.link
                   navigate={~p"/agents/new"}
-                  class="flex items-center justify-center gap-2 w-full rounded-xl py-4 border border-dashed border-white/10 bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/20 text-gray-500 hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
+                  class="flex items-center justify-center gap-2 w-full rounded-xl py-4 border border-dashed border-white/10 bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/20 text-gray-500 hover:text-white transition-all text-xs uppercase tracking-widest"
                 >
                   <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
                 </.link>
@@ -2880,7 +2883,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <%= if @selected_agent.status == "active" do %>
                           <button
                             phx-click="pause_agent"
-                            class="px-4 py-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-xs font-bold uppercase tracking-widest transition-all"
+                            class="px-4 py-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-xs uppercase tracking-widest transition-all"
                           >
                             Pause
                           </button>
@@ -2888,7 +2891,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <%= if @selected_agent.status == "paused" do %>
                           <button
                             phx-click="resume_agent"
-                            class="px-4 py-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs font-bold uppercase tracking-widest transition-all"
+                            class="px-4 py-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs uppercase tracking-widest transition-all"
                           >
                             Resume
                           </button>
@@ -3037,7 +3040,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           ✓
                         </div>
                         <div class="min-w-0">
-                          <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">
+                          <p class="text-[10px] text-emerald-400 uppercase tracking-widest mb-1">
                             Kite Chain Attestations
                           </p>
                           <p class="text-2xl sm:text-3xl font-black text-white tracking-tight">
@@ -3063,7 +3066,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           }
                           target="_blank"
                           rel="noopener noreferrer"
-                          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs uppercase tracking-widest transition-all whitespace-nowrap"
                         >
                           View All on Kitescan →
                         </a>
@@ -3072,7 +3075,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                     <%= if @recent_attestations != [] do %>
                       <div class="mt-4 pt-4 border-t border-emerald-500/10 space-y-2">
-                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                        <p class="text-[10px] text-gray-500 uppercase tracking-widest">
                           Latest receipts
                         </p>
                         <%= for tx <- @recent_attestations do %>
@@ -3100,7 +3103,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
                   <%!-- Vault address strip --%>
                   <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-white/5 bg-white/[0.01] px-6 py-4">
-                    <span class="text-[10px] text-gray-600 font-bold uppercase tracking-widest">
+                    <span class="text-[10px] text-gray-600 uppercase tracking-widest">
                       Vault
                     </span>
                     <div class="flex items-baseline gap-2 min-w-0">
@@ -3142,7 +3145,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             <button
                               type="submit"
                               phx-disable-with="Activating…"
-                              class="px-8 py-3 rounded-xl border border-white/10 bg-white text-black font-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                              class="px-8 py-3 rounded-xl border border-white/10 bg-white text-black uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(255,255,255,0.2)]"
                             >
                               Activate Vault
                             </button>
@@ -3201,7 +3204,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <%!-- Action indicator --%>
                           <div class="shrink-0 flex sm:block items-center justify-between w-full sm:w-16">
                             <span class={[
-                              "w-full inline-flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest",
+                              "w-full inline-flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] uppercase tracking-widest",
                               trade.action == "buy" &&
                                 "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e] group-hover:bg-[#22c55e]/20",
                               trade.action == "sell" &&
@@ -3444,7 +3447,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         ✓
                       </div>
                       <div class="min-w-0">
-                        <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                        <p class="text-[10px] text-emerald-400 uppercase tracking-widest">
                           On-Chain History
                         </p>
                         <p class="text-sm font-black text-white tracking-tight">
@@ -3463,7 +3466,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         }
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 text-xs uppercase tracking-widest transition-all whitespace-nowrap"
                       >
                         View on Kitescan →
                       </a>
@@ -3483,7 +3486,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                   <% else %>
                     <div class="divide-y divide-emerald-500/5">
-                      <div class="hidden md:grid md:grid-cols-12 gap-4 px-6 py-3 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                      <div class="hidden md:grid md:grid-cols-12 gap-4 px-6 py-3 text-[10px] text-gray-500 uppercase tracking-widest">
                         <div class="col-span-1">Action</div>
                         <div class="col-span-3">Market</div>
                         <div class="col-span-3">Tx Hash</div>
@@ -3495,7 +3498,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <div class="grid grid-cols-2 md:grid-cols-12 gap-3 md:gap-4 px-6 py-4 hover:bg-emerald-500/[0.03] transition-colors items-center">
                           <div class="col-span-1 md:col-span-1">
                             <span class={[
-                              "inline-flex items-center justify-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest",
+                              "inline-flex items-center justify-center px-2 py-1 rounded-lg border text-[10px] uppercase tracking-widest",
                               att.action == "buy" &&
                                 "bg-[#22c55e]/10 border-[#22c55e]/20 text-[#22c55e]",
                               att.action == "sell" &&
@@ -3561,7 +3564,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             <% end %>
                           </div>
                           <div class="col-span-1 md:col-span-1 md:text-right">
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[10px] uppercase tracking-widest">
                               ✓ {att.status}
                             </span>
                           </div>
@@ -3800,7 +3803,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </span>
                             </div>
                             <span class={[
-                              "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border",
+                              "text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border",
                               score.recommendation == :strong_hold &&
                                 "text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10",
                               score.recommendation == :hold &&
@@ -3920,7 +3923,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <button
                       phx-click="switch_tab"
                       phx-value-tab="edge_scorer"
-                      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs font-bold uppercase tracking-widest transition-all"
+                      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] text-white text-xs uppercase tracking-widest transition-all"
                     >
                       ↻ Retry
                     </button>
@@ -4015,7 +4018,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         Margin & Shortable
                       </p>
                       <span class={[
-                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-widest",
+                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] uppercase tracking-widest",
                         data.account.shorting_enabled &&
                           "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
                         !data.account.shorting_enabled &&
@@ -4100,7 +4103,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           phx-click="alpaca_period"
                           phx-value-period={range}
                           class={[
-                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
+                            "px-2.5 py-1 rounded-lg text-[10px] uppercase tracking-widest transition-all border",
                             @alpaca_period == range && "bg-white text-black border-white",
                             @alpaca_period != range &&
                               "bg-white/[0.02] text-gray-500 border-white/10 hover:text-white hover:border-white/20"
@@ -4176,7 +4179,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               :error -> {"bg-red-500", "ERROR"}
                               _ -> {"bg-gray-500", "OFF"}
                             end %>
-                          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-white/15 bg-white/[0.05] text-[10px] font-bold uppercase tracking-widest text-white">
+                          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-white/15 bg-white/[0.05] text-[10px] uppercase tracking-widest text-white">
                             <span class={["w-1.5 h-1.5 rounded-full", dot_color, "animate-pulse"]}>
                             </span>
                             {label}
@@ -4191,7 +4194,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <button
                         phx-click="alpaca_live_tick_toggle"
                         class={[
-                          "px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest transition-colors",
+                          "px-3 py-1.5 rounded-lg border text-[10px] uppercase tracking-widest transition-colors",
                           if(@alpaca_live_tick_enabled,
                             do: "bg-emerald-600 hover:bg-emerald-500 border-emerald-700 text-white",
                             else:
@@ -4230,7 +4233,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                      but a sell is hanging. --%>
                                 <span
                                   :if={(Map.get(p, :held_for_orders) || 0) > 0}
-                                  class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
+                                  class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest border border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
                                   title="Held for resting orders — agent has open buy/sell against this position"
                                 >
                                   {format_held(p.held_for_orders)} held
@@ -4476,7 +4479,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <% end %>
                           <button
                             type="submit"
-                            class="px-5 py-2 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100"
+                            class="px-5 py-2 rounded-xl bg-white text-black text-xs uppercase tracking-widest hover:bg-gray-100"
                           >
                             Place Order
                           </button>
@@ -4850,12 +4853,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </h2>
                 <div class="flex items-center gap-2">
                   <%= if @selected_agent && not agent_can_trade do %>
-                    <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
+                    <span class="text-[10px] px-2 py-1 rounded-full uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
                       View only
                     </span>
                   <% end %>
                   <span class={[
-                    "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest",
+                    "text-[10px] px-2 py-1 rounded-full uppercase tracking-widest",
                     if(@polymarket_mode == :live,
                       do: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
                       else: "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
@@ -4977,12 +4980,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </h2>
                 <div class="flex items-center gap-2">
                   <%= if @selected_agent && not forex_agent_can_trade do %>
-                    <span class="text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
+                    <span class="text-[10px] px-2 py-1 rounded-full uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">
                       View only
                     </span>
                   <% end %>
                   <span class={[
-                    "text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-widest border",
+                    "text-[10px] px-2 py-1 rounded-full uppercase tracking-widest border",
                     if(@forex_oanda_env == :live,
                       do: "bg-red-500/20 text-red-200 border-red-500/40",
                       else: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
@@ -5088,7 +5091,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         upl_f >= 0 && "bg-emerald-600 text-white",
                         upl_f < 0 && "bg-red-600 text-white"
                       ]}>
-                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                        <span class="text-[9px] uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
                           Unrealized
                         </span>
                         <span>{if upl_f >= 0, do: "▲", else: "▼"}</span>
@@ -5280,7 +5283,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <div class="w-12 h-1 mx-auto rounded-full bg-emerald-500/30 overflow-hidden mb-4">
                           <div class="h-full w-1/3 bg-emerald-400 animate-pulse rounded-full"></div>
                         </div>
-                        <p class="text-xs text-gray-400 font-bold uppercase tracking-widest">
+                        <p class="text-xs text-gray-400 uppercase tracking-widest">
                           Building chart…
                         </p>
                         <p class="text-[10px] text-gray-600 mt-2">
@@ -5316,7 +5319,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           phx-value-price={code}
                           title={hint}
                           class={[
-                            "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest transition-colors",
+                            "px-2.5 py-1 rounded-md text-[10px] uppercase tracking-widest transition-colors",
                             if(@forex_chart_price == code,
                               do: "bg-emerald-600 text-white border border-emerald-700 shadow-sm",
                               else:
@@ -5388,7 +5391,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       type="submit"
                       name="side"
                       value="sell"
-                      class="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 border border-red-700 text-white text-xs font-black uppercase tracking-widest transition-colors shadow-md"
+                      class="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 border border-red-700 text-white text-xs uppercase tracking-widest transition-colors shadow-md"
                     >
                       Sell
                     </button>
@@ -5396,7 +5399,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       type="submit"
                       name="side"
                       value="buy"
-                      class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-black uppercase tracking-widest transition-colors shadow-md"
+                      class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs uppercase tracking-widest transition-colors shadow-md"
                     >
                       Buy
                     </button>
@@ -5481,7 +5484,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <button
                         type="button"
                         phx-click="forex_quick_trade_cancel"
-                        class="flex-1 py-2.5 rounded-xl border border-white/20 text-gray-300 hover:text-white hover:border-white/40 text-xs font-bold uppercase tracking-widest transition-all"
+                        class="flex-1 py-2.5 rounded-xl border border-white/20 text-gray-300 hover:text-white hover:border-white/40 text-xs uppercase tracking-widest transition-all"
                       >
                         Cancel
                       </button>
@@ -5491,7 +5494,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         phx-hook="QuickTradeConfirm"
                         phx-click="forex_quick_trade_confirm"
                         class={[
-                          "flex-[2] py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-widest transition-colors shadow-md",
+                          "flex-[2] py-2.5 rounded-xl text-white text-xs uppercase tracking-widest transition-colors shadow-md",
                           if(pt.side == "buy",
                             do: "bg-blue-600 hover:bg-blue-500 border border-blue-700",
                             else: "bg-red-600 hover:bg-red-500 border border-red-700"
@@ -5546,7 +5549,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               <span class="text-base font-bold text-white tabular-nums truncate">
                                 {view.instrument}
                               </span>
-                              <span class={"shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border " <> direction_color}>
+                              <span class={"shrink-0 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-widest border " <> direction_color}>
                                 {view.side}
                               </span>
                             </div>
@@ -5559,7 +5562,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                   phx-click="forex_close_position"
                                   phx-value-instrument={view.instrument}
                                   data-confirm={"Close all open #{view.instrument} on OANDA practice?"}
-                                  class="px-2.5 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 text-[10px] font-bold uppercase tracking-widest text-white transition-colors shadow-sm"
+                                  class="px-2.5 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 text-[10px] uppercase tracking-widest text-white transition-colors shadow-sm"
                                 >
                                   Close
                                 </button>
@@ -5714,7 +5717,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               {Calendar.strftime(trade.inserted_at, "%b %d %H:%M")}
                             </span>
                             <span class={[
-                              "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded text-white",
+                              "text-[10px] uppercase tracking-widest px-2 py-0.5 rounded text-white",
                               if(trade.side in ["buy", "long"], do: "bg-blue-600", else: "bg-red-600")
                             ]}>
                               {trade.side}
@@ -5733,7 +5736,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </span>
                             <% end %>
                             <span class={[
-                              "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border",
+                              "text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border",
                               case trade.status do
                                 "settled" ->
                                   "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
@@ -5829,7 +5832,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           phx-click="set_pnl_period"
                           phx-value-period={period}
                           class={[
-                            "px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                            "px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest transition-all",
                             Atom.to_string(@portfolio_pnl_period) == period &&
                               "bg-white/10 text-white shadow-[0_0_10px_rgba(255,255,255,0.05)]",
                             Atom.to_string(@portfolio_pnl_period) != period &&
@@ -5849,7 +5852,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         pnl_value >= 0 && "bg-emerald-600 text-white",
                         pnl_value < 0 && "bg-red-600 text-white"
                       ]}>
-                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                        <span class="text-[9px] uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
                           {pnl_period_label}
                         </span>
                         <span>{if pnl_value >= 0, do: "▲", else: "▼"}</span>
@@ -5858,7 +5861,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       </div>
                     <% else %>
                       <div class="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-gray-400 text-sm">
-                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 border-r border-white/10 pr-3">
+                        <span class="text-[9px] uppercase tracking-[0.2em] text-gray-500 border-r border-white/10 pr-3">
                           {pnl_period_label}
                         </span>
                         <span class="font-mono">—</span>
@@ -5991,7 +5994,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </p>
                         </div>
                         <div data-donut-hole-hovered class="hidden">
-                          <p data-hole-label class="text-[9px] font-black uppercase tracking-widest"></p>
+                          <p data-hole-label class="text-[9px] uppercase tracking-widest"></p>
                           <p class="text-2xl font-black tabular-nums text-white mt-1">
                             <span class="text-gray-500 font-light">$</span><span data-hole-value></span>
                           </p>
@@ -6036,7 +6039,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <div class="min-w-0">
                           <div class="flex items-center gap-2">
                             <span class="w-2.5 h-2.5 rounded-full shrink-0" style={"background-color: #{slice.stroke_color}; box-shadow: 0 0 12px #{slice.stroke_color};"} />
-                            <h4 class={["text-sm font-black uppercase tracking-widest", slice.text_class]}>
+                            <h4 class={["text-sm uppercase tracking-widest", slice.text_class]}>
                               {slice.label}
                             </h4>
                           </div>
@@ -6304,7 +6307,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 id="copy-context-btn"
                 phx-hook="CopyToClipboard"
                 data-text={@agent_context_text}
-                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-widest transition-colors"
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs uppercase tracking-widest transition-colors"
               >
                 <.icon name="hero-clipboard-document" class="w-4 h-4" /> Copy to Clipboard
               </button>
