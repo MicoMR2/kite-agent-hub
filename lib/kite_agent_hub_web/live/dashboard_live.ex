@@ -147,7 +147,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:show_option_a, false)
       |> assign(:show_option_b, false)
       |> assign(:show_option_c, false)
-      |> assign(:portfolio_hovered_slice, nil)
       |> assign(:portfolio_pnl_period, :all_time)
       |> assign(:attestation_count, attestation_count(selected_agent))
       |> assign(:recent_attestations, recent_attestations(selected_agent))
@@ -218,7 +217,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:show_option_a, false)
     |> assign(:show_option_b, false)
     |> assign(:show_option_c, false)
-    |> assign(:portfolio_hovered_slice, nil)
     |> assign(:portfolio_pnl_period, :all_time)
     |> assign(:attestation_count, 0)
     |> assign(:recent_attestations, [])
@@ -644,28 +642,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
     {:noreply, assign(socket, :show_agent_context, false)}
   end
 
-  # Portfolio donut interactivity (Mico 9950). Hover events come from
-  # arc + per-broker card phx-mouseenter; key is matched against the
-  # known broker atom set so the assign is never user-controlled.
-  @portfolio_slice_keys ~w[alpaca kalshi polymarket forex]a
-
-  def handle_event("portfolio_hover", %{"key" => key}, socket) do
-    case String.to_existing_atom(key) do
-      atom when atom in @portfolio_slice_keys ->
-        {:noreply, assign(socket, :portfolio_hovered_slice, atom)}
-
-      _ ->
-        {:noreply, socket}
-    end
-  rescue
-    ArgumentError -> {:noreply, socket}
-  end
-
-  def handle_event("portfolio_hover", _params, socket), do: {:noreply, socket}
-
-  def handle_event("portfolio_unhover", _params, socket) do
-    {:noreply, assign(socket, :portfolio_hovered_slice, nil)}
-  end
+  # Portfolio donut interactivity is now driven entirely client-side by
+  # the DonutChart JS hook (assets/js/app.js) — no LV round-trip on
+  # hover. The hook reads broker data from `data-*` attributes set in
+  # HEEx and animates arcs + cards locally. This shrinks the LV event
+  # surface (no `portfolio_hover` handler / `:portfolio_hovered_slice`
+  # assign) and eliminates network latency on every hover frame.
 
   # P&L period toggle (Phorari 9951 spec / CyberSec 9952 whitelist). Only
   # `:all_time` returns real numbers today — other periods are surfaced
@@ -5596,74 +5578,58 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               </div>
 
-              <% hovered_slice =
-                if @portfolio_hovered_slice,
-                  do: Enum.find(breakdown.slices, &(&1.key == @portfolio_hovered_slice)),
-                  else: nil %>
               <% diversity_caption = portfolio_diversity_caption(breakdown) %>
 
               <%!-- ═══════════ DONUT + PER-BROKER CARDS ═══════════ --%>
-              <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                <%!-- Donut with interactive center label --%>
+              <%!-- DonutChart hook wires hover interactivity client-side from
+              the data-* attributes below. Server only renders state; hover
+              animation never round-trips. --%>
+              <div
+                id="portfolio-donut-chart"
+                phx-hook="DonutChart"
+                phx-update="ignore"
+                class="grid grid-cols-1 lg:grid-cols-5 gap-6"
+              >
+                <%!-- Donut --%>
                 <div class="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex flex-col items-center justify-center">
                   <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 self-start">
                     Allocation · Hover to inspect
                   </p>
                   <%= if breakdown.total_value > 0.0 do %>
-                    <div class="relative" phx-mouseleave="portfolio_unhover">
-                      <%!-- viewBox -60..60 (was -50..50) leaves breathing room
-                      for the stroke + hover drop-shadow. Arc outer radius
-                      hits 44 + 18/2 = 53 when hovered, plus an 8px shadow
-                      blur; the previous 100x100 viewBox clipped both. SVG
-                      itself uses overflow-visible so any future glow can't
-                      be cut by the SVG bounds either. --%>
-                      <svg viewBox="-60 -60 120 120" class="w-72 h-72 -rotate-90 overflow-visible" style="transition: all 600ms ease;">
+                    <div class="relative">
+                      <%!-- viewBox -60..60 leaves breathing room for the stroke +
+                      hover drop-shadow. SVG uses overflow-visible so glow
+                      can't be clipped. --%>
+                      <svg viewBox="-60 -60 120 120" class="w-72 h-72 -rotate-90 overflow-visible">
                         <circle r="44" cx="0" cy="0" fill="transparent" stroke="rgba(255,255,255,0.04)" stroke-width="14" />
                         <%= for slice <- breakdown.slices, slice.value > 0 do %>
                           <% circumference = 2 * 3.141592653589793 * 44
                           slice_len = circumference * slice.percent / 100
                           gap_len = circumference - slice_len
-                          offset = -circumference * slice.cumulative_percent / 100
-                          is_hovered = @portfolio_hovered_slice == slice.key %>
+                          offset = -circumference * slice.cumulative_percent / 100 %>
                           <circle
                             r="44"
                             cx="0"
                             cy="0"
                             fill="transparent"
                             stroke={slice.stroke_color}
-                            stroke-width={if is_hovered, do: "18", else: "14"}
+                            stroke-width="14"
                             stroke-linecap="butt"
                             stroke-dasharray={"#{Float.round(slice_len, 2)} #{Float.round(gap_len, 2)}"}
                             stroke-dashoffset={Float.round(offset, 2)}
-                            style={"transition: stroke-dasharray 600ms ease, stroke-dashoffset 600ms ease, stroke-width 180ms ease; cursor: pointer;" <> if(is_hovered, do: " filter: drop-shadow(0 0 8px #{slice.stroke_color});", else: "")}
-                            phx-mouseenter="portfolio_hover"
-                            phx-value-key={Atom.to_string(slice.key)}
+                            class="cursor-pointer transition-all"
+                            style="transform-origin: center;"
+                            data-arc={Atom.to_string(slice.key)}
+                            data-color={slice.stroke_color}
                           />
                         <% end %>
                       </svg>
-                      <%!-- Center label — defaults to total + diversity caption,
-                      switches to hovered broker's details when a slice is
-                      hovered. pointer-events-none so the SVG arcs underneath
-                      still receive mouse events. --%>
+                      <%!-- Center label — two stable DOM nodes (default + hovered),
+                      hook toggles `hidden` class and writes textContent into
+                      the hovered spans. CyberSec 9983: textContent only, never
+                      innerHTML. --%>
                       <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-6">
-                        <%= if hovered_slice do %>
-                          <p class={["text-[9px] font-black uppercase tracking-widest", hovered_slice.text_class]}>
-                            {hovered_slice.label}
-                          </p>
-                          <p class="text-2xl font-black tabular-nums text-white mt-1">
-                            ${:erlang.float_to_binary(hovered_slice.value, decimals: 2)}
-                          </p>
-                          <p class={["text-xs font-mono tabular-nums font-bold mt-1", hovered_slice.text_class]}>
-                            {Float.round(hovered_slice.percent, 1)}% of total
-                          </p>
-                          <p class={[
-                            "text-[11px] font-mono tabular-nums mt-0.5",
-                            hovered_slice.pnl >= 0 && "text-emerald-400",
-                            hovered_slice.pnl < 0 && "text-red-400"
-                          ]}>
-                            P&L {if hovered_slice.pnl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(hovered_slice.pnl), decimals: 2)}
-                          </p>
-                        <% else %>
+                        <div data-donut-hole-default>
                           <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">
                             Total Value
                           </p>
@@ -5673,7 +5639,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <p class="text-[10px] text-gray-500 mt-1 italic leading-snug">
                             {diversity_caption}
                           </p>
-                        <% end %>
+                        </div>
+                        <div data-donut-hole-hovered class="hidden">
+                          <p data-hole-label class="text-[9px] font-black uppercase tracking-widest"></p>
+                          <p class="text-2xl font-black tabular-nums text-white mt-1">
+                            <span class="text-gray-500 font-light">$</span><span data-hole-value></span>
+                          </p>
+                          <p data-hole-pct class="text-xs font-mono tabular-nums font-bold mt-1"></p>
+                          <p class="text-[11px] font-mono tabular-nums mt-0.5">
+                            P&L <span data-hole-pnl></span>
+                          </p>
+                        </div>
                       </div>
                     </div>
                   <% else %>
@@ -5686,25 +5662,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <% end %>
                 </div>
 
-                <%!-- Per-broker cards (color-tinted) — staggered entrance via anime.js --%>
+                <%!-- Per-broker cards (color-tinted) — hook reads data-card to wire hover --%>
                 <div
                   id="portfolio-broker-cards"
                   phx-hook="FadeInStagger"
                   class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3"
                 >
                   <%= for slice <- breakdown.slices do %>
-                    <% is_hovered = @portfolio_hovered_slice == slice.key %>
+                    <% pnl_sign = if slice.pnl >= 0, do: "+", else: "-"
+                    pnl_value = :erlang.float_to_binary(abs(slice.pnl), decimals: 2) %>
                     <div
-                      class={[
-                        "rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer",
-                        slice.tint_class,
-                        is_hovered && "ring-2 ring-offset-2 ring-offset-[#0a0a0f] scale-[1.01]",
-                        is_hovered && "ring-#{slice.bar_class}"
-                      ]}
-                      style={if is_hovered, do: "--tw-ring-color: #{slice.stroke_color};", else: ""}
-                      phx-mouseenter="portfolio_hover"
-                      phx-mouseleave="portfolio_unhover"
-                      phx-value-key={Atom.to_string(slice.key)}
+                      class={["rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer", slice.tint_class]}
+                      data-card={Atom.to_string(slice.key)}
+                      data-label={slice.label}
+                      data-value={:erlang.float_to_binary(slice.value, decimals: 2)}
+                      data-pct={Float.round(slice.percent, 1)}
+                      data-pnl={"#{pnl_sign}$#{pnl_value}"}
+                      data-pnl-sign={pnl_sign}
+                      data-color={slice.stroke_color}
+                      data-text-class={slice.text_class}
                     >
                       <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
