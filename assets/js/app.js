@@ -243,6 +243,128 @@ const ThemeCycle = {
   }
 }
 
+// DraggableChat — turns the chat popup into a freely moveable + resizable
+// panel. Drag from any [data-drag-handle] child; resize via the native
+// CSS resize handle on the container. Position is persisted in
+// sessionStorage so LiveView re-renders don't snap the panel back to
+// bottom-right. A `chat:reset-position` window event clears the saved
+// position and returns the panel to its default corner.
+const STORAGE_KEY = "chat-panel-position"
+
+const DraggableChat = {
+  mounted() {
+    this._dragging = false
+    this._offsetX = 0
+    this._offsetY = 0
+
+    this._restorePosition()
+
+    // If no saved position, convert the default bottom/right anchor into
+    // explicit left/top coordinates. Native `resize: both` only resizes
+    // toward the bottom-right corner, so a bottom-right-anchored element
+    // can't grow naturally. Switching to top/left lets CSS resize work.
+    if (!this.el.style.left && !this.el.style.top) {
+      const rect = this.el.getBoundingClientRect()
+      this.el.style.left = `${rect.left}px`
+      this.el.style.top = `${rect.top}px`
+      this.el.style.right = "auto"
+      this.el.style.bottom = "auto"
+    }
+
+    this._onDown = (e) => {
+      const handle = e.target.closest("[data-drag-handle]")
+      if (!handle || !this.el.contains(handle)) return
+      // Ignore drags that originate on interactive header controls so
+      // clicks on the close / reset / invite buttons still work.
+      if (e.target.closest("button, a, input, select, textarea")) return
+      const rect = this.el.getBoundingClientRect()
+      this._offsetX = e.clientX - rect.left
+      this._offsetY = e.clientY - rect.top
+      this._dragging = true
+      this.el.style.transition = "none"
+      handle.style.cursor = "grabbing"
+      e.preventDefault()
+    }
+
+    this._onMove = (e) => {
+      if (!this._dragging) return
+      const w = this.el.offsetWidth
+      const h = this.el.offsetHeight
+      let x = e.clientX - this._offsetX
+      let y = e.clientY - this._offsetY
+      // Clamp to viewport so the panel can't be dragged off-screen.
+      x = Math.max(0, Math.min(window.innerWidth - w, x))
+      y = Math.max(0, Math.min(window.innerHeight - h, y))
+      this.el.style.left = `${x}px`
+      this.el.style.top = `${y}px`
+      this.el.style.right = "auto"
+      this.el.style.bottom = "auto"
+    }
+
+    this._onUp = () => {
+      if (!this._dragging) return
+      this._dragging = false
+      this.el.style.transition = ""
+      const handle = this.el.querySelector("[data-drag-handle]")
+      if (handle) handle.style.cursor = ""
+      this._savePosition()
+    }
+
+    this._onReset = () => {
+      sessionStorage.removeItem(STORAGE_KEY)
+      this.el.style.left = ""
+      this.el.style.top = ""
+      this.el.style.right = ""
+      this.el.style.bottom = ""
+      this.el.style.width = ""
+      this.el.style.height = ""
+    }
+
+    this.el.addEventListener("pointerdown", this._onDown)
+    window.addEventListener("pointermove", this._onMove)
+    window.addEventListener("pointerup", this._onUp)
+    window.addEventListener("chat:reset-position", this._onReset)
+  },
+
+  updated() {
+    this._restorePosition()
+  },
+
+  destroyed() {
+    this.el.removeEventListener("pointerdown", this._onDown)
+    window.removeEventListener("pointermove", this._onMove)
+    window.removeEventListener("pointerup", this._onUp)
+    window.removeEventListener("chat:reset-position", this._onReset)
+  },
+
+  _savePosition() {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        left: this.el.style.left,
+        top: this.el.style.top,
+        width: this.el.style.width,
+        height: this.el.style.height
+      }))
+    } catch (_) { /* private mode, ignore */ }
+  },
+
+  _restorePosition() {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      const pos = JSON.parse(raw)
+      if (pos.left) this.el.style.left = pos.left
+      if (pos.top) this.el.style.top = pos.top
+      if (pos.left || pos.top) {
+        this.el.style.right = "auto"
+        this.el.style.bottom = "auto"
+      }
+      if (pos.width) this.el.style.width = pos.width
+      if (pos.height) this.el.style.height = pos.height
+    } catch (_) { /* corrupt storage, ignore */ }
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   // 10s gives WebSocket time to handshake on slower connections before
@@ -257,6 +379,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     CopyToClipboard,
     LocalTime,
     ChatInputClear,
+    DraggableChat,
     QuickTradeForm,
     QuickTradeConfirm,
     Magnetic,
