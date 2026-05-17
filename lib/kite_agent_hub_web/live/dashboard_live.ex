@@ -5584,10 +5584,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
               <%!-- DonutChart hook wires hover interactivity client-side from
               the data-* attributes below. Server only renders state; hover
               animation never round-trips. --%>
+              <%!-- NO `phx-update="ignore"`: broker values stream in async
+              after mount (Alpaca/Kalshi/Polymarket/Forex via PubSub), so
+              the donut MUST be updatable. DonutChart's `updated/0` callback
+               rebinds listeners against the new DOM after every LV patch. --%>
               <div
                 id="portfolio-donut-chart"
                 phx-hook="DonutChart"
-                phx-update="ignore"
                 class="grid grid-cols-1 lg:grid-cols-5 gap-6"
               >
                 <%!-- Donut --%>
