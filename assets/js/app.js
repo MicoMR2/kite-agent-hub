@@ -601,10 +601,12 @@ const CrosshairChart = {
     const VIEW_W = 700  // matches the SVG viewBox width in HEEx
     const PLOT_W = 640  // points are computed against this; right margin = price labels
 
+    const container = this.el  // outer `position: relative` wrapper
+
     const onMove = ev => {
-      const rect = svg.getBoundingClientRect()
-      if (rect.width === 0) return
-      const xRatio = (ev.clientX - rect.left) / rect.width
+      const svgRect = svg.getBoundingClientRect()
+      if (svgRect.width === 0) return
+      const xRatio = (ev.clientX - svgRect.left) / svgRect.width
       const cursorX = Math.max(0, Math.min(PLOT_W, xRatio * VIEW_W))
 
       // Walk the (small) point list to find the nearest x.
@@ -631,7 +633,25 @@ const CrosshairChart = {
           crosshairDot.classList.add("hidden")
         }
       }
-      if (tooltip) tooltip.classList.remove("hidden")
+      if (tooltip) {
+        // Position the tooltip near the cursor (Phorari 13809 — fixed
+        // top-left was too far from the data point). Container is
+        // `position: relative`; compute cursor offset relative to it
+        // and clamp so the tooltip never overflows.
+        const cRect = container.getBoundingClientRect()
+        const localX = ev.clientX - cRect.left
+        const localY = ev.clientY - cRect.top
+        const tipW = tooltip.offsetWidth || 140
+        const tipH = tooltip.offsetHeight || 40
+        const margin = 14
+        let left = localX + margin
+        let top = localY - tipH - margin
+        if (left + tipW > cRect.width) left = localX - tipW - margin
+        if (top < 0) top = localY + margin
+        tooltip.style.left = left + "px"
+        tooltip.style.top = top + "px"
+        tooltip.classList.remove("hidden")
+      }
       if (tooltipPrice) tooltipPrice.textContent = nearest.v
       if (tooltipTime) tooltipTime.textContent = nearest.t
     }
