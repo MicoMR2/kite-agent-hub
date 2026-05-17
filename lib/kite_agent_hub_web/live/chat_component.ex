@@ -25,6 +25,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
       socket
       |> assign(assigns)
       |> assign_new(:open, fn -> false end)
+      |> assign_new(:expanded, fn -> false end)
       |> assign_new(:show_invite, fn -> false end)
       |> assign_new(:messages, fn -> [] end)
       |> assign_new(:chat_input, fn -> "" end)
@@ -35,6 +36,10 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
   def handle_event("toggle_chat", _params, socket) do
     {:noreply, assign(socket, open: !socket.assigns.open, show_invite: false)}
+  end
+
+  def handle_event("toggle_expand", _params, socket) do
+    {:noreply, assign(socket, :expanded, !socket.assigns.expanded)}
   end
 
   def handle_event("toggle_invite", _params, socket) do
@@ -125,7 +130,13 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
       <%!-- Chat Window --%>
       <%= if @open do %>
-        <div class="w-96 rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl flex flex-col overflow-hidden">
+        <div class={[
+          "rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl flex flex-col overflow-hidden transition-all duration-200",
+          if(@expanded,
+            do: "w-[min(640px,calc(100vw-2rem))]",
+            else: "w-96"
+          )
+        ]}>
           <%!-- Header --%>
           <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02]">
             <div class="flex items-center gap-2">
@@ -163,9 +174,29 @@ defmodule KiteAgentHubWeb.ChatComponent do
                   Invite Agents
                 </button>
               <% end %>
+              <%!-- Expand/Collapse toggle --%>
+              <button
+                phx-click="toggle_expand"
+                phx-target={@myself}
+                title={if(@expanded, do: "Shrink chat", else: "Expand chat")}
+                aria-label={if(@expanded, do: "Shrink chat", else: "Expand chat")}
+                class="text-gray-500 hover:text-white transition-colors"
+              >
+                <%= if @expanded do %>
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V5H5m0 0v4m0-4l5 5m5-5h4m0 0v4m0-4l-5 5M9 15v4H5m0 0v-4m0 4l5-5m5 5h4m0 0v-4m0 4l-5-5" />
+                  </svg>
+                <% else %>
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                <% end %>
+              </button>
               <button
                 phx-click="toggle_chat"
                 phx-target={@myself}
+                title="Close chat"
+                aria-label="Close chat"
                 class="text-gray-500 hover:text-white transition-colors"
               >
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -228,7 +259,13 @@ defmodule KiteAgentHubWeb.ChatComponent do
           <%!-- Messages --%>
           <div
             id="chat-messages"
-            class="h-[380px] overflow-y-auto px-4 py-3 space-y-3"
+            class={[
+              "overflow-y-auto px-4 py-3 space-y-3 transition-all duration-200",
+              if(@expanded,
+                do: "h-[min(720px,calc(100vh-12rem))]",
+                else: "h-[380px]"
+              )
+            ]}
             phx-hook="ScrollBottom"
           >
             <%= if @messages == [] do %>
