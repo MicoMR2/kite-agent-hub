@@ -246,17 +246,35 @@ defmodule KiteAgentHub.Trading do
 
   # ── Trade Records ─────────────────────────────────────────────────────────────
 
+  # Server-side whitelist for sortable columns — only these atoms are
+  # accepted from caller-supplied `:order_by`. Anything outside the list
+  # falls back to `:inserted_at`. Defence-in-depth on top of the
+  # whitelist already enforced at the TradesLive event boundary.
+  @list_trades_sort_whitelist ~w[inserted_at fill_price contracts platform status action market notional_usd]a
+
   def list_trades(agent_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
     offset = Keyword.get(opts, :offset, 0)
     status = Keyword.get(opts, :status)
     platform = Keyword.get(opts, :platform)
 
+    order_col =
+      case Keyword.get(opts, :order_by) do
+        col when col in @list_trades_sort_whitelist -> col
+        _ -> :inserted_at
+      end
+
+    order_dir =
+      case Keyword.get(opts, :order_dir) do
+        :asc -> :asc
+        _ -> :desc
+      end
+
     TradeRecord
     |> where(kite_agent_id: ^agent_id)
     |> then(fn q -> if status, do: where(q, status: ^status), else: q end)
     |> then(fn q -> if platform, do: where(q, platform: ^platform), else: q end)
-    |> order_by(desc: :inserted_at)
+    |> order_by([t], [{^order_dir, field(t, ^order_col)}])
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
