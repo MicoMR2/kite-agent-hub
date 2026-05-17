@@ -5449,82 +5449,144 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <p class="text-[10px] text-gray-600 mb-3 italic">
                     NAV captured since you opened the tab. Capped at 288 samples (~24h of 30s ticks).
                   </p>
+                  <% session_chart = session_nav_chart_data(@forex_nav_history, 640, 200) %>
                   <%= cond do %>
-                    <% length(@forex_nav_history) > 1 -> %>
-                      <% nav_samples =
-                        @forex_nav_history
-                        |> Enum.reverse() %>
-                      <% nav_values = Enum.map(nav_samples, fn {_ts, nav} -> nav end) %>
-                      <% first_nav = List.first(nav_values) %>
-                      <% last_nav = List.last(nav_values) %>
-                      <% min_nav = Enum.min(nav_values) %>
-                      <% max_nav = Enum.max(nav_values) %>
-                      <% delta = last_nav - first_nav %>
-                      <% delta_pct = if first_nav > 0.0, do: delta / first_nav * 100.0, else: 0.0 %>
-                      <% stroke = if delta >= 0, do: "#22c55e", else: "#ef4444" %>
-                      <% pts =
-                        sparkline_points(
-                          Enum.map(nav_samples, fn {_ts, nav} -> %{v: nav} end),
-                          640,
-                          150
-                        ) %>
-                      <% first_ts = nav_samples |> List.first() |> elem(0) %>
-                      <% last_ts = nav_samples |> List.last() |> elem(0) %>
-                      <% mid_ts = div(first_ts + last_ts, 2) %>
-                      <% {tip_x, tip_y} =
-                        case String.split(pts, " ") |> List.last() |> String.split(",") do
-                          [x, y] -> {x, y}
-                          _ -> {"640", "150"}
-                        end %>
-                      <svg viewBox="0 0 640 160" preserveAspectRatio="none" class="w-full h-44">
-                        <%!-- Grid lines + a faint midline for visual anchor --%>
-                        <line x1="0" y1="30" x2="640" y2="30" stroke="white" stroke-opacity="0.04" />
-                        <line
-                          x1="0"
-                          y1="75"
-                          x2="640"
-                          y2="75"
-                          stroke="white"
-                          stroke-opacity="0.08"
-                          stroke-dasharray="4,4"
-                        />
-                        <line x1="0" y1="120" x2="640" y2="120" stroke="white" stroke-opacity="0.04" />
-                        <defs>
-                          <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color={stroke} stop-opacity="0.32" />
-                            <stop offset="50%" stop-color={stroke} stop-opacity="0.12" />
-                            <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
-                          </linearGradient>
-                          <filter id="forex-nav-glow" x="-50%" y="-50%" width="200%" height="200%">
-                            <feGaussianBlur stdDeviation="3" result="blur" />
-                            <feMerge>
-                              <feMergeNode in="blur" />
-                              <feMergeNode in="SourceGraphic" />
-                            </feMerge>
-                          </filter>
-                        </defs>
-                        <polygon points={"#{pts} 640,150 0,150"} fill="url(#forex-nav-fill)" />
-                        <polyline
-                          points={pts}
-                          fill="none"
-                          stroke={stroke}
-                          stroke-width="2.25"
-                          vector-effect="non-scaling-stroke"
-                          stroke-linejoin="round"
-                          stroke-linecap="round"
-                          filter="url(#forex-nav-glow)"
-                        />
-                        <%!-- Glowing tip dot at the most recent sample --%>
-                        <circle cx={tip_x} cy={tip_y} r="6" fill={stroke} fill-opacity="0.25" />
-                        <circle cx={tip_x} cy={tip_y} r="3.5" fill={stroke} />
-                        <circle cx={tip_x} cy={tip_y} r="1.5" fill="white" />
-                      </svg>
-
-                      <%!-- Time axis labels under the chart --%>
-                      <div class="flex justify-between text-[10px] text-gray-600 font-mono mt-1 tabular-nums">
-                        <span>{format_session_time(first_ts)}</span>
-                        <span>{format_session_time(mid_ts)}</span>
-                        <span>{format_session_time(last_ts)}</span>
+                    <% session_chart != :empty -> %>
+                      <% c = session_chart %>
+                      <% stroke = if c.delta >= 0, do: "#22c55e", else: "#ef4444" %>
+                      <%!-- Banner: current NAV + signed-delta pill — same
+                           pattern as Alpaca / Forex instrument charts. --%>
+                      <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+                        <p class="text-2xl font-mono tabular-nums text-white">
+                          ${:erlang.float_to_binary(c.last, decimals: 2)}
+                        </p>
+                        <span class={[
+                          "text-xs font-mono tabular-nums px-2 py-0.5 rounded",
+                          c.delta >= 0 && "bg-emerald-500/15 text-emerald-300",
+                          c.delta < 0 && "bg-red-500/15 text-red-300"
+                        ]}>
+                          {if c.delta >= 0, do: "+", else: ""}${:erlang.float_to_binary(c.delta,
+                            decimals: 2
+                          )} ({:erlang.float_to_binary(c.delta_pct, decimals: 2)}%)
+                        </span>
+                      </div>
+                      <div
+                        id="forex-nav-chart"
+                        phx-hook="CrosshairChart"
+                        class="relative"
+                        data-points={c.crosshair_data}
+                      >
+                        <svg
+                          viewBox="0 0 700 220"
+                          preserveAspectRatio="none"
+                          class="w-full h-56 select-none cursor-crosshair"
+                        >
+                          <defs>
+                            <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stop-color={stroke} stop-opacity="0.42" />
+                              <stop offset="60%" stop-color={stroke} stop-opacity="0.12" />
+                              <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                            </linearGradient>
+                            <filter
+                              id="forex-nav-glow"
+                              x="-10%"
+                              y="-30%"
+                              width="120%"
+                              height="160%"
+                            >
+                              <feGaussianBlur stdDeviation="2.2" result="blur" />
+                              <feMerge>
+                                <feMergeNode in="blur" />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
+                          </defs>
+                          <g transform="translate(0,10)">
+                            <rect
+                              x="0"
+                              y="0"
+                              width="640"
+                              height="200"
+                              fill="white"
+                              fill-opacity="0.03"
+                            />
+                            <%= for {tick, idx} <- Enum.with_index(c.y_ticks) do %>
+                              <line
+                                x1="0"
+                                y1={tick.y}
+                                x2="640"
+                                y2={tick.y}
+                                stroke="white"
+                                stroke-opacity={if idx == 2, do: "0.12", else: "0.05"}
+                                stroke-dasharray={if idx == 2, do: "4,4", else: ""}
+                              />
+                              <text
+                                x="648"
+                                y={tick.y + 3}
+                                fill="rgba(156,163,175,0.7)"
+                                font-size="9"
+                                font-family="ui-monospace, monospace"
+                                text-anchor="start"
+                              >
+                                ${tick.label}
+                              </text>
+                            <% end %>
+                            <line
+                              x1="640"
+                              y1="0"
+                              x2="640"
+                              y2="200"
+                              stroke="white"
+                              stroke-opacity="0.10"
+                            />
+                            <path d={c.area_d} fill="url(#forex-nav-fill)" />
+                            <path
+                              d={c.path_d}
+                              fill="none"
+                              stroke={stroke}
+                              stroke-width="2.25"
+                              stroke-linejoin="round"
+                              stroke-linecap="round"
+                              vector-effect="non-scaling-stroke"
+                              filter="url(#forex-nav-glow)"
+                            />
+                            <line
+                              data-crosshair-x
+                              x1="0"
+                              y1="0"
+                              x2="0"
+                              y2="200"
+                              stroke="white"
+                              stroke-opacity="0.45"
+                              stroke-width="0.5"
+                              stroke-dasharray="2,3"
+                              class="hidden"
+                            />
+                            <circle
+                              data-crosshair-dot
+                              cx="0"
+                              cy="0"
+                              r="4.5"
+                              fill={stroke}
+                              stroke="white"
+                              stroke-width="1.5"
+                              class="hidden"
+                            />
+                          </g>
+                        </svg>
+                        <div
+                          data-crosshair-tooltip
+                          class="hidden absolute pointer-events-none px-3 py-2 rounded-lg bg-gray-900/95 border border-white/15 text-xs font-mono tabular-nums shadow-xl text-white"
+                          style="z-index: 5;"
+                        >
+                          <span data-crosshair-time class="text-gray-300 mr-2"></span>
+                          <span data-crosshair-price class="text-white font-semibold"></span>
+                        </div>
+                      </div>
+                      <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
+                        <span>{Enum.at(c.x_ticks, 0).label}</span>
+                        <span>{Enum.at(c.x_ticks, 1).label}</span>
+                        <span>{Enum.at(c.x_ticks, 2).label}</span>
                       </div>
 
                       <%!-- Range + delta strip --%>
@@ -5534,29 +5596,30 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             Open
                           </p>
                           <p class="text-sm font-mono tabular-nums text-gray-200">
-                            ${:erlang.float_to_binary(first_nav, decimals: 2)}
+                            ${:erlang.float_to_binary(c.first, decimals: 2)}
                           </p>
                         </div>
                         <div class={[
                           "rounded-lg border px-3 py-2 text-center",
-                          delta >= 0 && "border-emerald-500/30 bg-emerald-500/[0.06]",
-                          delta < 0 && "border-red-500/30 bg-red-500/[0.06]"
+                          c.delta >= 0 && "border-emerald-500/30 bg-emerald-500/[0.06]",
+                          c.delta < 0 && "border-red-500/30 bg-red-500/[0.06]"
                         ]}>
                           <p class={[
                             "text-[9px] uppercase tracking-widest font-bold",
-                            delta >= 0 && "text-emerald-400",
-                            delta < 0 && "text-red-400"
+                            c.delta >= 0 && "text-emerald-400",
+                            c.delta < 0 && "text-red-400"
                           ]}>
                             Session Δ
                           </p>
                           <p class={[
                             "text-sm font-mono tabular-nums font-bold",
-                            delta >= 0 && "text-emerald-400",
-                            delta < 0 && "text-red-400"
+                            c.delta >= 0 && "text-emerald-400",
+                            c.delta < 0 && "text-red-400"
                           ]}>
-                            {if delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(delta),
+                            {if c.delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
+                              abs(c.delta),
                               decimals: 2
-                            )} ({:erlang.float_to_binary(abs(delta_pct), decimals: 2)}%)
+                            )} ({:erlang.float_to_binary(abs(c.delta_pct), decimals: 2)}%)
                           </p>
                         </div>
                         <div class="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-right">
@@ -5564,8 +5627,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             Range
                           </p>
                           <p class="text-sm font-mono tabular-nums text-gray-200">
-                            ${:erlang.float_to_binary(min_nav, decimals: 2)} – ${:erlang.float_to_binary(
-                              max_nav,
+                            ${:erlang.float_to_binary(c.min, decimals: 2)} – ${:erlang.float_to_binary(
+                              c.max,
                               decimals: 2
                             )}
                           </p>
@@ -7297,6 +7360,113 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp alpaca_equity_chart_data(_, _, _), do: :empty
+
+  # Same trading-chart treatment for the Forex Session NAV ring buffer
+  # (`@forex_nav_history` — most-recent-first list of {unix_ts, nav}
+  # tuples appended every 30s by the forex poll). Returns the same
+  # shape as the other chart helpers so the template + CrosshairChart
+  # hook can render it identically. (Phorari 13815 — Session NAV
+  # chart was scoped weeks ago but never built; this is that PR.)
+  defp session_nav_chart_data(history, width, height)
+       when is_list(history) and length(history) > 1 do
+    # @forex_nav_history is reverse-chronological; flip to oldest -> newest
+    # so the bezier reads left-to-right.
+    ordered = Enum.reverse(history)
+
+    parsed =
+      Enum.map(ordered, fn
+        {ts, nav} when is_integer(ts) and is_number(nav) -> %{v: nav * 1.0, t: ts}
+        _ -> nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if length(parsed) < 2 do
+      :empty
+    else
+      values = Enum.map(parsed, & &1.v)
+      min_v = Enum.min(values)
+      max_v = Enum.max(values)
+      raw_range = max_v - min_v
+      range = if raw_range == 0.0, do: max(min_v * 0.001, 0.01), else: raw_range
+      last_idx = length(parsed) - 1
+      pad_y = 6.0
+      inner_h = height - 2 * pad_y
+
+      to_xy = fn v, i ->
+        x = i / last_idx * width
+        y = height - pad_y - (v - min_v) / range * inner_h
+        {Float.round(x, 2), Float.round(y, 2)}
+      end
+
+      pts =
+        values
+        |> Enum.with_index()
+        |> Enum.map(fn {v, i} -> to_xy.(v, i) end)
+
+      path_d = catmull_rom_path(pts)
+
+      area_d =
+        "#{path_d} L #{Float.round(width * 1.0, 2)} #{Float.round(height * 1.0, 2)} L 0 #{Float.round(height * 1.0, 2)} Z"
+
+      y_ticks =
+        for q <- [0.0, 0.25, 0.5, 0.75, 1.0] do
+          val = max_v - q * raw_range
+          y = pad_y + q * inner_h
+
+          %{
+            y: Float.round(y, 2),
+            label: :erlang.float_to_binary(val, decimals: 2)
+          }
+        end
+
+      first_label = format_session_time(List.first(parsed).t)
+      mid_label = format_session_time(Enum.at(parsed, div(last_idx, 2)).t)
+      last_label = format_session_time(List.last(parsed).t)
+
+      x_ticks = [
+        %{label: first_label},
+        %{label: mid_label},
+        %{label: last_label}
+      ]
+
+      crosshair_points =
+        parsed
+        |> Enum.with_index()
+        |> Enum.map(fn {%{v: v, t: t}, i} ->
+          {x, y} = to_xy.(v, i)
+
+          %{
+            x: x,
+            y: y,
+            v: "$" <> :erlang.float_to_binary(v, decimals: 2),
+            t: format_session_time(t)
+          }
+        end)
+
+      first_v = List.first(values)
+      last_v = List.last(values)
+      delta = last_v - first_v
+      delta_pct = if first_v > 0.0, do: delta / first_v * 100.0, else: 0.0
+
+      %{
+        path_d: path_d,
+        area_d: area_d,
+        y_ticks: y_ticks,
+        x_ticks: x_ticks,
+        crosshair_data: Jason.encode!(crosshair_points),
+        first: first_v,
+        last: last_v,
+        min: min_v,
+        max: max_v,
+        delta: delta,
+        delta_pct: delta_pct
+      }
+    end
+  rescue
+    _ -> :empty
+  end
+
+  defp session_nav_chart_data(_, _, _), do: :empty
 
   # Alpaca's portfolio_history endpoint returns Unix-second timestamps.
   # For intraday periods this should read as a time-of-day; for daily
