@@ -4293,10 +4293,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 x2="0"
                                 y2="1"
                               >
-                                <stop offset="0%" stop-color={stroke} stop-opacity="0.32" />
-                                <stop offset="60%" stop-color={stroke} stop-opacity="0.10" />
+                                <stop offset="0%" stop-color={stroke} stop-opacity="0.42" />
+                                <stop offset="60%" stop-color={stroke} stop-opacity="0.12" />
                                 <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
                               </linearGradient>
+                              <filter
+                                id="alpaca-equity-glow"
+                                x="-10%"
+                                y="-30%"
+                                width="120%"
+                                height="160%"
+                              >
+                                <feGaussianBlur stdDeviation="2.2" result="blur" />
+                                <feMerge>
+                                  <feMergeNode in="blur" />
+                                  <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                              </filter>
                             </defs>
                             <g transform="translate(0,10)">
                               <%= for {tick, idx} <- Enum.with_index(c.y_ticks) do %>
@@ -4320,18 +4333,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                   ${tick.label}
                                 </text>
                               <% end %>
-                              <polygon
-                                points={c.area_points}
-                                fill="url(#alpaca-equity-fill)"
+                              <line
+                                x1="640"
+                                y1="0"
+                                x2="640"
+                                y2="200"
+                                stroke="white"
+                                stroke-opacity="0.10"
                               />
-                              <polyline
-                                points={c.points}
+                              <path d={c.area_d} fill="url(#alpaca-equity-fill)" />
+                              <path
+                                d={c.path_d}
                                 fill="none"
                                 stroke={stroke}
                                 stroke-width="1.75"
                                 stroke-linejoin="round"
                                 stroke-linecap="round"
                                 vector-effect="non-scaling-stroke"
+                                filter="url(#alpaca-equity-glow)"
                               />
                               <line
                                 data-crosshair-x
@@ -4343,6 +4362,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 stroke-opacity="0.45"
                                 stroke-width="0.5"
                                 stroke-dasharray="2,3"
+                                class="hidden"
+                              />
+                              <circle
+                                data-crosshair-dot
+                                cx="0"
+                                cy="0"
+                                r="4.5"
+                                fill={stroke}
+                                stroke="white"
+                                stroke-width="1.5"
                                 class="hidden"
                               />
                             </g>
@@ -5642,10 +5671,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         >
                           <defs>
                             <linearGradient id="forex-chart-fill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stop-color={stroke} stop-opacity="0.35" />
-                              <stop offset="60%" stop-color={stroke} stop-opacity="0.10" />
+                              <stop offset="0%" stop-color={stroke} stop-opacity="0.42" />
+                              <stop offset="60%" stop-color={stroke} stop-opacity="0.12" />
                               <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
                             </linearGradient>
+                            <%!-- Soft drop-shadow glow under the price path —
+                                 server SVG filter only, no JS. CyberSec 13796 ②. --%>
+                            <filter
+                              id="forex-chart-glow"
+                              x="-10%"
+                              y="-30%"
+                              width="120%"
+                              height="160%"
+                            >
+                              <feGaussianBlur stdDeviation="2.2" result="blur" />
+                              <feMerge>
+                                <feMergeNode in="blur" />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
                           </defs>
                           <%!-- Plot area is x=0..640 inside a 700-wide viewBox;
                                the 60px right margin is for price labels. The
@@ -5673,10 +5717,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 {tick.label}
                               </text>
                             <% end %>
-                            <polygon points={c.area_points} fill="url(#forex-chart-fill)" />
-                            <%= if c.ma_points != "" do %>
-                              <polyline
-                                points={c.ma_points}
+                            <%!-- Vertical separator between plot area and the
+                                 right-axis price ticks. --%>
+                            <line
+                              x1="640"
+                              y1="0"
+                              x2="640"
+                              y2="200"
+                              stroke="white"
+                              stroke-opacity="0.10"
+                            />
+                            <path d={c.area_d} fill="url(#forex-chart-fill)" />
+                            <%= if c.ma_path_d != "" do %>
+                              <path
+                                d={c.ma_path_d}
                                 fill="none"
                                 stroke="#f59e0b"
                                 stroke-opacity="0.7"
@@ -5685,14 +5739,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 vector-effect="non-scaling-stroke"
                               />
                             <% end %>
-                            <polyline
-                              points={c.points}
+                            <path
+                              d={c.path_d}
                               fill="none"
                               stroke={stroke}
                               stroke-width="1.75"
                               stroke-linejoin="round"
                               stroke-linecap="round"
                               vector-effect="non-scaling-stroke"
+                              filter="url(#forex-chart-glow)"
                             />
                             <line
                               data-crosshair-x
@@ -5704,6 +5759,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               stroke-opacity="0.45"
                               stroke-width="0.5"
                               stroke-dasharray="2,3"
+                              class="hidden"
+                            />
+                            <%!-- Hover dot — hook sets cx/cy + classList on
+                                 pointermove. CyberSec 13796 ③: setAttribute
+                                 only, no innerHTML. --%>
+                            <circle
+                              data-crosshair-dot
+                              cx="0"
+                              cy="0"
+                              r="4.5"
+                              fill={stroke}
+                              stroke="white"
+                              stroke-width="1.5"
                               class="hidden"
                             />
                           </g>
@@ -5736,7 +5804,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </span>
                           Price ({chart_caption_short(@forex_chart_price)})
                         </span>
-                        <%= if c.ma_points != "" do %>
+                        <%= if c.ma_path_d != "" do %>
                           <span class="inline-flex items-center gap-1.5 text-amber-300/80">
                             <span class="inline-block w-3 border-t border-dashed border-amber-400">
                             </span>
@@ -6988,37 +7056,35 @@ defmodule KiteAgentHubWeb.DashboardLive do
         {Float.round(x, 2), Float.round(y, 2)}
       end
 
-      pt_strings =
+      pts =
         closes
         |> Enum.with_index()
-        |> Enum.map(fn {v, i} ->
-          {x, y} = to_xy.(v, i)
-          "#{x},#{y}"
-        end)
+        |> Enum.map(fn {v, i} -> to_xy.(v, i) end)
 
-      points_str = Enum.join(pt_strings, " ")
+      path_d = catmull_rom_path(pts)
 
-      area_str =
-        "#{points_str} #{Float.round(width * 1.0, 2)},#{Float.round(height * 1.0, 2)} 0,#{Float.round(height * 1.0, 2)}"
+      area_d =
+        "#{path_d} L #{Float.round(width * 1.0, 2)} #{Float.round(height * 1.0, 2)} L 0 #{Float.round(height * 1.0, 2)} Z"
 
       ma_window = 20
 
-      ma_points_str =
+      ma_path_d =
         if length(closes) >= ma_window do
-          closes
-          |> Enum.with_index()
-          |> Enum.map(fn {_v, i} ->
-            if i < ma_window - 1 do
-              nil
-            else
-              window = Enum.slice(closes, i - ma_window + 1, ma_window)
-              avg = Enum.sum(window) / ma_window
-              {x, y} = to_xy.(avg, i)
-              "#{x},#{y}"
-            end
-          end)
-          |> Enum.reject(&is_nil/1)
-          |> Enum.join(" ")
+          ma_pts =
+            closes
+            |> Enum.with_index()
+            |> Enum.map(fn {_v, i} ->
+              if i < ma_window - 1 do
+                nil
+              else
+                window = Enum.slice(closes, i - ma_window + 1, ma_window)
+                avg = Enum.sum(window) / ma_window
+                to_xy.(avg, i)
+              end
+            end)
+            |> Enum.reject(&is_nil/1)
+
+          catmull_rom_path(ma_pts)
         else
           ""
         end
@@ -7052,10 +7118,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
         parsed
         |> Enum.with_index()
         |> Enum.map(fn {%{close: c, time: t}, i} ->
-          {x, _y} = to_xy.(c, i)
+          {x, y} = to_xy.(c, i)
 
           %{
             x: x,
+            y: y,
             v: :erlang.float_to_binary(c, decimals: decimals),
             t: parse_oanda_time(t)
           }
@@ -7067,9 +7134,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
       delta_pct = if first_v > 0.0, do: delta / first_v * 100.0, else: 0.0
 
       %{
-        points: points_str,
-        area_points: area_str,
-        ma_points: ma_points_str,
+        path_d: path_d,
+        area_d: area_d,
+        ma_path_d: ma_path_d,
         y_ticks: y_ticks,
         x_ticks: x_ticks,
         crosshair_data: Jason.encode!(crosshair_points),
@@ -7087,6 +7154,39 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp forex_instrument_chart_data(_, _, _, _), do: :empty
+
+  # Catmull-Rom-to-cubic-bezier interpolation. Takes a list of {x, y}
+  # tuples and returns an SVG path-d string in the form
+  # `M x0 y0 C cp1x cp1y, cp2x cp2y, x1 y1 C ...`. The first segment
+  # uses P0 = P1 (no left neighbor) and the last uses Pn+1 = Pn (no
+  # right neighbor), so endpoints don't flick off. Tension is fixed
+  # at the standard 1/6 weight — anything tighter and the curve
+  # over-shoots local extremes, anything looser and it looks like a
+  # polyline again.
+  defp catmull_rom_path(pts) when is_list(pts) and length(pts) >= 2 do
+    arr = pts
+    {x0, y0} = List.first(arr)
+    count = length(arr)
+
+    segments =
+      for i <- 1..(count - 1) do
+        {xm, ym} = Enum.at(arr, max(i - 2, 0))
+        {x1, y1} = Enum.at(arr, i - 1)
+        {x2, y2} = Enum.at(arr, i)
+        {xn, yn} = Enum.at(arr, min(i + 1, count - 1))
+
+        c1x = x1 + (x2 - xm) / 6
+        c1y = y1 + (y2 - ym) / 6
+        c2x = x2 - (xn - x1) / 6
+        c2y = y2 - (yn - y1) / 6
+
+        "C #{Float.round(c1x, 2)} #{Float.round(c1y, 2)}, #{Float.round(c2x, 2)} #{Float.round(c2y, 2)}, #{Float.round(x2, 2)} #{Float.round(y2, 2)}"
+      end
+
+    "M #{x0} #{y0} " <> Enum.join(segments, " ")
+  end
+
+  defp catmull_rom_path(_), do: ""
 
   # Same trading-chart treatment for the Alpaca portfolio equity series.
   # Input is the LV assign `@alpaca_history` — a list of `%{t: unix_ts,
@@ -7128,18 +7228,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
         {Float.round(x, 2), Float.round(y, 2)}
       end
 
-      pt_strings =
+      pts =
         values
         |> Enum.with_index()
-        |> Enum.map(fn {v, i} ->
-          {x, y} = to_xy.(v, i)
-          "#{x},#{y}"
-        end)
+        |> Enum.map(fn {v, i} -> to_xy.(v, i) end)
 
-      points_str = Enum.join(pt_strings, " ")
+      path_d = catmull_rom_path(pts)
 
-      area_str =
-        "#{points_str} #{Float.round(width * 1.0, 2)},#{Float.round(height * 1.0, 2)} 0,#{Float.round(height * 1.0, 2)}"
+      area_d =
+        "#{path_d} L #{Float.round(width * 1.0, 2)} #{Float.round(height * 1.0, 2)} L 0 #{Float.round(height * 1.0, 2)} Z"
 
       y_ticks =
         for q <- [0.0, 0.25, 0.5, 0.75, 1.0] do
@@ -7166,10 +7263,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
         parsed
         |> Enum.with_index()
         |> Enum.map(fn {%{v: v, t: t}, i} ->
-          {x, _y} = to_xy.(v, i)
+          {x, y} = to_xy.(v, i)
 
           %{
             x: x,
+            y: y,
             v: "$" <> :erlang.float_to_binary(v, decimals: 2),
             t: format_alpaca_ts(t)
           }
@@ -7181,8 +7279,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       delta_pct = if first_v > 0.0, do: delta / first_v * 100.0, else: 0.0
 
       %{
-        points: points_str,
-        area_points: area_str,
+        path_d: path_d,
+        area_d: area_d,
         y_ticks: y_ticks,
         x_ticks: x_ticks,
         crosshair_data: Jason.encode!(crosshair_points),
