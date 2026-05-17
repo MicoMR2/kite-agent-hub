@@ -155,6 +155,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:polymarket_positions, [])
       |> assign(:polymarket_mode, safe_polymarket_mode())
       |> assign(:forex_positions, [])
+      |> assign(:forex_nav_history, [])
       |> assign(:forex_instruments, [])
       |> assign(:forex_loading, false)
       |> assign(:forex_provider, :none)
@@ -225,6 +226,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:polymarket_positions, [])
     |> assign(:polymarket_mode, :paper)
     |> assign(:forex_positions, [])
+    |> assign(:forex_nav_history, [])
     |> assign(:forex_instruments, [])
     |> assign(:forex_loading, false)
     |> assign(:forex_provider, :none)
@@ -1051,6 +1053,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     pricing = Map.get(pricing_by_instrument, symbol)
 
+    nav_history = append_forex_nav_sample(socket.assigns[:forex_nav_history] || [], account)
+
     {:noreply,
      socket
      |> assign(:forex_positions, positions)
@@ -1058,6 +1062,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_provider, provider)
      |> assign(:forex_oanda_env, oanda_env)
      |> assign(:forex_account, account)
+     |> assign(:forex_nav_history, nav_history)
      |> assign(:forex_candles, candles)
      |> assign(:forex_pricing, pricing)
      |> assign(:forex_pricing_by_instrument, pricing_by_instrument)
@@ -1065,6 +1070,59 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_recent_trades, recent_trades)
      |> assign(:forex_loading, false)}
   end
+
+  # Session-scoped NAV ring buffer for the Forex tab sparkline. Each
+  # call appends `{unix_ts, nav_float}` if the account snapshot has a
+  # readable NAV, then trims to the most recent 288 samples (24h of
+  # 5-min refreshes — CyberSec 10010 cap to bound memory). Snapshots
+  # without a NAV (account nil / OANDA unavailable) leave the buffer
+  # untouched so reconnects don't introduce a gap row.
+  @forex_nav_history_max 288
+
+  defp append_forex_nav_sample(history, account) when is_list(history) do
+    case forex_nav_value(account) do
+      nil ->
+        history
+
+      nav when is_float(nav) ->
+        ts = System.system_time(:second)
+        [{ts, nav} | history] |> Enum.take(@forex_nav_history_max)
+    end
+  end
+
+  defp append_forex_nav_sample(_history, _account), do: []
+
+  defp forex_nav_value(%{} = account) do
+    raw = Map.get(account, "NAV") || Map.get(account, :NAV) ||
+            Map.get(account, "nav") || Map.get(account, :nav)
+
+    cond do
+      is_number(raw) -> raw * 1.0
+      is_binary(raw) -> parse_float(raw)
+      true -> nil
+    end
+  end
+
+  defp forex_nav_value(_), do: nil
+
+  # Read a numeric field off the OANDA `account_summary` payload and
+  # coerce it to a float. OANDA returns most balances as JSON strings
+  # ("12345.67"). Used by the Forex hero + KPI strip so anime.js
+  # `CountUp` (which expects `Number()`-coercible attrs) can animate.
+  # Falls back to 0.0 on nil / malformed input so the UI never crashes.
+  defp forex_field_float(%{} = account, key) when is_binary(key) do
+    # Look up by the string key only — OANDA returns string-keyed
+    # JSON. We deliberately avoid `String.to_atom/1` here so a
+    # malformed payload can never create a new atom. Callers pass
+    # compile-time string constants ("NAV", "balance", etc.).
+    case Map.get(account, key) do
+      v when is_number(v) -> v * 1.0
+      v when is_binary(v) -> parse_float(v)
+      _ -> 0.0
+    end
+  end
+
+  defp forex_field_float(_, _), do: 0.0
 
   # Pull names off OANDAs instruments list, capped at the pricing
   # endpoints 100-instrument limit. Empty list when malformed.
@@ -4926,23 +4984,201 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
 
-              <%!-- Account summary (OANDA only) --%>
+              <%!-- Account summary (OANDA only) — hedge-fund-style hero
+                   + 4-up KPI strip + session NAV sparkline. Mirrors the
+                   Portfolio tab pattern Mico approved for the redesign
+                   sweep. Numbers parsed to floats so anime.js CountUp
+                   can animate them; OANDA's `account_summary` returns
+                   strings on the wire. --%>
               <%= if @forex_provider == :oanda and is_map(@forex_account) do %>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                  <%= for {label, key, tone} <- [
-                    {"Balance", "balance", "text-white"},
-                    {"NAV", "NAV", "text-emerald-400"},
-                    {"Unrealized P&L", "unrealizedPL", "text-blue-400"},
-                    {"Margin Used", "marginUsed", "text-gray-300"}
-                  ] do %>
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                      <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
-                        {label}
+                <% nav_f = forex_nav_value(@forex_account) || 0.0 %>
+                <% balance_f = forex_field_float(@forex_account, "balance") %>
+                <% upl_f = forex_field_float(@forex_account, "unrealizedPL") %>
+                <% margin_f = forex_field_float(@forex_account, "marginUsed") %>
+                <% upl_pct = if nav_f > 0.0, do: upl_f / nav_f * 100.0, else: 0.0 %>
+
+                <%!-- HERO: huge NAV + Unrealized P&L delta pill --%>
+                <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-8 sm:p-10 mb-4 backdrop-blur-md">
+                  <div
+                    class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20 blur-3xl"
+                    style={cond do
+                      upl_f >= 0 -> "background: radial-gradient(circle, rgba(34,197,94,0.35), transparent 65%);"
+                      true -> "background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 65%);"
+                    end}
+                  />
+                  <div class="relative flex flex-col gap-6">
+                    <div class="flex items-start justify-between gap-4">
+                      <p class="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-[0.3em]">
+                        OANDA Net Asset Value
                       </p>
-                      <p class={["text-lg font-mono tabular-nums mt-1", tone]}>
-                        {Oanda.field(@forex_account, key, "—")}
+                      <span class="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-mono text-gray-500">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#22c55e] animate-pulse"></span>
+                        {length(@forex_positions)} positions · {forex_provider_label}
+                      </span>
+                    </div>
+                    <h2 class="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight text-white leading-none flex items-baseline">
+                      <span class="text-gray-500 font-light">$</span>
+                      <span
+                        id="forex-hero-nav"
+                        phx-hook="CountUp"
+                        data-target={nav_f}
+                        data-decimals="2"
+                      >{:erlang.float_to_binary(nav_f, decimals: 2)}</span>
+                    </h2>
+                    <div class="flex flex-wrap items-baseline gap-4">
+                      <div class={[
+                        "inline-flex items-center gap-3 px-4 py-2 rounded-xl font-mono text-base sm:text-lg font-bold tabular-nums shadow-lg",
+                        upl_f >= 0 && "bg-emerald-600 text-white",
+                        upl_f < 0 && "bg-red-600 text-white"
+                      ]}>
+                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                          Unrealized
+                        </span>
+                        <span>{if upl_f >= 0, do: "▲", else: "▼"}</span>
+                        <span>${:erlang.float_to_binary(abs(upl_f), decimals: 2)}</span>
+                        <span class="text-xs text-white/80">({:erlang.float_to_binary(abs(upl_pct), decimals: 2)}%)</span>
+                      </div>
+                      <p class="text-[11px] text-gray-500 italic">
+                        Mark-to-market across all open OANDA positions
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                <%!-- 4-up KPI strip --%>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                    <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                      Balance
+                    </p>
+                    <p class="text-xl sm:text-2xl font-black tabular-nums text-white">
+                      <span class="text-gray-500 font-light">$</span><span
+                        id="forex-kpi-balance"
+                        phx-hook="CountUp"
+                        data-target={balance_f}
+                        data-decimals="2"
+                      >{:erlang.float_to_binary(balance_f, decimals: 2)}</span>
+                    </p>
+                    <p class="text-[10px] text-gray-600 mt-1">Settled cash</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                    <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                      NAV
+                    </p>
+                    <p class="text-xl sm:text-2xl font-black tabular-nums text-emerald-400">
+                      <span class="text-gray-500 font-light">$</span><span
+                        id="forex-kpi-nav"
+                        phx-hook="CountUp"
+                        data-target={nav_f}
+                        data-decimals="2"
+                      >{:erlang.float_to_binary(nav_f, decimals: 2)}</span>
+                    </p>
+                    <p class="text-[10px] text-gray-600 mt-1">Balance + UPL</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                    <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                      Unrealized P&L
+                    </p>
+                    <p class={[
+                      "text-xl sm:text-2xl font-black tabular-nums",
+                      upl_f >= 0 && "text-emerald-400",
+                      upl_f < 0 && "text-red-400"
+                    ]}>
+                      {if upl_f >= 0, do: "+", else: "-"}<span class="text-gray-500 font-light">$</span><span
+                        id="forex-kpi-upl"
+                        phx-hook="CountUp"
+                        data-target={abs(upl_f)}
+                        data-decimals="2"
+                      >{:erlang.float_to_binary(abs(upl_f), decimals: 2)}</span>
+                    </p>
+                    <p class="text-[10px] text-gray-600 mt-1">Mark-to-market</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                    <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                      Margin Used
+                    </p>
+                    <p class="text-xl sm:text-2xl font-black tabular-nums text-gray-300">
+                      <span class="text-gray-500 font-light">$</span><span
+                        id="forex-kpi-margin"
+                        phx-hook="CountUp"
+                        data-target={margin_f}
+                        data-decimals="2"
+                      >{:erlang.float_to_binary(margin_f, decimals: 2)}</span>
+                    </p>
+                    <p class="text-[10px] text-gray-600 mt-1">Collateral locked</p>
+                  </div>
+                </div>
+
+                <%!-- Session NAV sparkline. Ring buffer is capped to 288
+                     samples (24h at 5-min cadence). Sparkline only renders
+                     when we have at least 2 samples — single-point and
+                     empty fall back to a placeholder so the SVG never
+                     receives a malformed `points` attribute. --%>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                  <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                      Session NAV
+                    </p>
+                    <span class="text-[10px] text-gray-600 font-mono">
+                      <%= length(@forex_nav_history) %> samples · 5-min cadence
+                    </span>
+                  </div>
+                  <p class="text-[10px] text-gray-600 mb-3 italic">
+                    NAV captured every dashboard refresh since you opened the tab. Capped at 288 samples (~24h).
+                  </p>
+                  <%= cond do %>
+                    <% length(@forex_nav_history) > 1 -> %>
+                      <% nav_samples =
+                        @forex_nav_history
+                        |> Enum.reverse()
+                        |> Enum.map(fn {_ts, nav} -> %{equity: nav} end) %>
+                      <% pts = sparkline_points(nav_samples, 640, 150) %>
+                      <% first_nav = nav_samples |> List.first() |> Map.get(:equity, 0.0) %>
+                      <% last_nav = nav_samples |> List.last() |> Map.get(:equity, 0.0) %>
+                      <% delta = last_nav - first_nav %>
+                      <% delta_pct = if first_nav > 0.0, do: delta / first_nav * 100.0, else: 0.0 %>
+                      <% stroke = if delta >= 0, do: "#22c55e", else: "#ef4444" %>
+                      <svg viewBox="0 0 640 160" preserveAspectRatio="none" class="w-full h-40">
+                        <line x1="0" y1="40" x2="640" y2="40" stroke="white" stroke-opacity="0.05" />
+                        <line x1="0" y1="80" x2="640" y2="80" stroke="white" stroke-opacity="0.05" />
+                        <line x1="0" y1="120" x2="640" y2="120" stroke="white" stroke-opacity="0.05" />
+                        <defs>
+                          <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color={stroke} stop-opacity="0.2" />
+                            <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        <polygon points={"#{pts} 640,150 0,150"} fill="url(#forex-nav-fill)" />
+                        <polyline
+                          points={pts}
+                          fill="none"
+                          stroke={stroke}
+                          stroke-width="2"
+                          vector-effect="non-scaling-stroke"
+                          stroke-linejoin="round"
+                          stroke-linecap="round"
+                        />
+                      </svg>
+                      <div class="flex justify-between mt-2 text-[10px] text-gray-500 font-mono tabular-nums">
+                        <span>${:erlang.float_to_binary(first_nav, decimals: 2)}</span>
+                        <span class={[
+                          "font-bold",
+                          delta >= 0 && "text-emerald-400",
+                          delta < 0 && "text-red-400"
+                        ]}>
+                          {if delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(delta), decimals: 2)} ({:erlang.float_to_binary(abs(delta_pct), decimals: 2)}%)
+                        </span>
+                        <span>${:erlang.float_to_binary(last_nav, decimals: 2)}</span>
+                      </div>
+                    <% true -> %>
+                      <div class="py-10 text-center">
+                        <p class="text-xs text-gray-500">
+                          Collecting NAV samples — chart appears after a couple of refreshes.
+                        </p>
+                        <p class="text-[10px] text-gray-700 mt-1 font-mono">
+                          {length(@forex_nav_history)} / 2 samples needed
+                        </p>
+                      </div>
                   <% end %>
                 </div>
               <% end %>
