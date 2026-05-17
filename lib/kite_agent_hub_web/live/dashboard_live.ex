@@ -2658,6 +2658,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 >
                   <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
                 </.link>
+                <p class="mt-2 text-[10px] text-gray-500 text-center leading-snug">
+                  After creating an agent, scroll down to <span class="text-emerald-400 font-bold">Connect Your Agent</span> to start it up. ↓
+                </p>
               </div>
 
               <%!-- ── Main Panel ── --%>
@@ -3103,21 +3106,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </div>
                 <% end %>
 
-                <%!-- Connect Your LLM (at bottom) — all secrets collapsed by default --%>
+                <%!-- Connect Your Agent — per-track instructions, secrets masked by default --%>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
                   <div>
                     <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">
-                      How to Connect Your LLM
+                      Connect Your Agent
                     </h3>
-                    <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
-                      <li>Reveal your Agent Token and copy it (secret — do not share)</li>
-                      <li>Pick a path: Claude Code or Codex Terminal</li>
-                      <li>
-                        For Codex, paste the command and enter the token only when Terminal asks; for other paths, reveal the matching block and keep the token private
-                      </li>
-                    </ol>
-                    <p class="text-[10px] text-gray-600 mt-2">
-                      Switching tabs collapses every revealed block automatically.
+                    <p class="text-[11px] text-gray-400 leading-relaxed">
+                      Choose your runner below — Claude Code or Codex Terminal. Each has its own instructions; the token below is shared.
                     </p>
                   </div>
 
@@ -3127,13 +3123,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
                         Agent Token · Secret
                       </span>
-                      <button
-                        phx-click="toggle_reveal"
-                        phx-value-target="agent_token"
-                        class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
-                      >
-                        {if @show_agent_token, do: "Hide", else: "Reveal"}
-                      </button>
+                      <div class="flex items-center gap-3">
+                        <button
+                          id={"copy-agent-token-#{@selected_agent.id}"}
+                          phx-hook="CopyToClipboard"
+                          data-text={@selected_agent.api_token || ""}
+                          class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          phx-click="toggle_reveal"
+                          phx-value-target="agent_token"
+                          class="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-widest"
+                        >
+                          {if @show_agent_token, do: "Hide", else: "Reveal"}
+                        </button>
+                      </div>
                     </div>
                     <code class="block bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono truncate">
                       <%= cond do %>
@@ -3145,13 +3151,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           {mask_token(@selected_agent.api_token)}
                       <% end %>
                     </code>
+                    <p class="text-[10px] text-gray-600 mt-1">
+                      Use Copy to send the token to your clipboard without revealing it on screen.
+                    </p>
                   </div>
 
-                  <%!-- Option A — Claude Code / Terminal --%>
+                  <%!-- Option A — Claude Code (terminal or app) --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest">
-                        Option A — Claude Code / Terminal
+                        Option A — Claude Code
                       </span>
                       <div class="flex items-center gap-3">
                         <button
@@ -3160,7 +3169,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           data-text={claude_code_prompt(@selected_agent)}
                           class="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest"
                         >
-                          Copy
+                          Copy Prompt
                         </button>
                         <button
                           phx-click="toggle_reveal"
@@ -3171,23 +3180,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </button>
                       </div>
                     </div>
+                    <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside mb-2 leading-relaxed">
+                      <li>Start a Claude Code instance — terminal or the Claude Code app.</li>
+                      <li>Copy this prompt and paste it into the Claude Code window.</li>
+                      <li>Your agent will start running. The token is already embedded in the prompt.</li>
+                    </ol>
                     <%= if @show_option_a do %>
                       <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
                       <p class="text-[10px] text-gray-600 mt-1">
-                        Token is pre-filled — use only in a trusted local coding client, not public or shared chats.
-                      </p>
-                    <% else %>
-                      <p class="text-[10px] text-gray-600">
-                        Paste-ready system prompt with your agent token embedded. Copy or reveal when ready.
+                        Token is pre-filled — use only in a trusted local Claude Code client, not public or shared chats.
                       </p>
                     <% end %>
                   </div>
 
-                  <%!-- Option B — Run with Codex Terminal --%>
+                  <%!-- Option B — Codex Terminal --%>
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                        Option B — Run with Codex Terminal
+                        Option B — Codex Terminal
                         <span class="ml-2 text-[9px] font-bold text-gray-500">
                           {KiteAgentHubWeb.CodexPrompts.agent_type_label(@selected_agent)}
                         </span>
@@ -3199,7 +3209,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           data-text={KiteAgentHubWeb.CodexPrompts.combined_block(@selected_agent)}
                           class="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-widest"
                         >
-                          Copy
+                          Copy Prompt
                         </button>
                         <button
                           phx-click="toggle_reveal"
@@ -3210,6 +3220,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </button>
                       </div>
                     </div>
+                    <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside mb-2 leading-relaxed">
+                      <li>Open a blank terminal window.</li>
+                      <li>Copy the Codex prompt and paste it into the terminal.</li>
+                      <li>
+                        When the terminal asks for your token, use Copy on the Agent Token above and paste it in. Codex will start up as your agent.
+                      </li>
+                    </ol>
                     <%= if @show_option_b do %>
                       <pre class="bg-black/40 border border-emerald-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= KiteAgentHubWeb.CodexPrompts.combined_block(@selected_agent) %></pre>
                       <p class="text-[10px] text-gray-500 mt-1 leading-snug">
@@ -3226,11 +3243,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <span class="text-gray-500">Read-only — cannot submit trades.</span>
                         <% end %>
                       </p>
-                    <% else %>
-                      <p class="text-[10px] text-gray-600">
-                        Self-contained shell command — hidden local token prompt + Codex launcher with the embedded prompt. Copy or reveal when ready.
-                      </p>
                     <% end %>
+                  </div>
+
+                  <%!-- Agents make mistakes disclaimer --%>
+                  <div class="rounded-xl border border-yellow-500/20 bg-yellow-500/[0.04] px-4 py-3">
+                    <p class="text-[11px] text-yellow-200/80 leading-relaxed">
+                      <span class="font-bold text-yellow-300">Heads up:</span>
+                      agents make mistakes. Review their trades and chat output regularly, and start small while you tune their behavior.
+                    </p>
                   </div>
                 </div>
               </div>

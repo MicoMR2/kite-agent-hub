@@ -84,7 +84,7 @@
 
         <p class="text-lg sm:text-2xl text-gray-300 max-w-2xl mx-auto mb-12 leading-[1.65] font-light">
           Deploy AI trading agents that execute on Alpaca and Kalshi, scored with KCI Position Scoring,
-          and settled on Kite chain. Bring your own LLM — Claude Code, Claude Desktop, or any MCP-compatible client.
+          and settled on Kite chain. Bring your own runner — Claude Code or Codex Terminal.
           <span class="text-white font-medium">
             Your funds stay at your broker. Your Passport key stays with you.
           </span>
@@ -144,7 +144,7 @@
             BYO-LLM
           </p>
           <p class="text-[13px] text-gray-400 mt-3 font-mono uppercase tracking-widest">
-            Claude Code · MCP · Any
+            Claude Code · Codex
           </p>
         </div>
         <div class="text-center group">
@@ -320,7 +320,7 @@
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <%= for {title, desc, icon} <- [
-        {"BYO-LLM via MCP", "Connect Claude Code, Claude Desktop, or any MCP-compatible LLM with a single copy-paste block. No platform API charges — you bring the intelligence.", "hero-cpu-chip"},
+        {"BYO-LLM Runner", "Connect Claude Code or Codex Terminal with a single copy-paste block. No platform API charges — you bring the intelligence.", "hero-cpu-chip"},
         {"Bring Your Own Keys", "Connect Alpaca paper trading, Kalshi demo markets — with Webull and Robinhood on the roadmap. Keys are AES-256-GCM encrypted at rest. Never logged.", "hero-arrows-right-left"},
         {"KCI Position Scoring", "Every open position is scored 0-100 on entry quality, momentum, risk/reward, and liquidity. Exit suggestions for weak positions, hold signals for strong ones.", "hero-chart-bar-square"},
         {"Multi-Agent Teams", "Deploy trading agents that execute, research agents that signal, and conversational agents that coordinate. Build a full team — only traders need a wallet.", "hero-user-group"},
@@ -405,7 +405,7 @@
             </div>
             <h3 class="text-base font-bold text-white mb-3">Make Your First Trade</h3>
             <p class="text-gray-300 text-[15px] leading-relaxed font-light">
-              Copy your agent's system prompt and paste it into Claude Code, Claude Desktop, or any MCP-compatible LLM. Your agent scores edge, picks a market, and executes.
+              Copy your agent's system prompt and paste it into Claude Code or Codex Terminal. Your agent scores edge, picks a market, and executes.
             </p>
             <div class="mt-4 inline-flex items-center gap-2 text-xs text-[#22c55e] font-semibold tracking-wider uppercase">
               <span class="w-2 h-2 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
