@@ -7291,14 +7291,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
       min_v = Enum.min(values)
       max_v = Enum.max(values)
       raw_range = max_v - min_v
-      range = if raw_range == 0.0, do: max(min_v * 0.001, 0.01), else: raw_range
+      # Flat-series fallback — see session_nav_chart_data/3 for context.
+      flat? = raw_range == 0.0
+      display_range = if flat?, do: max(max_v * 0.002, 0.02), else: raw_range
+      display_min = if flat?, do: max_v - display_range / 2, else: min_v
+      display_max = if flat?, do: max_v + display_range / 2, else: max_v
       last_idx = length(parsed) - 1
       pad_y = 6.0
       inner_h = height - 2 * pad_y
 
       to_xy = fn v, i ->
         x = i / last_idx * width
-        y = height - pad_y - (v - min_v) / range * inner_h
+        y = height - pad_y - (v - display_min) / display_range * inner_h
         {Float.round(x, 2), Float.round(y, 2)}
       end
 
@@ -7314,7 +7318,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
       y_ticks =
         for q <- [0.0, 0.25, 0.5, 0.75, 1.0] do
-          val = max_v - q * raw_range
+          val = display_max - q * display_range
           y = pad_y + q * inner_h
 
           %{
@@ -7398,14 +7402,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
       min_v = Enum.min(values)
       max_v = Enum.max(values)
       raw_range = max_v - min_v
-      range = if raw_range == 0.0, do: max(min_v * 0.001, 0.01), else: raw_range
+      # When NAV hasn't moved at all (Mico 13836 — flat series shows
+      # all 5 Y-axis labels at the same number and the line hugs the
+      # bottom), synthesize a small ±0.1% window around the value so
+      # the chart centers the flat line and the axis ticks show a
+      # plausible range. The path scales against `display_min` /
+      # `display_range`, so the synthetic window is purely visual.
+      flat? = raw_range == 0.0
+      display_range = if flat?, do: max(max_v * 0.002, 0.02), else: raw_range
+      display_min = if flat?, do: max_v - display_range / 2, else: min_v
+      display_max = if flat?, do: max_v + display_range / 2, else: max_v
       last_idx = length(parsed) - 1
       pad_y = 6.0
       inner_h = height - 2 * pad_y
 
       to_xy = fn v, i ->
         x = i / last_idx * width
-        y = height - pad_y - (v - min_v) / range * inner_h
+        y = height - pad_y - (v - display_min) / display_range * inner_h
         {Float.round(x, 2), Float.round(y, 2)}
       end
 
@@ -7421,7 +7434,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
       y_ticks =
         for q <- [0.0, 0.25, 0.5, 0.75, 1.0] do
-          val = max_v - q * raw_range
+          val = display_max - q * display_range
           y = pad_y + q * inner_h
 
           %{
