@@ -147,6 +147,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:show_option_a, false)
       |> assign(:show_option_b, false)
       |> assign(:show_option_c, false)
+      |> assign(:portfolio_hovered_slice, nil)
+      |> assign(:portfolio_pnl_period, :all_time)
       |> assign(:attestation_count, attestation_count(selected_agent))
       |> assign(:recent_attestations, recent_attestations(selected_agent))
       |> assign(:all_attestations, [])
@@ -216,6 +218,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:show_option_a, false)
     |> assign(:show_option_b, false)
     |> assign(:show_option_c, false)
+    |> assign(:portfolio_hovered_slice, nil)
+    |> assign(:portfolio_pnl_period, :all_time)
     |> assign(:attestation_count, 0)
     |> assign(:recent_attestations, [])
     |> assign(:all_attestations, [])
@@ -639,6 +643,49 @@ defmodule KiteAgentHubWeb.DashboardLive do
   def handle_event("close_agent_context", _params, socket) do
     {:noreply, assign(socket, :show_agent_context, false)}
   end
+
+  # Portfolio donut interactivity (Mico 9950). Hover events come from
+  # arc + per-broker card phx-mouseover; key is matched against the
+  # known broker atom set so the assign is never user-controlled.
+  @portfolio_slice_keys ~w[alpaca kalshi polymarket forex]a
+
+  def handle_event("portfolio_hover", %{"key" => key}, socket) do
+    case String.to_existing_atom(key) do
+      atom when atom in @portfolio_slice_keys ->
+        {:noreply, assign(socket, :portfolio_hovered_slice, atom)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  rescue
+    ArgumentError -> {:noreply, socket}
+  end
+
+  def handle_event("portfolio_hover", _params, socket), do: {:noreply, socket}
+
+  def handle_event("portfolio_unhover", _params, socket) do
+    {:noreply, assign(socket, :portfolio_hovered_slice, nil)}
+  end
+
+  # P&L period toggle (Phorari 9951 spec / CyberSec 9952 whitelist). Only
+  # `:all_time` returns real numbers today — other periods are surfaced
+  # in the UI as "—" with a tooltip until BrokerStats day_change is
+  # piped into the breakdown.
+  @portfolio_pnl_periods ~w[today week month all_time]a
+
+  def handle_event("set_pnl_period", %{"period" => period}, socket) do
+    case String.to_existing_atom(period) do
+      atom when atom in @portfolio_pnl_periods ->
+        {:noreply, assign(socket, :portfolio_pnl_period, atom)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  rescue
+    ArgumentError -> {:noreply, socket}
+  end
+
+  def handle_event("set_pnl_period", _params, socket), do: {:noreply, socket}
 
   def handle_event("alpaca_period", %{"period" => period}, socket)
       when period in ~w(1D 3D 1W 1M 3M 6M 1Y 2Y 3Y All) do
@@ -5404,15 +5451,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
               end) %>
 
             <div class="px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+              <% {pnl_value, pnl_available?, pnl_period_label} = portfolio_pnl_for_period(@portfolio_pnl_period, breakdown.combined_pnl) %>
+              <% pnl_pct_for_period =
+                if pnl_available? and breakdown.total_value > 0.0,
+                  do: pnl_value / breakdown.total_value * 100.0,
+                  else: 0.0 %>
+
               <%!-- ═══════════ HERO: huge total value + delta ═══════════ --%>
               <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-8 sm:p-10 backdrop-blur-md">
-                <%!-- Soft radial sheen that shifts color by P&L sign --%>
+                <%!-- Soft radial sheen — toned down (0.30 -> 0.18) so the
+                P&L pill in front always reads cleanly. Mico 9950 red-on-red fix. --%>
                 <div
-                  class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-30 blur-3xl"
-                  style={if breakdown.combined_pnl >= 0,
-                    do: "background: radial-gradient(circle, rgba(34,197,94,0.5), transparent 65%);",
-                    else: "background: radial-gradient(circle, rgba(239,68,68,0.5), transparent 65%);"
-                  }
+                  class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20 blur-3xl"
+                  style={cond do
+                    not pnl_available? -> "background: radial-gradient(circle, rgba(120,120,140,0.35), transparent 65%);"
+                    pnl_value >= 0 -> "background: radial-gradient(circle, rgba(34,197,94,0.35), transparent 65%);"
+                    true -> "background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 65%);"
+                  end}
                 />
                 <div class="relative flex flex-col gap-6">
                   <div class="flex items-start justify-between gap-4">
@@ -5433,19 +5488,54 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       data-decimals="2"
                     >{:erlang.float_to_binary(breakdown.total_value, decimals: 2)}</span>
                   </h2>
-                  <div class="flex flex-wrap items-baseline gap-4">
-                    <div class={[
-                      "inline-flex items-baseline gap-2 px-4 py-2 rounded-xl font-mono text-base sm:text-lg font-bold tabular-nums",
-                      breakdown.combined_pnl >= 0 && "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300",
-                      breakdown.combined_pnl < 0 && "bg-red-500/10 border border-red-500/30 text-red-300"
-                    ]}>
-                      <span>{if breakdown.combined_pnl >= 0, do: "▲", else: "▼"}</span>
-                      <span>${:erlang.float_to_binary(abs(breakdown.combined_pnl), decimals: 2)}</span>
-                      <span class="text-xs opacity-80">({:erlang.float_to_binary(abs(pnl_pct), decimals: 2)}%)</span>
+
+                  <%!-- P&L row: period toggle + pill --%>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <%!-- Period toggle. Only :all_time has real data today;
+                    others surface a "—" placeholder until day_change is wired
+                    in. Whitelist enforced server-side (handle_event/set_pnl_period). --%>
+                    <div class="inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
+                      <%= for {label, period} <- [{"Today", "today"}, {"Week", "week"}, {"Month", "month"}, {"All-Time", "all_time"}] do %>
+                        <button
+                          phx-click="set_pnl_period"
+                          phx-value-period={period}
+                          class={[
+                            "px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                            Atom.to_string(@portfolio_pnl_period) == period &&
+                              "bg-white/10 text-white shadow-[0_0_10px_rgba(255,255,255,0.05)]",
+                            Atom.to_string(@portfolio_pnl_period) != period &&
+                              "text-gray-500 hover:text-white"
+                          ]}
+                        >
+                          {label}
+                        </button>
+                      <% end %>
                     </div>
-                    <p class="text-[11px] text-gray-500 italic">
-                      Combined P&L across all connected platforms
-                    </p>
+
+                    <%!-- Solid pill — opaque colored bg + white text so it pops
+                    off the sheen behind it. Mico 9950 red-on-red fix. --%>
+                    <%= if pnl_available? do %>
+                      <div class={[
+                        "inline-flex items-center gap-3 px-4 py-2 rounded-xl font-mono text-base sm:text-lg font-bold tabular-nums shadow-lg",
+                        pnl_value >= 0 && "bg-emerald-600 text-white",
+                        pnl_value < 0 && "bg-red-600 text-white"
+                      ]}>
+                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                          {pnl_period_label}
+                        </span>
+                        <span>{if pnl_value >= 0, do: "▲", else: "▼"}</span>
+                        <span>${:erlang.float_to_binary(abs(pnl_value), decimals: 2)}</span>
+                        <span class="text-xs text-white/80">({:erlang.float_to_binary(abs(pnl_pct_for_period), decimals: 2)}%)</span>
+                      </div>
+                    <% else %>
+                      <div class="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-gray-400 text-sm">
+                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 border-r border-white/10 pr-3">
+                          {pnl_period_label}
+                        </span>
+                        <span class="font-mono">—</span>
+                        <span class="text-[10px] text-gray-500 italic">no period data yet</span>
+                      </div>
+                    <% end %>
                   </div>
                 </div>
               </div>
@@ -5506,47 +5596,78 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               </div>
 
+              <% hovered_slice =
+                if @portfolio_hovered_slice,
+                  do: Enum.find(breakdown.slices, &(&1.key == @portfolio_hovered_slice)),
+                  else: nil %>
+              <% diversity_caption = portfolio_diversity_caption(breakdown) %>
+
               <%!-- ═══════════ DONUT + PER-BROKER CARDS ═══════════ --%>
               <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                <%!-- Donut with center label --%>
+                <%!-- Donut with interactive center label --%>
                 <div class="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex flex-col items-center justify-center">
                   <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 self-start">
-                    Allocation
+                    Allocation · Hover to inspect
                   </p>
                   <%= if breakdown.total_value > 0.0 do %>
-                    <div class="relative">
+                    <div class="relative" phx-mouseleave="portfolio_unhover">
                       <svg viewBox="-50 -50 100 100" class="w-72 h-72 -rotate-90" style="transition: all 600ms ease;">
                         <circle r="44" cx="0" cy="0" fill="transparent" stroke="rgba(255,255,255,0.04)" stroke-width="14" />
                         <%= for slice <- breakdown.slices, slice.value > 0 do %>
                           <% circumference = 2 * 3.141592653589793 * 44
                           slice_len = circumference * slice.percent / 100
                           gap_len = circumference - slice_len
-                          offset = -circumference * slice.cumulative_percent / 100 %>
+                          offset = -circumference * slice.cumulative_percent / 100
+                          is_hovered = @portfolio_hovered_slice == slice.key %>
                           <circle
                             r="44"
                             cx="0"
                             cy="0"
                             fill="transparent"
                             stroke={slice.stroke_color}
-                            stroke-width="14"
+                            stroke-width={if is_hovered, do: "18", else: "14"}
                             stroke-linecap="butt"
                             stroke-dasharray={"#{Float.round(slice_len, 2)} #{Float.round(gap_len, 2)}"}
                             stroke-dashoffset={Float.round(offset, 2)}
-                            style="transition: stroke-dasharray 600ms ease, stroke-dashoffset 600ms ease;"
+                            style={"transition: stroke-dasharray 600ms ease, stroke-dashoffset 600ms ease, stroke-width 180ms ease; cursor: pointer;" <> if(is_hovered, do: " filter: drop-shadow(0 0 8px #{slice.stroke_color});", else: "")}
+                            phx-mouseover="portfolio_hover"
+                            phx-value-key={Atom.to_string(slice.key)}
                           />
                         <% end %>
                       </svg>
-                      <%!-- Center label --%>
-                      <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                        <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">
-                          Total
-                        </p>
-                        <p class="text-2xl font-black tabular-nums text-white">
-                          ${:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
-                        </p>
-                        <p class="text-[10px] text-gray-600 mt-1">
-                          {Enum.count(breakdown.slices, &(&1.value > 0))} active
-                        </p>
+                      <%!-- Center label — defaults to total + diversity caption,
+                      switches to hovered broker's details when a slice is
+                      hovered. pointer-events-none so the SVG arcs underneath
+                      still receive mouse events. --%>
+                      <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-6">
+                        <%= if hovered_slice do %>
+                          <p class={["text-[9px] font-black uppercase tracking-widest", hovered_slice.text_class]}>
+                            {hovered_slice.label}
+                          </p>
+                          <p class="text-2xl font-black tabular-nums text-white mt-1">
+                            ${:erlang.float_to_binary(hovered_slice.value, decimals: 2)}
+                          </p>
+                          <p class={["text-xs font-mono tabular-nums font-bold mt-1", hovered_slice.text_class]}>
+                            {Float.round(hovered_slice.percent, 1)}% of total
+                          </p>
+                          <p class={[
+                            "text-[11px] font-mono tabular-nums mt-0.5",
+                            hovered_slice.pnl >= 0 && "text-emerald-400",
+                            hovered_slice.pnl < 0 && "text-red-400"
+                          ]}>
+                            P&L {if hovered_slice.pnl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(hovered_slice.pnl), decimals: 2)}
+                          </p>
+                        <% else %>
+                          <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">
+                            Total Value
+                          </p>
+                          <p class="text-2xl font-black tabular-nums text-white mt-1">
+                            ${:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                          </p>
+                          <p class="text-[10px] text-gray-500 mt-1 italic leading-snug">
+                            {diversity_caption}
+                          </p>
+                        <% end %>
                       </div>
                     </div>
                   <% else %>
@@ -5566,7 +5687,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3"
                 >
                   <%= for slice <- breakdown.slices do %>
-                    <div class={["rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3", slice.tint_class]}>
+                    <% is_hovered = @portfolio_hovered_slice == slice.key %>
+                    <div
+                      class={[
+                        "rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer",
+                        slice.tint_class,
+                        is_hovered && "ring-2 ring-offset-2 ring-offset-[#0a0a0f] scale-[1.01]",
+                        is_hovered && "ring-#{slice.bar_class}"
+                      ]}
+                      style={if is_hovered, do: "--tw-ring-color: #{slice.stroke_color};", else: ""}
+                      phx-mouseover="portfolio_hover"
+                      phx-mouseleave="portfolio_unhover"
+                      phx-value-key={Atom.to_string(slice.key)}
+                    >
                       <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
                           <div class="flex items-center gap-2">
@@ -6310,6 +6443,38 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp polymarket_loaded?(_), do: false
 
   defp polymarket_pnl(_positions), do: 0.0
+
+  # P&L period selector (Phorari 9951 / CyberSec 9952). Only `:all_time`
+  # has live data piped through the breakdown today — the other periods
+  # are surfaced as "—" so the UI shape exists for when day_change /
+  # week_change / month_change are wired in later.
+  # Returns `{value, available?, label}`.
+  defp portfolio_pnl_for_period(:all_time, combined), do: {combined, true, "All-Time"}
+  defp portfolio_pnl_for_period(:today, _combined), do: {0.0, false, "Today"}
+  defp portfolio_pnl_for_period(:week, _combined), do: {0.0, false, "This Week"}
+  defp portfolio_pnl_for_period(:month, _combined), do: {0.0, false, "This Month"}
+  defp portfolio_pnl_for_period(_, combined), do: {combined, true, "All-Time"}
+
+  # Smart diversity caption for the donut hole baseline state. If no
+  # broker holds >50% of the portfolio we read as diversified; otherwise
+  # we call out the concentration.
+  defp portfolio_diversity_caption(%{slices: slices, total_value: total}) when total > 0.0 do
+    active = Enum.filter(slices, &(&1.value > 0))
+    count = length(active)
+
+    case Enum.max_by(active, & &1.percent, fn -> nil end) do
+      nil ->
+        "No broker balances loaded yet"
+
+      top when top.percent > 50.0 ->
+        "Concentrated in #{top.label} #{Float.round(top.percent, 0) |> trunc()}%"
+
+      _ ->
+        "Diversified across #{count} broker#{if count == 1, do: "", else: "s"}"
+    end
+  end
+
+  defp portfolio_diversity_caption(_), do: "No broker balances loaded yet"
 
   defp to_float_or_zero(%Decimal{} = d), do: Decimal.to_float(d)
   defp to_float_or_zero(n) when is_number(n), do: n * 1.0
