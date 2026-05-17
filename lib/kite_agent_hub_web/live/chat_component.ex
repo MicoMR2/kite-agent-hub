@@ -25,7 +25,6 @@ defmodule KiteAgentHubWeb.ChatComponent do
       socket
       |> assign(assigns)
       |> assign_new(:open, fn -> false end)
-      |> assign_new(:expanded, fn -> false end)
       |> assign_new(:show_invite, fn -> false end)
       |> assign_new(:messages, fn -> [] end)
       |> assign_new(:chat_input, fn -> "" end)
@@ -36,10 +35,6 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
   def handle_event("toggle_chat", _params, socket) do
     {:noreply, assign(socket, open: !socket.assigns.open, show_invite: false)}
-  end
-
-  def handle_event("toggle_expand", _params, socket) do
-    {:noreply, assign(socket, :expanded, !socket.assigns.expanded)}
   end
 
   def handle_event("toggle_invite", _params, socket) do
@@ -109,13 +104,13 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
   def render(assigns) do
     ~H"""
-    <div id="chat-popup" class="fixed bottom-4 right-4 z-40">
-      <%!-- Toggle Button --%>
+    <div id="chat-popup">
+      <%!-- Toggle Button (closed state) --%>
       <%= if !@open do %>
         <button
           phx-click="toggle_chat"
           phx-target={@myself}
-          class="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+          class="fixed bottom-4 right-4 z-40 w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -128,20 +123,23 @@ defmodule KiteAgentHubWeb.ChatComponent do
         </button>
       <% end %>
 
-      <%!-- Chat Window --%>
+      <%!-- Chat Window (open state) — floating, draggable, resizable --%>
       <%= if @open do %>
-        <div class={[
-          "rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl flex flex-col overflow-hidden transition-all duration-200",
-          if(@expanded,
-            do: "w-[min(640px,calc(100vw-2rem))]",
-            else: "w-96"
-          )
-        ]}>
-          <%!-- Header --%>
-          <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02]">
-            <div class="flex items-center gap-2">
+        <div
+          id="chat-panel"
+          phx-hook="DraggableChat"
+          class="fixed bottom-4 right-4 z-40 w-96 h-[480px] flex flex-col rounded-2xl border border-white/10 bg-[#0a0a0f] shadow-2xl overflow-hidden"
+          style="resize: both; min-width: 320px; min-height: 280px; max-width: 95vw; max-height: 90vh;"
+        >
+          <%!-- Header (drag handle) --%>
+          <div
+            data-drag-handle
+            class="shrink-0 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02] select-none cursor-grab"
+          >
+            <div class="flex items-center gap-2 pointer-events-none">
               <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <h3 class="text-xs font-black text-white uppercase tracking-widest">Agent Chat</h3>
+              <span class="text-[9px] text-gray-600 font-mono ml-1 hidden sm:inline">drag · resize ↘</span>
             </div>
             <div class="flex items-center gap-2">
               <%!-- Invite Agents button --%>
@@ -174,23 +172,16 @@ defmodule KiteAgentHubWeb.ChatComponent do
                   Invite Agents
                 </button>
               <% end %>
-              <%!-- Expand/Collapse toggle --%>
+              <%!-- Reset position + size to default bottom-right corner --%>
               <button
-                phx-click="toggle_expand"
-                phx-target={@myself}
-                title={if(@expanded, do: "Shrink chat", else: "Expand chat")}
-                aria-label={if(@expanded, do: "Shrink chat", else: "Expand chat")}
+                phx-click={Phoenix.LiveView.JS.dispatch("chat:reset-position", to: "window")}
+                title="Reset chat to default position and size"
+                aria-label="Reset chat position"
                 class="text-gray-500 hover:text-white transition-colors"
               >
-                <%= if @expanded do %>
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V5H5m0 0v4m0-4l5 5m5-5h4m0 0v4m0-4l-5 5M9 15v4H5m0 0v-4m0 4l5-5m5 5h4m0 0v-4m0 4l-5-5" />
-                  </svg>
-                <% else %>
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                  </svg>
-                <% end %>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M20 4l-7 7M4 20l7-7" />
+                </svg>
               </button>
               <button
                 phx-click="toggle_chat"
@@ -213,7 +204,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
 
           <%!-- Invite Panel --%>
           <%= if @show_invite do %>
-            <div class="border-b border-white/10 bg-white/[0.01] px-4 py-3">
+            <div class="shrink-0 border-b border-white/10 bg-white/[0.01] px-4 py-3">
               <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
                 Select an agent to invite
               </p>
@@ -256,16 +247,13 @@ defmodule KiteAgentHubWeb.ChatComponent do
             </div>
           <% end %>
 
-          <%!-- Messages --%>
+          <%!-- Messages — flex-1 + min-h-0 lets the scroll area fill the
+          remaining panel height regardless of how the user resized the
+          window. min-h-0 is required so the flex child can shrink below
+          its content height and let overflow-y-auto kick in. --%>
           <div
             id="chat-messages"
-            class={[
-              "overflow-y-auto px-4 py-3 space-y-3 transition-all duration-200",
-              if(@expanded,
-                do: "h-[min(720px,calc(100vh-12rem))]",
-                else: "h-[380px]"
-              )
-            ]}
+            class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3"
             phx-hook="ScrollBottom"
           >
             <%= if @messages == [] do %>
@@ -310,7 +298,7 @@ defmodule KiteAgentHubWeb.ChatComponent do
           <form
             phx-submit="send_message"
             phx-target={@myself}
-            class="border-t border-white/10 px-3 py-3 flex gap-2"
+            class="shrink-0 border-t border-white/10 px-3 py-3 flex gap-2"
           >
             <input
               id="chat-text-input"
