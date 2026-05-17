@@ -5195,7 +5195,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <% delta = last_nav - first_nav %>
                       <% delta_pct = if first_nav > 0.0, do: delta / first_nav * 100.0, else: 0.0 %>
                       <% stroke = if delta >= 0, do: "#22c55e", else: "#ef4444" %>
-                      <% pts = sparkline_points(Enum.map(nav_samples, fn {_ts, nav} -> %{equity: nav} end), 640, 150) %>
+                      <% pts = sparkline_points(Enum.map(nav_samples, fn {_ts, nav} -> %{v: nav} end), 640, 150) %>
                       <% first_ts = nav_samples |> List.first() |> elem(0) %>
                       <% last_ts = nav_samples |> List.last() |> elem(0) %>
                       <% mid_ts = div(first_ts + last_ts, 2) %>
