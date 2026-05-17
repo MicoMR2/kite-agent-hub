@@ -5424,8 +5424,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       {breakdown.loaded_count}/{length(breakdown.slices)} brokers live
                     </span>
                   </div>
-                  <h2 class="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight text-white leading-none">
-                    <span class="text-gray-500 font-light">$</span>{:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                  <h2 class="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight text-white leading-none flex items-baseline">
+                    <span class="text-gray-500 font-light">$</span>
+                    <span
+                      id="portfolio-total-value"
+                      phx-hook="CountUp"
+                      data-target={breakdown.total_value}
+                      data-decimals="2"
+                    >{:erlang.float_to_binary(breakdown.total_value, decimals: 2)}</span>
                   </h2>
                   <div class="flex flex-wrap items-baseline gap-4">
                     <div class={[
@@ -5553,8 +5559,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <% end %>
                 </div>
 
-                <%!-- Per-broker cards (color-tinted) --%>
-                <div class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <%!-- Per-broker cards (color-tinted) — staggered entrance via anime.js --%>
+                <div
+                  id="portfolio-broker-cards"
+                  phx-hook="FadeInStagger"
+                  class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3"
+                >
                   <%= for slice <- breakdown.slices do %>
                     <div class={["rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3", slice.tint_class]}>
                       <div class="flex items-start justify-between gap-2">
@@ -5579,8 +5589,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <% end %>
                       </div>
 
-                      <p class="text-3xl font-black tabular-nums text-white leading-none">
-                        <span class="text-gray-500 font-light">$</span>{:erlang.float_to_binary(slice.value, decimals: 2)}
+                      <p class="text-3xl font-black tabular-nums text-white leading-none flex items-baseline">
+                        <span class="text-gray-500 font-light">$</span>
+                        <span
+                          id={"portfolio-slice-value-#{slice.key}"}
+                          phx-hook="CountUp"
+                          data-target={slice.value}
+                          data-decimals="2"
+                        >{:erlang.float_to_binary(slice.value, decimals: 2)}</span>
                       </p>
 
                       <%!-- Allocation bar --%>
