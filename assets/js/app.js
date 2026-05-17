@@ -407,7 +407,30 @@ const CountUp = {
 // CyberSec 9983: writes only via textContent / classList / setAttribute —
 // never innerHTML.
 const DonutChart = {
-  mounted() {
+  mounted() { this._bind() },
+
+  // LiveView patches the DOM in place when broker data streams in
+  // (Alpaca/Kalshi/Polymarket/Forex load asynchronously after mount).
+  // The arcs + cards inside the hook container get replaced, so the
+  // listeners attached in `_bind()` end up on garbage nodes. Re-bind
+  // on every patch to keep hover working as values fill in.
+  updated() { this._bind() },
+
+  destroyed() {
+    if (!this._listeners) return
+    this._listeners.forEach(([el, ev, fn]) => el.removeEventListener(ev, fn))
+    this._listeners = []
+  },
+
+  _bind() {
+    // Tear down any prior listeners before re-attaching (safe across
+    // both initial mount and LV patches).
+    if (this._listeners) {
+      this._listeners.forEach(([el, ev, fn]) => el.removeEventListener(ev, fn))
+    }
+    this._listeners = []
+    this._activeKey = null
+
     this.arcs = Array.from(this.el.querySelectorAll("[data-arc]"))
     this.cards = Array.from(this.el.querySelectorAll("[data-card]"))
     this.holeDefault = this.el.querySelector("[data-donut-hole-default]")
@@ -416,8 +439,6 @@ const DonutChart = {
     this.holeValue = this.el.querySelector("[data-hole-value]")
     this.holePct = this.el.querySelector("[data-hole-pct]")
     this.holePnl = this.el.querySelector("[data-hole-pnl]")
-
-    this._listeners = []
 
     this.cards.forEach(card => {
       const key = card.dataset.card
@@ -436,12 +457,6 @@ const DonutChart = {
       arc.addEventListener("pointerleave", onLeave)
       this._listeners.push([arc, "pointerenter", onEnter], [arc, "pointerleave", onLeave])
     })
-  },
-
-  destroyed() {
-    if (!this._listeners) return
-    this._listeners.forEach(([el, ev, fn]) => el.removeEventListener(ev, fn))
-    this._listeners = []
   },
 
   _enter(key) {
