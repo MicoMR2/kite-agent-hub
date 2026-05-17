@@ -5388,145 +5388,230 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
           <%!-- Portfolio Breakdown Tab — cross-broker pie + headline stats --%>
           <%= if @active_tab == :portfolio do %>
-            <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-              <% breakdown =
-                portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account, @pnl_stats) %>
+            <% breakdown =
+              portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account, @polymarket_positions, @pnl_stats) %>
+            <% pnl_pct =
+              if breakdown.total_value > 0.0,
+                do: breakdown.combined_pnl / breakdown.total_value * 100.0,
+                else: 0.0 %>
+            <% realized_total =
+              Enum.reduce(breakdown.slices, 0.0, fn s, acc ->
+                if s.key in [:alpaca, :kalshi], do: acc + s.pnl, else: acc
+              end) %>
+            <% unrealized_total =
+              Enum.reduce(breakdown.slices, 0.0, fn s, acc ->
+                if s.key in [:forex, :polymarket], do: acc + s.pnl, else: acc
+              end) %>
 
-              <%!-- Headline stats: total value + combined P&L --%>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+              <%!-- ═══════════ HERO: huge total value + delta ═══════════ --%>
+              <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-8 sm:p-10 backdrop-blur-md">
+                <%!-- Soft radial sheen that shifts color by P&L sign --%>
+                <div
+                  class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-30 blur-3xl"
+                  style={if breakdown.combined_pnl >= 0,
+                    do: "background: radial-gradient(circle, rgba(34,197,94,0.5), transparent 65%);",
+                    else: "background: radial-gradient(circle, rgba(239,68,68,0.5), transparent 65%);"
+                  }
+                />
+                <div class="relative flex flex-col gap-6">
+                  <div class="flex items-start justify-between gap-4">
+                    <p class="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-[0.3em]">
+                      Total Portfolio Value
+                    </p>
+                    <span class="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-mono text-gray-500">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#22c55e] animate-pulse"></span>
+                      {breakdown.loaded_count}/{length(breakdown.slices)} brokers live
+                    </span>
+                  </div>
+                  <h2 class="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight text-white leading-none">
+                    <span class="text-gray-500 font-light">$</span>{:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                  </h2>
+                  <div class="flex flex-wrap items-baseline gap-4">
+                    <div class={[
+                      "inline-flex items-baseline gap-2 px-4 py-2 rounded-xl font-mono text-base sm:text-lg font-bold tabular-nums",
+                      breakdown.combined_pnl >= 0 && "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300",
+                      breakdown.combined_pnl < 0 && "bg-red-500/10 border border-red-500/30 text-red-300"
+                    ]}>
+                      <span>{if breakdown.combined_pnl >= 0, do: "▲", else: "▼"}</span>
+                      <span>${:erlang.float_to_binary(abs(breakdown.combined_pnl), decimals: 2)}</span>
+                      <span class="text-xs opacity-80">({:erlang.float_to_binary(abs(pnl_pct), decimals: 2)}%)</span>
+                    </div>
+                    <p class="text-[11px] text-gray-500 italic">
+                      Combined P&L across all connected platforms
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <%!-- ═══════════ 4-UP KPI STRIP ═══════════ --%>
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                    Total Portfolio Value
+                  <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                    Realized P&L
                   </p>
-                  <p class="text-2xl font-black tabular-nums text-white">
-                    ${:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                  <p class={[
+                    "text-xl sm:text-2xl font-black tabular-nums",
+                    realized_total >= 0 && "text-emerald-400",
+                    realized_total < 0 && "text-red-400"
+                  ]}>
+                    {if realized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(realized_total), decimals: 2)}
                   </p>
-                  <p class="text-[10px] text-gray-600 mt-1">
-                    Across {Enum.count(breakdown.slices, &(&1.value > 0))}/{length(breakdown.slices)} connected brokers
-                  </p>
+                  <p class="text-[10px] text-gray-600 mt-1">Alpaca + Kalshi settled</p>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                    Combined P&L
+                  <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                    Unrealized P&L
                   </p>
-                  <p class={
-                    "text-2xl font-black tabular-nums " <>
-                      if(breakdown.combined_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
-                  }>
-                    {if breakdown.combined_pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
-                      abs(breakdown.combined_pnl), decimals: 2)}
+                  <p class={[
+                    "text-xl sm:text-2xl font-black tabular-nums",
+                    unrealized_total >= 0 && "text-emerald-400",
+                    unrealized_total < 0 && "text-red-400"
+                  ]}>
+                    {if unrealized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(unrealized_total), decimals: 2)}
                   </p>
-                  <p class="text-[10px] text-gray-600 mt-1">
-                    Alpaca realized + Kalshi settled + ForEx unrealized.
-                  </p>
+                  <p class="text-[10px] text-gray-600 mt-1">ForEx mark-to-market</p>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
+                  <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
                     Largest Allocation
                   </p>
                   <%= case breakdown.largest do %>
                     <% nil -> %>
-                      <p class="text-2xl font-black tabular-nums text-gray-600">—</p>
-                      <p class="text-[10px] text-gray-600 mt-1">No broker balances loaded yet.</p>
+                      <p class="text-xl sm:text-2xl font-black tabular-nums text-gray-600">—</p>
+                      <p class="text-[10px] text-gray-600 mt-1">No balances loaded</p>
                     <% slice -> %>
-                      <p class={"text-2xl font-black tabular-nums " <> slice.text_class}>
+                      <p class={["text-xl sm:text-2xl font-black tracking-tight", slice.text_class]}>
                         {slice.label}
                       </p>
                       <p class="text-[10px] text-gray-600 mt-1">
-                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value,
-                          decimals: 2
-                        )}
+                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value, decimals: 2)}
                       </p>
                   <% end %>
                 </div>
+                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                    Active Brokers
+                  </p>
+                  <p class="text-xl sm:text-2xl font-black tabular-nums text-white">
+                    {Enum.count(breakdown.slices, &(&1.value > 0))}<span class="text-gray-600 font-light">/{length(breakdown.slices)}</span>
+                  </p>
+                  <p class="text-[10px] text-gray-600 mt-1">Alpaca · Kalshi · Polymarket · ForEx</p>
+                </div>
               </div>
 
-              <%!-- Allocation pie chart --%>
-              <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                <div class="flex items-center justify-between mb-6">
-                  <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                    Allocation by Broker
+              <%!-- ═══════════ DONUT + PER-BROKER CARDS ═══════════ --%>
+              <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                <%!-- Donut with center label --%>
+                <div class="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex flex-col items-center justify-center">
+                  <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 self-start">
+                    Allocation
                   </p>
-                  <span class="text-[10px] font-mono text-gray-600">
-                    {breakdown.loaded_count}/{length(breakdown.slices)} loaded
-                  </span>
-                </div>
-
-                <%= if breakdown.total_value > 0.0 do %>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                    <%!-- Pie SVG. Each slice is rendered as a circle with stroke-dasharray
-                         offsets so the strokes draw in sequence; transition lets the
-                         animation grow on mount + when slice values change. --%>
-                    <div class="flex justify-center">
-                      <svg
-                        viewBox="-50 -50 100 100"
-                        class="w-56 h-56 -rotate-90"
-                        style="transition: all 600ms ease;"
-                      >
-                        <circle r="40" cx="0" cy="0" fill="#0a0a0f" stroke="#1f1f2e" stroke-width="2" />
+                  <%= if breakdown.total_value > 0.0 do %>
+                    <div class="relative">
+                      <svg viewBox="-50 -50 100 100" class="w-72 h-72 -rotate-90" style="transition: all 600ms ease;">
+                        <circle r="44" cx="0" cy="0" fill="transparent" stroke="rgba(255,255,255,0.04)" stroke-width="14" />
                         <%= for slice <- breakdown.slices, slice.value > 0 do %>
-                          <% circumference = 2 * 3.141592653589793 * 36
+                          <% circumference = 2 * 3.141592653589793 * 44
                           slice_len = circumference * slice.percent / 100
                           gap_len = circumference - slice_len
                           offset = -circumference * slice.cumulative_percent / 100 %>
                           <circle
-                            r="36"
+                            r="44"
                             cx="0"
                             cy="0"
                             fill="transparent"
                             stroke={slice.stroke_color}
                             stroke-width="14"
+                            stroke-linecap="butt"
                             stroke-dasharray={"#{Float.round(slice_len, 2)} #{Float.round(gap_len, 2)}"}
                             stroke-dashoffset={Float.round(offset, 2)}
                             style="transition: stroke-dasharray 600ms ease, stroke-dashoffset 600ms ease;"
                           />
                         <% end %>
                       </svg>
+                      <%!-- Center label --%>
+                      <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                        <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">
+                          Total
+                        </p>
+                        <p class="text-2xl font-black tabular-nums text-white">
+                          ${:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                        </p>
+                        <p class="text-[10px] text-gray-600 mt-1">
+                          {Enum.count(breakdown.slices, &(&1.value > 0))} active
+                        </p>
+                      </div>
                     </div>
+                  <% else %>
+                    <div class="py-20 text-center">
+                      <div class="w-16 h-16 mx-auto rounded-full border border-white/10 bg-white/[0.02] flex items-center justify-center mb-3">
+                        <.icon name="hero-chart-pie" class="w-8 h-8 text-gray-600" />
+                      </div>
+                      <p class="text-xs text-gray-500">No broker balances loaded yet.</p>
+                    </div>
+                  <% end %>
+                </div>
 
-                    <%!-- Legend with per-broker rows --%>
-                    <div class="space-y-3">
-                      <%= for slice <- breakdown.slices do %>
-                        <div class="flex items-center gap-3">
-                          <span
-                            class="w-3 h-3 rounded-sm shrink-0"
-                            style={"background-color: #{slice.stroke_color};"}
-                          />
-                          <div class="flex-1">
-                            <div class="flex items-baseline justify-between">
-                              <span class="text-sm font-bold text-white">{slice.label}</span>
-                              <span class={"text-sm font-mono tabular-nums " <> slice.text_class}>
-                                {Float.round(slice.percent, 1)}%
-                              </span>
-                            </div>
-                            <div class="flex items-baseline justify-between text-[11px] text-gray-500 font-mono">
-                              <span>{slice.subtitle}</span>
-                              <span>${:erlang.float_to_binary(slice.value, decimals: 2)}</span>
-                            </div>
-                            <div class="flex items-baseline justify-between text-[10px] font-mono mt-0.5">
-                              <span class="text-gray-600">P&L</span>
-                              <span class={
-                                if(slice.pnl >= 0, do: "text-emerald-400", else: "text-red-400")
-                              }>
-                                {if slice.pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
-                                  abs(slice.pnl), decimals: 2)}
-                              </span>
-                            </div>
+                <%!-- Per-broker cards (color-tinted) --%>
+                <div class="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <%= for slice <- breakdown.slices do %>
+                    <div class={["rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3", slice.tint_class]}>
+                      <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                          <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full shrink-0" style={"background-color: #{slice.stroke_color}; box-shadow: 0 0 12px #{slice.stroke_color};"} />
+                            <h4 class={["text-sm font-black uppercase tracking-widest", slice.text_class]}>
+                              {slice.label}
+                            </h4>
                           </div>
+                          <p class="text-[10px] text-gray-500 mt-1 italic">{slice.subtitle}</p>
                         </div>
-                      <% end %>
+                        <%= if slice.loaded? do %>
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-[9px] font-bold text-emerald-400 uppercase tracking-widest">
+                            <span class="w-1 h-1 rounded-full bg-emerald-400" />
+                            Live
+                          </span>
+                        <% else %>
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-white/10 bg-white/[0.02] text-[9px] font-bold text-gray-500 uppercase tracking-widest">
+                            Offline
+                          </span>
+                        <% end %>
+                      </div>
+
+                      <p class="text-3xl font-black tabular-nums text-white leading-none">
+                        <span class="text-gray-500 font-light">$</span>{:erlang.float_to_binary(slice.value, decimals: 2)}
+                      </p>
+
+                      <%!-- Allocation bar --%>
+                      <div class="space-y-1.5">
+                        <div class="flex items-baseline justify-between text-[10px] font-mono">
+                          <span class="text-gray-500 uppercase tracking-widest font-bold">Allocation</span>
+                          <span class={["tabular-nums font-bold", slice.text_class]}>
+                            {Float.round(slice.percent, 1)}%
+                          </span>
+                        </div>
+                        <div class="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                          <div
+                            class={["h-full rounded-full transition-all duration-500", slice.bar_class]}
+                            style={"width: #{Float.round(slice.percent, 2)}%;"}
+                          />
+                        </div>
+                      </div>
+
+                      <div class="flex items-baseline justify-between pt-2 border-t border-white/5">
+                        <span class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">P&L</span>
+                        <span class={[
+                          "text-sm font-mono font-bold tabular-nums",
+                          slice.pnl >= 0 && "text-emerald-400",
+                          slice.pnl < 0 && "text-red-400"
+                        ]}>
+                          {if slice.pnl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(slice.pnl), decimals: 2)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                <% else %>
-                  <div class="py-12 text-center">
-                    <p class="text-sm text-gray-600 mb-2">
-                      No connected broker balances yet.
-                    </p>
-                    <p class="text-[11px] text-gray-700">
-                      Add Alpaca, Kalshi, or OANDA credentials in Settings — once a broker tab loads, its slice appears here.
-                    </p>
-                  </div>
-                <% end %>
+                  <% end %>
+                </div>
               </div>
             </div>
           <% end %>
@@ -6021,16 +6106,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
   #     just empty).
   #
   # Color values match the dashboard's existing per-broker palette:
-  #   * Kalshi — emerald (#22c55e)  — green per Mico's spec (msg 8608).
-  #   * Alpaca — amber (#f59e0b)    — yellow per spec.
-  #   * ForEx  — orange (#f97316)   — orange per spec.
-  defp portfolio_breakdown(alpaca_data, kalshi_data, forex_account, pnl_stats) do
+  #   * Kalshi     — emerald (#22c55e)  — green per Mico's spec (msg 8608).
+  #   * Alpaca     — amber (#f59e0b)    — yellow per spec.
+  #   * ForEx      — orange (#f97316)   — orange per spec.
+  #   * Polymarket — blue   (#3b82f6)   — blue per Mico 9931.
+  defp portfolio_breakdown(alpaca_data, kalshi_data, forex_account, polymarket_positions, pnl_stats) do
     raw_slices = [
       %{
         key: :alpaca,
         label: "Alpaca",
         stroke_color: "#f59e0b",
         text_class: "text-amber-400",
+        tint_class: "border-amber-500/30 bg-amber-500/[0.04] shadow-[0_0_24px_rgba(245,158,11,0.12)]",
+        bar_class: "bg-amber-400",
         value: alpaca_value(alpaca_data),
         loaded?: alpaca_loaded?(alpaca_data),
         pnl: alpaca_pnl(pnl_stats, alpaca_data),
@@ -6041,9 +6129,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
         label: "Kalshi",
         stroke_color: "#22c55e",
         text_class: "text-emerald-400",
+        tint_class: "border-emerald-500/30 bg-emerald-500/[0.04] shadow-[0_0_24px_rgba(34,197,94,0.12)]",
+        bar_class: "bg-emerald-400",
         value: kalshi_value(kalshi_data),
         loaded?: kalshi_loaded?(kalshi_data),
         pnl: kalshi_settled_pnl(kalshi_data),
+        subtitle: "Prediction markets"
+      },
+      %{
+        key: :polymarket,
+        label: "Polymarket",
+        stroke_color: "#3b82f6",
+        text_class: "text-blue-400",
+        tint_class: "border-blue-500/30 bg-blue-500/[0.04] shadow-[0_0_24px_rgba(59,130,246,0.12)]",
+        bar_class: "bg-blue-400",
+        value: polymarket_value(polymarket_positions),
+        loaded?: polymarket_loaded?(polymarket_positions),
+        pnl: polymarket_pnl(polymarket_positions),
         subtitle: "Prediction markets"
       },
       %{
@@ -6051,6 +6153,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
         label: "ForEx",
         stroke_color: "#f97316",
         text_class: "text-orange-400",
+        tint_class: "border-orange-500/30 bg-orange-500/[0.04] shadow-[0_0_24px_rgba(249,115,22,0.12)]",
+        bar_class: "bg-orange-400",
         value: forex_value(forex_account),
         loaded?: forex_loaded?(forex_account),
         pnl: forex_unrealized_pnl(forex_account),
@@ -6163,6 +6267,38 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp forex_value(_), do: 0.0
 
   defp forex_field(%{} = m, key), do: Map.get(m, key)
+
+  # Polymarket portfolio value — sum of notional `size × avg_price` across
+  # paper/live positions. Position dollar value is approximate (Polymarket
+  # prices fluctuate intra-trade), but this is the same notional method
+  # the platform displays for open positions today. PnL is not yet
+  # computed at the position level so we surface 0.0 — closed-position
+  # PnL aggregation is a follow-up.
+  defp polymarket_value(positions) when is_list(positions) do
+    Enum.reduce(positions, 0.0, fn pos, acc ->
+      acc + polymarket_position_notional(pos)
+    end)
+  end
+
+  defp polymarket_value(_), do: 0.0
+
+  defp polymarket_position_notional(%{size: size, avg_price: price}) do
+    size_f = to_float_or_zero(size)
+    price_f = to_float_or_zero(price)
+    size_f * price_f
+  end
+
+  defp polymarket_position_notional(_), do: 0.0
+
+  defp polymarket_loaded?(positions) when is_list(positions) and positions != [], do: true
+  defp polymarket_loaded?(_), do: false
+
+  defp polymarket_pnl(_positions), do: 0.0
+
+  defp to_float_or_zero(%Decimal{} = d), do: Decimal.to_float(d)
+  defp to_float_or_zero(n) when is_number(n), do: n * 1.0
+  defp to_float_or_zero(s) when is_binary(s), do: parse_float(s)
+  defp to_float_or_zero(_), do: 0.0
 
   defp forex_loaded?(%{} = _account), do: true
   defp forex_loaded?(_), do: false
