@@ -1135,8 +1135,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp append_forex_nav_sample(_history, _account), do: []
 
   defp forex_nav_value(%{} = account) do
-    raw = Map.get(account, "NAV") || Map.get(account, :NAV) ||
-            Map.get(account, "nav") || Map.get(account, :nav)
+    raw =
+      Map.get(account, "NAV") || Map.get(account, :NAV) ||
+        Map.get(account, "nav") || Map.get(account, :nav)
 
     cond do
       is_number(raw) -> raw * 1.0
@@ -2548,7 +2549,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                    legible on the cream canvas (Mico 10094). Original
                    `text-yellow-300` was dark-canvas-only and washed out
                    on white. --%>
-              <div class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-500/40 bg-amber-500/[0.06] text-[10px] uppercase tracking-widest text-amber-200/90 whitespace-nowrap" title="Review every trade and chat — these are autonomous agents and they make mistakes.">
+              <div
+                class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-500/40 bg-amber-500/[0.06] text-[10px] uppercase tracking-widest text-amber-200/90 whitespace-nowrap"
+                title="Review every trade and chat — these are autonomous agents and they make mistakes."
+              >
                 <span aria-hidden="true">⚠</span>
                 <span>Agents make mistakes</span>
               </div>
@@ -3262,7 +3266,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 Decimal.lt?(trade.realized_pnl, 0) && "text-[#ef4444]",
                                 Decimal.eq?(trade.realized_pnl, 0) && "text-gray-500"
                               ]}>
-                                {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${format_compact_pnl(trade.realized_pnl)}
+                                {if Decimal.gt?(trade.realized_pnl, 0), do: "+"}${format_compact_pnl(
+                                  trade.realized_pnl
+                                )}
                               </p>
                             <% end %>
                             <%!-- PR #101: Kite chain attestation receipt. Every settled
@@ -3290,7 +3296,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% end %>
 
                 <%!-- Connect Your Agent — per-track instructions, secrets masked by default --%>
-                <div id="connect-your-agent" class="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
+                <div
+                  id="connect-your-agent"
+                  class="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4"
+                >
                   <div>
                     <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">
                       Connect Your Agent
@@ -3366,7 +3375,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside mb-2 leading-relaxed">
                       <li>Start a Claude Code instance — terminal or the Claude Code app.</li>
                       <li>Copy this prompt and paste it into the Claude Code window.</li>
-                      <li>Your agent will start running. The token is already embedded in the prompt.</li>
+                      <li>
+                        Your agent will start running. The token is already embedded in the prompt.
+                      </li>
                     </ol>
                     <%= if @show_option_a do %>
                       <pre class="bg-black/40 border border-blue-500/20 rounded-xl p-3 text-[9px] sm:text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed max-h-40 sm:max-h-48 overflow-y-auto"><%= claude_code_prompt(@selected_agent) %></pre>
@@ -3565,7 +3576,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 Decimal.lt?(att.display_pnl, 0) && "text-[#ef4444]",
                                 Decimal.eq?(att.display_pnl, 0) && "text-gray-500"
                               ]}>
-                                {if Decimal.gt?(att.display_pnl, 0), do: "+"}${format_compact_pnl(att.display_pnl)}
+                                {if Decimal.gt?(att.display_pnl, 0), do: "+"}${format_compact_pnl(
+                                  att.display_pnl
+                                )}
                               </p>
                             <% else %>
                               <p class="text-xs text-gray-600 font-mono">—</p>
@@ -3973,98 +3986,203 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                   </div>
                 <% data -> %>
-                  <%!-- Account Summary — primary numbers --%>
-                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <%= for {label, val, color} <- [
-                      {"Portfolio Value", "$#{:erlang.float_to_binary(data.account.portfolio_value || 0.0, decimals: 2)}", "text-white"},
-                      {"Equity", "$#{:erlang.float_to_binary(data.account.equity || 0.0, decimals: 2)}", "text-emerald-400"},
-                      {"Cash", "$#{:erlang.float_to_binary(data.account.cash || 0.0, decimals: 2)}", "text-gray-300"},
-                      {"Buying Power", "$#{:erlang.float_to_binary(data.account.buying_power || 0.0, decimals: 2)}", "text-blue-400"}
-                    ] do %>
-                      <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                          {label}
+                  <%!-- ═══════════ ALPACA HERO ═══════════
+                       Hero card mirrors the Portfolio tab template
+                       (Mico 9931 hedge-fund redesign): radial sheen,
+                       7xl Portfolio Value, solid Today pill. Brand
+                       palette = Alpaca yellow (#f59e0b).
+                       CyberSec 13757: sheen direction is keyed off
+                       SERVER-rendered `data-positive` / `data-negative`
+                       attrs — JS never sign-detects a formatted
+                       currency string. --%>
+                  <% pv_value = data.account.portfolio_value || 0.0 %>
+                  <% has_day_delta? =
+                    is_number(data.account.last_equity) and
+                      is_number(data.account.equity) and
+                      data.account.last_equity > 0 %>
+                  <% day_change_usd =
+                    if has_day_delta?,
+                      do: data.account.equity - data.account.last_equity,
+                      else: 0.0 %>
+                  <% day_change_pct =
+                    if has_day_delta?,
+                      do: day_change_usd / data.account.last_equity * 100,
+                      else: 0.0 %>
+                  <% day_up? = day_change_usd >= 0 %>
+                  <div
+                    class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-6 sm:p-10 backdrop-blur-md"
+                    data-positive={if has_day_delta? and day_up?, do: "true", else: "false"}
+                    data-negative={if has_day_delta? and not day_up?, do: "true", else: "false"}
+                  >
+                    <div
+                      class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-25 blur-3xl"
+                      style={
+                        cond do
+                          has_day_delta? and not day_up? ->
+                            "background: radial-gradient(circle, rgba(239,68,68,0.40), transparent 65%);"
+
+                          true ->
+                            "background: radial-gradient(circle, rgba(245,158,11,0.45), transparent 65%);"
+                        end
+                      }
+                    />
+                    <div class="relative flex flex-col gap-6">
+                      <div class="flex items-start justify-between gap-4 flex-wrap">
+                        <p class="text-[10px] sm:text-xs text-amber-400/80 uppercase tracking-[0.3em]">
+                          Alpaca · Portfolio Value
                         </p>
-                        <p class={"text-lg font-black tabular-nums #{color}"}>{val}</p>
+                        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-amber-500/30 bg-amber-500/[0.08] text-[10px] font-mono text-amber-300">
+                          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_#f59e0b] animate-pulse">
+                          </span>
+                          paper · live
+                        </span>
+                      </div>
+                      <h2 class="text-5xl sm:text-6xl lg:text-7xl tabular-nums tracking-tight text-white leading-none flex items-baseline">
+                        <span class="text-amber-400/60 font-light">$</span><span
+                          id="alpaca-portfolio-value"
+                          phx-hook="CountUp"
+                          data-target={pv_value}
+                          data-decimals="2"
+                        >{:erlang.float_to_binary(pv_value, decimals: 2)}</span>
+                      </h2>
+                      <%= if has_day_delta? do %>
+                        <%!-- Solid Today pill — opaque colored bg so it pops
+                             off the sheen. Raw signed values exposed on
+                             `data-value-usd` / `data-value-pct` for any future
+                             hook (CyberSec 13757: do not parse textContent). --%>
+                        <div class="flex flex-wrap items-center gap-3">
+                          <div
+                            class={[
+                              "inline-flex items-center gap-3 px-4 py-2 rounded-xl font-mono text-base sm:text-lg tabular-nums shadow-lg",
+                              day_up? && "bg-emerald-600 text-white",
+                              not day_up? && "bg-red-600 text-white"
+                            ]}
+                            data-value-usd={:erlang.float_to_binary(day_change_usd, decimals: 2)}
+                            data-value-pct={:erlang.float_to_binary(day_change_pct, decimals: 2)}
+                          >
+                            <span class="text-[9px] uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                              Today
+                            </span>
+                            <span>{if day_up?, do: "▲", else: "▼"}</span>
+                            <span>${:erlang.float_to_binary(abs(day_change_usd), decimals: 2)}</span>
+                            <span class="text-xs text-white/80">
+                              ({:erlang.float_to_binary(abs(day_change_pct), decimals: 2)}%)
+                            </span>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+
+                  <%!-- ═══════════ 4-UP KPI STRIP ═══════════
+                       Equity · Cash · Buying Power · Reg-T BP. CountUp
+                       animates each on mount and on every LV patch via
+                       the existing app.js hook (PR #404/#410). Reg-T BP
+                       was promoted out of the margin strip — it's the
+                       fourth "money you can actually deploy" number. --%>
+                  <% alpaca_kpis = [
+                    %{
+                      key: "equity",
+                      label: "Equity",
+                      value: data.account.equity || 0.0,
+                      text_cls: "text-emerald-300",
+                      border_cls: "border-emerald-500/20",
+                      glow_cls: "from-emerald-500/[0.06]"
+                    },
+                    %{
+                      key: "cash",
+                      label: "Cash",
+                      value: data.account.cash || 0.0,
+                      text_cls: "text-amber-200",
+                      border_cls: "border-amber-500/20",
+                      glow_cls: "from-amber-500/[0.06]"
+                    },
+                    %{
+                      key: "buying-power",
+                      label: "Buying Power",
+                      value: data.account.buying_power || 0.0,
+                      text_cls: "text-sky-300",
+                      border_cls: "border-sky-500/20",
+                      glow_cls: "from-sky-500/[0.06]"
+                    },
+                    %{
+                      key: "regt-bp",
+                      label: "Reg-T BP",
+                      value: data.account.regt_buying_power || 0.0,
+                      text_cls: "text-fuchsia-300",
+                      border_cls: "border-fuchsia-500/20",
+                      glow_cls: "from-fuchsia-500/[0.06]"
+                    }
+                  ] %>
+                  <div
+                    id="alpaca-kpi-strip"
+                    phx-hook="FadeInStagger"
+                    class="grid grid-cols-2 lg:grid-cols-4 gap-3"
+                  >
+                    <%= for kpi <- alpaca_kpis do %>
+                      <div class={[
+                        "relative overflow-hidden rounded-2xl border bg-gradient-to-br to-transparent p-4",
+                        kpi.border_cls,
+                        kpi.glow_cls
+                      ]}>
+                        <p class="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-widest mb-2">
+                          {kpi.label}
+                        </p>
+                        <p class={["text-xl sm:text-2xl tabular-nums", kpi.text_cls]}>
+                          <span class="opacity-60 font-light mr-0.5">$</span><span
+                            id={"alpaca-kpi-#{kpi.key}"}
+                            phx-hook="CountUp"
+                            data-target={kpi.value}
+                            data-decimals="2"
+                          >{:erlang.float_to_binary(kpi.value, decimals: 2)}</span>
+                        </p>
                       </div>
                     <% end %>
                   </div>
 
-                  <%!-- Today's change row — pulled directly from
-                       Alpaca's `equity` vs `last_equity` so the dollar
-                       and % numbers match the Alpaca app's daily
-                       change badge exactly. --%>
-                  <%= if is_number(data.account.last_equity) and is_number(data.account.equity) and data.account.last_equity > 0 do %>
-                    <% day_change_usd = data.account.equity - data.account.last_equity %>
-                    <% day_change_pct = day_change_usd / data.account.last_equity * 100 %>
-                    <% is_up? = day_change_usd >= 0 %>
-                    <% sign = if is_up?, do: "+", else: "−" %>
-                    <% color_cls = if is_up?, do: "text-emerald-400", else: "text-red-400" %>
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mt-3 flex items-center justify-between">
-                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                        Today
-                      </p>
-                      <div class={"flex items-baseline gap-3 text-lg font-black tabular-nums #{color_cls}"}>
-                        <span>
-                          {sign}${:erlang.float_to_binary(abs(day_change_usd), decimals: 2)}
-                        </span>
-                        <span class="text-sm font-bold opacity-90">
-                          ({sign}{:erlang.float_to_binary(abs(day_change_pct), decimals: 2)}%)
-                        </span>
-                      </div>
-                    </div>
-                  <% end %>
-
-                  <%!-- Margin / shortable strip — Reg-T BP, Day-Trade BP,
-                       account multiplier, shorting status. These come
-                       from `AlpacaClient.account/3` (PR #248) and were
-                       previously rendered on the dashboard overview;
-                       moved here so the overview stays broker-agnostic. --%>
+                  <%!-- ═══════════ MARGIN & SHORTABLE ═══════════
+                       Reg-T BP moved up to the KPI strip; what remains
+                       here is the secondary "how much can I lever / can
+                       I short" context. Bold-on-uppercase doubles
+                       removed per Mico 10094 — uppercase alone reads
+                       cleaner. --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                     <div class="flex items-center justify-between mb-3">
-                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                      <p class="text-[10px] text-gray-500 uppercase tracking-widest">
                         Margin & Shortable
                       </p>
                       <span class={[
                         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] uppercase tracking-widest",
                         data.account.shorting_enabled &&
-                          "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                          "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
                         !data.account.shorting_enabled &&
                           "border-white/10 bg-white/[0.02] text-gray-500"
                       ]}>
                         {if data.account.shorting_enabled, do: "✓ Shorting", else: "Cash Only"}
                       </span>
                     </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div class="grid grid-cols-3 gap-4">
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
-                          Reg-T BP
-                        </p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">
-                          ${format_money(data.account.regt_buying_power)}
-                        </p>
-                      </div>
-                      <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                        <p class="text-[9px] text-gray-600 uppercase tracking-widest mb-1">
                           Day-Trade BP
                         </p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">
+                        <p class="text-base text-amber-100/90 tabular-nums font-medium">
                           ${format_money(data.account.daytrading_buying_power)}
                         </p>
                       </div>
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                        <p class="text-[9px] text-gray-600 uppercase tracking-widest mb-1">
                           Non-Marginable BP
                         </p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">
+                        <p class="text-base text-amber-100/90 tabular-nums font-medium">
                           ${format_money(data.account.non_marginable_buying_power)}
                         </p>
                       </div>
                       <div>
-                        <p class="text-[9px] font-bold text-gray-600 uppercase tracking-widest mb-1">
+                        <p class="text-[9px] text-gray-600 uppercase tracking-widest mb-1">
                           Multiplier
                         </p>
-                        <p class="text-base font-black text-gray-300 tabular-nums">
+                        <p class="text-base text-sky-300 tabular-nums font-medium">
                           {format_multiplier(data.account.multiplier)}
                         </p>
                       </div>
@@ -4507,7 +4625,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           if(data.total_settled_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
                       }>
                         {if data.total_settled_pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
-                          abs(data.total_settled_pnl), decimals: 2)} · {length(data.settlements)} settled
+                          abs(data.total_settled_pnl),
+                          decimals: 2
+                        )} · {length(data.settlements)} settled
                       </span>
                     </div>
                     <%= if length(data.settlements) > 1 do %>
@@ -5069,10 +5189,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-8 sm:p-10 mb-4 backdrop-blur-md">
                   <div
                     class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20 blur-3xl"
-                    style={cond do
-                      upl_f >= 0 -> "background: radial-gradient(circle, rgba(34,197,94,0.35), transparent 65%);"
-                      true -> "background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 65%);"
-                    end}
+                    style={
+                      cond do
+                        upl_f >= 0 ->
+                          "background: radial-gradient(circle, rgba(34,197,94,0.35), transparent 65%);"
+
+                        true ->
+                          "background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 65%);"
+                      end
+                    }
                   />
                   <div class="relative flex flex-col gap-6">
                     <div class="flex items-start justify-between gap-4">
@@ -5080,7 +5205,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         OANDA Net Asset Value
                       </p>
                       <span class="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-mono text-gray-500">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#22c55e] animate-pulse"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#22c55e] animate-pulse">
+                        </span>
                         {length(@forex_positions)} positions · {forex_provider_label}
                       </span>
                     </div>
@@ -5091,7 +5217,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         phx-hook="CountUp"
                         data-target={nav_f}
                         data-decimals="2"
-                      >{:erlang.float_to_binary(nav_f, decimals: 2)}</span>
+                      >
+                        {:erlang.float_to_binary(nav_f, decimals: 2)}
+                      </span>
                     </h2>
                     <div class="flex flex-wrap items-baseline gap-4">
                       <div class={[
@@ -5104,7 +5232,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </span>
                         <span>{if upl_f >= 0, do: "▲", else: "▼"}</span>
                         <span>${:erlang.float_to_binary(abs(upl_f), decimals: 2)}</span>
-                        <span class="text-xs text-white/80">({:erlang.float_to_binary(abs(upl_pct), decimals: 2)}%)</span>
+                        <span class="text-xs text-white/80">
+                          ({:erlang.float_to_binary(abs(upl_pct), decimals: 2)}%)
+                        </span>
                       </div>
                       <p class="text-[11px] text-gray-500 italic">
                         Mark-to-market across all open OANDA positions
@@ -5157,7 +5287,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         phx-hook="CountUp"
                         data-target={abs(upl_f)}
                         data-decimals="2"
-                      >{:erlang.float_to_binary(abs(upl_f), decimals: 2)}</span>
+                      >
+                        {:erlang.float_to_binary(abs(upl_f), decimals: 2)}
+                      </span>
                     </p>
                     <p class="text-[10px] text-gray-600 mt-1">Mark-to-market</p>
                   </div>
@@ -5187,7 +5319,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Session NAV
                     </p>
                     <span class="text-[10px] text-gray-600 font-mono">
-                      <%= length(@forex_nav_history) %> samples · 30s cadence
+                      {length(@forex_nav_history)} samples · 30s cadence
                     </span>
                   </div>
                   <p class="text-[10px] text-gray-600 mb-3 italic">
@@ -5206,18 +5338,32 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <% delta = last_nav - first_nav %>
                       <% delta_pct = if first_nav > 0.0, do: delta / first_nav * 100.0, else: 0.0 %>
                       <% stroke = if delta >= 0, do: "#22c55e", else: "#ef4444" %>
-                      <% pts = sparkline_points(Enum.map(nav_samples, fn {_ts, nav} -> %{v: nav} end), 640, 150) %>
+                      <% pts =
+                        sparkline_points(
+                          Enum.map(nav_samples, fn {_ts, nav} -> %{v: nav} end),
+                          640,
+                          150
+                        ) %>
                       <% first_ts = nav_samples |> List.first() |> elem(0) %>
                       <% last_ts = nav_samples |> List.last() |> elem(0) %>
                       <% mid_ts = div(first_ts + last_ts, 2) %>
-                      <% {tip_x, tip_y} = case String.split(pts, " ") |> List.last() |> String.split(",") do
-                        [x, y] -> {x, y}
-                        _ -> {"640", "150"}
-                      end %>
+                      <% {tip_x, tip_y} =
+                        case String.split(pts, " ") |> List.last() |> String.split(",") do
+                          [x, y] -> {x, y}
+                          _ -> {"640", "150"}
+                        end %>
                       <svg viewBox="0 0 640 160" preserveAspectRatio="none" class="w-full h-44">
                         <%!-- Grid lines + a faint midline for visual anchor --%>
                         <line x1="0" y1="30" x2="640" y2="30" stroke="white" stroke-opacity="0.04" />
-                        <line x1="0" y1="75" x2="640" y2="75" stroke="white" stroke-opacity="0.08" stroke-dasharray="4,4" />
+                        <line
+                          x1="0"
+                          y1="75"
+                          x2="640"
+                          y2="75"
+                          stroke="white"
+                          stroke-opacity="0.08"
+                          stroke-dasharray="4,4"
+                        />
                         <line x1="0" y1="120" x2="640" y2="120" stroke="white" stroke-opacity="0.04" />
                         <defs>
                           <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
@@ -5260,8 +5406,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <%!-- Range + delta strip --%>
                       <div class="grid grid-cols-3 gap-3 mt-3">
                         <div class="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
-                          <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Open</p>
-                          <p class="text-sm font-mono tabular-nums text-gray-200">${:erlang.float_to_binary(first_nav, decimals: 2)}</p>
+                          <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">
+                            Open
+                          </p>
+                          <p class="text-sm font-mono tabular-nums text-gray-200">
+                            ${:erlang.float_to_binary(first_nav, decimals: 2)}
+                          </p>
                         </div>
                         <div class={[
                           "rounded-lg border px-3 py-2 text-center",
@@ -5272,18 +5422,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             "text-[9px] uppercase tracking-widest font-bold",
                             delta >= 0 && "text-emerald-400",
                             delta < 0 && "text-red-400"
-                          ]}>Session Δ</p>
+                          ]}>
+                            Session Δ
+                          </p>
                           <p class={[
                             "text-sm font-mono tabular-nums font-bold",
                             delta >= 0 && "text-emerald-400",
                             delta < 0 && "text-red-400"
                           ]}>
-                            {if delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(delta), decimals: 2)} ({:erlang.float_to_binary(abs(delta_pct), decimals: 2)}%)
+                            {if delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(delta),
+                              decimals: 2
+                            )} ({:erlang.float_to_binary(abs(delta_pct), decimals: 2)}%)
                           </p>
                         </div>
                         <div class="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-right">
-                          <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Range</p>
-                          <p class="text-sm font-mono tabular-nums text-gray-200">${:erlang.float_to_binary(min_nav, decimals: 2)} – ${:erlang.float_to_binary(max_nav, decimals: 2)}</p>
+                          <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">
+                            Range
+                          </p>
+                          <p class="text-sm font-mono tabular-nums text-gray-200">
+                            ${:erlang.float_to_binary(min_nav, decimals: 2)} – ${:erlang.float_to_binary(
+                              max_nav, decimals: 2)}
+                          </p>
                         </div>
                       </div>
                     <% true -> %>
@@ -5776,7 +5935,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
           <%!-- Portfolio Breakdown Tab — cross-broker pie + headline stats --%>
           <%= if @active_tab == :portfolio do %>
             <% breakdown =
-              portfolio_breakdown(@alpaca_data, @kalshi_data, @forex_account, @polymarket_positions, @pnl_stats) %>
+              portfolio_breakdown(
+                @alpaca_data,
+                @kalshi_data,
+                @forex_account,
+                @polymarket_positions,
+                @pnl_stats
+              ) %>
             <% pnl_pct =
               if breakdown.total_value > 0.0,
                 do: breakdown.combined_pnl / breakdown.total_value * 100.0,
@@ -5791,7 +5956,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
               end) %>
 
             <div class="px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-              <% {pnl_value, pnl_available?, pnl_period_label} = portfolio_pnl_for_period(@portfolio_pnl_period, breakdown.combined_pnl) %>
+              <% {pnl_value, pnl_available?, pnl_period_label} =
+                portfolio_pnl_for_period(@portfolio_pnl_period, breakdown.combined_pnl) %>
               <% pnl_pct_for_period =
                 if pnl_available? and breakdown.total_value > 0.0,
                   do: pnl_value / breakdown.total_value * 100.0,
@@ -5803,11 +5969,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 P&L pill in front always reads cleanly. Mico 9950 red-on-red fix. --%>
                 <div
                   class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20 blur-3xl"
-                  style={cond do
-                    not pnl_available? -> "background: radial-gradient(circle, rgba(120,120,140,0.35), transparent 65%);"
-                    pnl_value >= 0 -> "background: radial-gradient(circle, rgba(34,197,94,0.35), transparent 65%);"
-                    true -> "background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 65%);"
-                  end}
+                  style={
+                    cond do
+                      not pnl_available? ->
+                        "background: radial-gradient(circle, rgba(120,120,140,0.35), transparent 65%);"
+
+                      pnl_value >= 0 ->
+                        "background: radial-gradient(circle, rgba(34,197,94,0.35), transparent 65%);"
+
+                      true ->
+                        "background: radial-gradient(circle, rgba(239,68,68,0.25), transparent 65%);"
+                    end
+                  }
                 />
                 <div class="relative flex flex-col gap-6">
                   <div class="flex items-start justify-between gap-4">
@@ -5815,7 +5988,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       Total Portfolio Value
                     </p>
                     <span class="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-mono text-gray-500">
-                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#22c55e] animate-pulse"></span>
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#22c55e] animate-pulse">
+                      </span>
                       {breakdown.loaded_count}/{length(breakdown.slices)} brokers live
                     </span>
                   </div>
@@ -5826,7 +6000,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       phx-hook="CountUp"
                       data-target={breakdown.total_value}
                       data-decimals="2"
-                    >{:erlang.float_to_binary(breakdown.total_value, decimals: 2)}</span>
+                    >
+                      {:erlang.float_to_binary(breakdown.total_value, decimals: 2)}
+                    </span>
                   </h2>
 
                   <%!-- P&L row: period toggle + pill --%>
@@ -5865,7 +6041,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </span>
                         <span>{if pnl_value >= 0, do: "▲", else: "▼"}</span>
                         <span>${:erlang.float_to_binary(abs(pnl_value), decimals: 2)}</span>
-                        <span class="text-xs text-white/80">({:erlang.float_to_binary(abs(pnl_pct_for_period), decimals: 2)}%)</span>
+                        <span class="text-xs text-white/80">
+                          ({:erlang.float_to_binary(abs(pnl_pct_for_period), decimals: 2)}%)
+                        </span>
                       </div>
                     <% else %>
                       <div class="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-gray-400 text-sm">
@@ -5891,7 +6069,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     realized_total >= 0 && "text-emerald-400",
                     realized_total < 0 && "text-red-400"
                   ]}>
-                    {if realized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(realized_total), decimals: 2)}
+                    {if realized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
+                      abs(realized_total), decimals: 2)}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">Alpaca + Kalshi settled</p>
                 </div>
@@ -5904,7 +6083,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     unrealized_total >= 0 && "text-emerald-400",
                     unrealized_total < 0 && "text-red-400"
                   ]}>
-                    {if unrealized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(unrealized_total), decimals: 2)}
+                    {if unrealized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
+                      abs(unrealized_total), decimals: 2)}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">ForEx mark-to-market</p>
                 </div>
@@ -5921,7 +6101,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         {slice.label}
                       </p>
                       <p class="text-[10px] text-gray-600 mt-1">
-                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value, decimals: 2)}
+                        {Float.round(slice.percent, 1)}% · ${:erlang.float_to_binary(slice.value,
+                          decimals: 2
+                        )}
                       </p>
                   <% end %>
                 </div>
@@ -5962,7 +6144,14 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       hover drop-shadow. SVG uses overflow-visible so glow
                       can't be clipped. --%>
                       <svg viewBox="-60 -60 120 120" class="w-72 h-72 -rotate-90 overflow-visible">
-                        <circle r="44" cx="0" cy="0" fill="transparent" stroke="rgba(255,255,255,0.04)" stroke-width="14" />
+                        <circle
+                          r="44"
+                          cx="0"
+                          cy="0"
+                          fill="transparent"
+                          stroke="rgba(255,255,255,0.04)"
+                          stroke-width="14"
+                        />
                         <%= for slice <- breakdown.slices, slice.value > 0 do %>
                           <% circumference = 2 * 3.141592653589793 * 44
                           slice_len = circumference * slice.percent / 100
@@ -6033,7 +6222,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% pnl_sign = if slice.pnl >= 0, do: "+", else: "-"
                     pnl_value = :erlang.float_to_binary(abs(slice.pnl), decimals: 2) %>
                     <div
-                      class={["rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer", slice.tint_class]}
+                      class={[
+                        "rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer",
+                        slice.tint_class
+                      ]}
                       data-card={Atom.to_string(slice.key)}
                       data-label={slice.label}
                       data-value={:erlang.float_to_binary(slice.value, decimals: 2)}
@@ -6046,7 +6238,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
                           <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full shrink-0" style={"background-color: #{slice.stroke_color}; box-shadow: 0 0 12px #{slice.stroke_color};"} />
+                            <span
+                              class="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={"background-color: #{slice.stroke_color}; box-shadow: 0 0 12px #{slice.stroke_color};"}
+                            />
                             <h4 class={["text-sm uppercase tracking-widest", slice.text_class]}>
                               {slice.label}
                             </h4>
@@ -6055,8 +6250,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </div>
                         <%= if slice.loaded? do %>
                           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-[9px] font-bold text-emerald-400 uppercase tracking-widest">
-                            <span class="w-1 h-1 rounded-full bg-emerald-400" />
-                            Live
+                            <span class="w-1 h-1 rounded-full bg-emerald-400" /> Live
                           </span>
                         <% else %>
                           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-white/10 bg-white/[0.02] text-[9px] font-bold text-gray-500 uppercase tracking-widest">
@@ -6072,33 +6266,43 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           phx-hook="CountUp"
                           data-target={slice.value}
                           data-decimals="2"
-                        >{:erlang.float_to_binary(slice.value, decimals: 2)}</span>
+                        >
+                          {:erlang.float_to_binary(slice.value, decimals: 2)}
+                        </span>
                       </p>
 
                       <%!-- Allocation bar --%>
                       <div class="space-y-1.5">
                         <div class="flex items-baseline justify-between text-[10px] font-mono">
-                          <span class="text-gray-500 uppercase tracking-widest font-bold">Allocation</span>
+                          <span class="text-gray-500 uppercase tracking-widest font-bold">
+                            Allocation
+                          </span>
                           <span class={["tabular-nums font-bold", slice.text_class]}>
                             {Float.round(slice.percent, 1)}%
                           </span>
                         </div>
                         <div class="h-1.5 rounded-full bg-white/5 overflow-hidden">
                           <div
-                            class={["h-full rounded-full transition-all duration-500", slice.bar_class]}
+                            class={[
+                              "h-full rounded-full transition-all duration-500",
+                              slice.bar_class
+                            ]}
                             style={"width: #{Float.round(slice.percent, 2)}%;"}
                           />
                         </div>
                       </div>
 
                       <div class="flex items-baseline justify-between pt-2 border-t border-white/5">
-                        <span class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">P&L</span>
+                        <span class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                          P&L
+                        </span>
                         <span class={[
                           "text-sm font-mono font-bold tabular-nums",
                           slice.pnl >= 0 && "text-emerald-400",
                           slice.pnl < 0 && "text-red-400"
                         ]}>
-                          {if slice.pnl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(slice.pnl), decimals: 2)}
+                          {if slice.pnl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
+                            abs(slice.pnl), decimals: 2)}
                         </span>
                       </div>
                     </div>
@@ -6602,14 +6806,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
   #   * Alpaca     — amber (#f59e0b)    — yellow per spec.
   #   * ForEx      — orange (#f97316)   — orange per spec.
   #   * Polymarket — blue   (#3b82f6)   — blue per Mico 9931.
-  defp portfolio_breakdown(alpaca_data, kalshi_data, forex_account, polymarket_positions, pnl_stats) do
+  defp portfolio_breakdown(
+         alpaca_data,
+         kalshi_data,
+         forex_account,
+         polymarket_positions,
+         pnl_stats
+       ) do
     raw_slices = [
       %{
         key: :alpaca,
         label: "Alpaca",
         stroke_color: "#f59e0b",
         text_class: "text-amber-400",
-        tint_class: "border-amber-500/30 bg-amber-500/[0.04] shadow-[0_0_24px_rgba(245,158,11,0.12)]",
+        tint_class:
+          "border-amber-500/30 bg-amber-500/[0.04] shadow-[0_0_24px_rgba(245,158,11,0.12)]",
         bar_class: "bg-amber-400",
         value: alpaca_value(alpaca_data),
         loaded?: alpaca_loaded?(alpaca_data),
@@ -6621,7 +6832,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
         label: "Kalshi",
         stroke_color: "#22c55e",
         text_class: "text-emerald-400",
-        tint_class: "border-emerald-500/30 bg-emerald-500/[0.04] shadow-[0_0_24px_rgba(34,197,94,0.12)]",
+        tint_class:
+          "border-emerald-500/30 bg-emerald-500/[0.04] shadow-[0_0_24px_rgba(34,197,94,0.12)]",
         bar_class: "bg-emerald-400",
         value: kalshi_value(kalshi_data),
         loaded?: kalshi_loaded?(kalshi_data),
@@ -6633,7 +6845,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
         label: "Polymarket",
         stroke_color: "#3b82f6",
         text_class: "text-blue-400",
-        tint_class: "border-blue-500/30 bg-blue-500/[0.04] shadow-[0_0_24px_rgba(59,130,246,0.12)]",
+        tint_class:
+          "border-blue-500/30 bg-blue-500/[0.04] shadow-[0_0_24px_rgba(59,130,246,0.12)]",
         bar_class: "bg-blue-400",
         value: polymarket_value(polymarket_positions),
         loaded?: polymarket_loaded?(polymarket_positions),
@@ -6645,7 +6858,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
         label: "ForEx",
         stroke_color: "#f97316",
         text_class: "text-orange-400",
-        tint_class: "border-orange-500/30 bg-orange-500/[0.04] shadow-[0_0_24px_rgba(249,115,22,0.12)]",
+        tint_class:
+          "border-orange-500/30 bg-orange-500/[0.04] shadow-[0_0_24px_rgba(249,115,22,0.12)]",
         bar_class: "bg-orange-400",
         value: forex_value(forex_account),
         loaded?: forex_loaded?(forex_account),
