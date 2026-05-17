@@ -36,12 +36,33 @@ defmodule KiteAgentHub.Kite.PriceOracle do
   @rate_limit_cooldown_seconds 60
   @rate_limit_key {__MODULE__, :rate_limited_until}
 
+  # CoinGecko free tier ships ~30 req/min and the agent fleet ticks
+  # every ~60s — under burst, that's enough to chase the 429 window.
+  # Crypto spot doesn't need sub-second freshness for paper sizing or
+  # edge scoring, so a 10s TTL collapses N concurrent ticks for the
+  # same market into a single upstream call. Errors/429s are NOT
+  # cached; they fall through to the existing rate-limit cooldown so
+  # we don't pin stale errors.
+  @cache_ttl_seconds 10
+
   @doc "Fetch full market data for a symbol. Returns {:ok, map} or {:error, reason}."
   def get(market) do
-    if rate_limit_active?() do
-      {:error, :rate_limited}
-    else
-      do_fetch(market)
+    cond do
+      rate_limit_active?() ->
+        {:error, :rate_limited}
+
+      cached = cache_lookup(market) ->
+        {:ok, cached}
+
+      true ->
+        case do_fetch(market) do
+          {:ok, data} = ok ->
+            cache_put(market, data)
+            ok
+
+          err ->
+            err
+        end
     end
   end
 
@@ -87,9 +108,33 @@ defmodule KiteAgentHub.Kite.PriceOracle do
     :persistent_term.put(@rate_limit_key, until)
   end
 
+  defp cache_key(market), do: {__MODULE__, :cache, market}
+
+  defp cache_lookup(market) do
+    case :persistent_term.get(cache_key(market), nil) do
+      {expires_at, data} when is_integer(expires_at) ->
+        if System.system_time(:second) < expires_at, do: data, else: nil
+
+      _ ->
+        nil
+    end
+  end
+
+  defp cache_put(market, data) do
+    expires_at = System.system_time(:second) + @cache_ttl_seconds
+    :persistent_term.put(cache_key(market), {expires_at, data})
+  end
+
   @doc false
   def reset_rate_limit_cache do
     :persistent_term.erase(@rate_limit_key)
+  end
+
+  @doc false
+  def reset_cache do
+    Enum.each(Map.keys(@coin_ids), fn market ->
+      :persistent_term.erase(cache_key(market))
+    end)
   end
 
   @doc "Fetch just the price string for a symbol. Returns {:ok, string} or {:error, reason}."
