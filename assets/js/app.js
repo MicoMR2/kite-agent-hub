@@ -366,14 +366,33 @@ const DraggableChat = {
   }
 }
 
-// CountUp — anime.js-driven numeric count-up on mount. Targets a number
-// via `data-target` (Number-coercible); optional `data-decimals` (default
-// 2) and `data-prefix` (e.g. "$") shape the formatted output. The hook
-// remembers the last animated value so LiveView re-renders that arrive
-// while no value has changed don't re-trigger the animation.
+// CountUp — anime.js-driven numeric count-up. Targets a number via
+// `data-target` (Number-coercible); optional `data-decimals` (default 2)
+// and `data-prefix` (e.g. "$") shape the formatted output.
+//
+// When the parent re-renders (LV broadcasts a broker refresh, the user
+// switches tabs and back, etc.), the hook re-mounts. On remount we read
+// the element's current textContent as the starting point so we don't
+// animate from 0 every refresh — a tight refresh cadence (Forex tab
+// refreshes every 10s) used to make the hero look like the page was
+// reloading. The hook also short-circuits when data-target hasn't
+// actually changed since the last run.
 const CountUp = {
-  mounted() { this._lastTarget = null; this._run() },
+  mounted() {
+    this._lastTarget = this._readCurrent()
+    this._run()
+  },
   updated() { this._run() },
+  _readCurrent() {
+    // Strip currency symbols / sign chars / commas; leave digits, dot,
+    // minus. Returns null if the existing textContent isn't a parseable
+    // number (first paint case where the server-rendered value is
+    // "Generating...", "—", etc.).
+    const raw = (this.el.textContent || "").replace(/[^\d.\-]/g, "")
+    if (raw === "" || raw === "-" || raw === ".") return null
+    const n = Number(raw)
+    return Number.isNaN(n) ? null : n
+  },
   _run() {
     const targetStr = this.el.dataset.target
     if (targetStr === undefined || targetStr === null || targetStr === "") return
