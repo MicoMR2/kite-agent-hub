@@ -363,6 +363,33 @@ html[data-theme="light"] [class~="text-gray-700"] {
   color: #64748b !important;
 }
 
+/* Alpaca tab KPI strip — the per-card text colors (Equity / Cash /
+   Buying Power / Reg-T BP) and the Margin Details rows use light
+   broker-tinted palettes that vanish on the cream canvas. Re-key to
+   the 700/800 family so each card holds its hue but reads. (Mico
+   10158, 10172.) */
+html[data-theme="light"] [class~="text-emerald-300"] {
+  color: #15803d !important; /* emerald-700 */
+}
+html[data-theme="light"] [class~="text-sky-300"] {
+  color: #075985 !important; /* sky-800 */
+}
+html[data-theme="light"] [class~="text-fuchsia-300"] {
+  color: #86198f !important; /* fuchsia-800 */
+}
+html[data-theme="light"] [class~="text-amber-300"] {
+  color: #92400e !important; /* amber-800 */
+}
+html[data-theme="light"] [class~="text-amber-100/90"] {
+  color: #78350f !important; /* amber-900 */
+}
+html[data-theme="light"] [class~="bg-amber-500/[0.08]"] {
+  background-color: #fef3c7 !important; /* amber-100 — pill bg in light */
+}
+html[data-theme="light"] [class~="border-amber-500/30"] {
+  border-color: #d97706 !important; /* amber-600 */
+}
+
 /* Tailwind gradient stops compile to `--tw-gradient-from/to` custom
    properties. The `from-[#0a0a0f]` stop on the "Live in under 10 minutes"
    section paints a dark band over the cream canvas in light mode and

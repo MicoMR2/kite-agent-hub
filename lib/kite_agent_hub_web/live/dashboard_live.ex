@@ -4153,21 +4153,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                        removed per Mico 10094 — uppercase alone reads
                        cleaner. --%>
                   <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-                    <div class="flex items-center justify-between mb-3">
-                      <p class="text-[10px] text-gray-500 uppercase tracking-widest">
-                        Margin & Shortable
-                      </p>
-                      <span class={[
-                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] uppercase tracking-widest",
-                        data.account.shorting_enabled &&
-                          "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-                        !data.account.shorting_enabled &&
-                          "border-white/10 bg-white/[0.02] text-gray-500"
-                      ]}>
-                        {if data.account.shorting_enabled, do: "✓ Shorting", else: "Cash Only"}
-                      </span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-4">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-3">
+                      Margin Details
+                    </p>
+                    <div class="grid grid-cols-2 gap-4">
                       <div>
                         <p class="text-[9px] text-gray-600 uppercase tracking-widest mb-1">
                           Day-Trade BP
@@ -4182,14 +4171,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         </p>
                         <p class="text-base text-amber-100/90 tabular-nums font-medium">
                           ${format_money(data.account.non_marginable_buying_power)}
-                        </p>
-                      </div>
-                      <div>
-                        <p class="text-[9px] text-gray-600 uppercase tracking-widest mb-1">
-                          Multiplier
-                        </p>
-                        <p class="text-base text-sky-300 tabular-nums font-medium">
-                          {format_multiplier(data.account.multiplier)}
                         </p>
                       </div>
                     </div>
