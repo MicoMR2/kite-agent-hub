@@ -4264,7 +4264,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <svg
                             viewBox="0 0 700 220"
                             preserveAspectRatio="none"
-                            class="w-full h-56 select-none cursor-crosshair"
+                            class="w-full h-56 select-none cursor-crosshair overflow-visible"
                           >
                             <defs>
                               <linearGradient
@@ -5485,7 +5485,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <svg
                           viewBox="0 0 700 220"
                           preserveAspectRatio="none"
-                          class="w-full h-56 select-none cursor-crosshair"
+                          class="w-full h-56 select-none cursor-crosshair overflow-visible"
                         >
                           <defs>
                             <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
@@ -5746,7 +5746,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <svg
                           viewBox="0 0 700 220"
                           preserveAspectRatio="none"
-                          class="w-full h-56 select-none cursor-crosshair"
+                          class="w-full h-56 select-none cursor-crosshair overflow-visible"
                         >
                           <defs>
                             <linearGradient id="forex-chart-fill" x1="0" y1="0" x2="0" y2="1">
