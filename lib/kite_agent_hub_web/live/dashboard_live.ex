@@ -645,7 +645,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   # Portfolio donut interactivity (Mico 9950). Hover events come from
-  # arc + per-broker card phx-mouseover; key is matched against the
+  # arc + per-broker card phx-mouseenter; key is matched against the
   # known broker atom set so the assign is never user-controlled.
   @portfolio_slice_keys ~w[alpaca kalshi polymarket forex]a
 
@@ -5630,7 +5630,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                             stroke-dasharray={"#{Float.round(slice_len, 2)} #{Float.round(gap_len, 2)}"}
                             stroke-dashoffset={Float.round(offset, 2)}
                             style={"transition: stroke-dasharray 600ms ease, stroke-dashoffset 600ms ease, stroke-width 180ms ease; cursor: pointer;" <> if(is_hovered, do: " filter: drop-shadow(0 0 8px #{slice.stroke_color});", else: "")}
-                            phx-mouseover="portfolio_hover"
+                            phx-mouseenter="portfolio_hover"
                             phx-value-key={Atom.to_string(slice.key)}
                           />
                         <% end %>
@@ -5696,7 +5696,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         is_hovered && "ring-#{slice.bar_class}"
                       ]}
                       style={if is_hovered, do: "--tw-ring-color: #{slice.stroke_color};", else: ""}
-                      phx-mouseover="portfolio_hover"
+                      phx-mouseenter="portfolio_hover"
                       phx-mouseleave="portfolio_unhover"
                       phx-value-key={Atom.to_string(slice.key)}
                     >
