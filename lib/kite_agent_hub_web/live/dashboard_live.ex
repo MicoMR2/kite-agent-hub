@@ -156,6 +156,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       |> assign(:polymarket_mode, safe_polymarket_mode())
       |> assign(:forex_positions, [])
       |> assign(:forex_nav_history, [])
+      |> assign(:forex_fetching, false)
       |> assign(:forex_instruments, [])
       |> assign(:forex_loading, false)
       |> assign(:forex_provider, :none)
@@ -227,6 +228,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:polymarket_mode, :paper)
     |> assign(:forex_positions, [])
     |> assign(:forex_nav_history, [])
+    |> assign(:forex_fetching, false)
     |> assign(:forex_instruments, [])
     |> assign(:forex_loading, false)
     |> assign(:forex_provider, :none)
@@ -1026,8 +1028,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # selected agents recent OANDA TradeRecord rows. Every fetch is
   # try/rescue wrapped so a transient OANDA outage cannot crash the LV
   # (feedback_kah_lv_rescue).
+  #
+  # Concurrency guard (CyberSec 10057): the warmup burst from `:forex`
+  # tab activation enqueues 3 extra `:load_forex` messages at 2s
+  # intervals. If the user toggles tabs faster than OANDA responds,
+  # those bursts could stack overlapping HTTP requests against the
+  # broker. `:forex_fetching` is flipped on at the start of every
+  # handler invocation and back off when the assigns are committed;
+  # any tick that arrives mid-fetch no-ops.
+  def handle_info(:load_forex, %{assigns: %{forex_fetching: true}} = socket) do
+    {:noreply, socket}
+  end
+
   def handle_info(:load_forex, socket) do
     require Logger
+    socket = assign(socket, :forex_fetching, true)
 
     symbol = socket.assigns[:forex_symbol] || "EUR_USD"
     agent = socket.assigns[:selected_agent]
@@ -1086,7 +1101,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
      |> assign(:forex_pricing_by_instrument, pricing_by_instrument)
      |> assign(:forex_open_trades, open_trades)
      |> assign(:forex_recent_trades, recent_trades)
-     |> assign(:forex_loading, false)}
+     |> assign(:forex_loading, false)
+     |> assign(:forex_fetching, false)}
   end
 
   # Session-scoped NAV ring buffer for the Forex tab sparkline. Each
