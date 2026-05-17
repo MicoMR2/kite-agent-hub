@@ -100,7 +100,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
       try do
         if org do
           org.id
-          |> Chat.list_messages(limit: 50)
+          |> Chat.list_messages(limit: 200)
           |> Enum.map(&sanitize_broadcast/1)
         else
           []
@@ -2658,9 +2658,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 >
                   <.icon name="hero-plus" class="w-4 h-4" /> Add Agent
                 </.link>
-                <p class="mt-2 text-[10px] text-gray-500 text-center leading-snug">
-                  After creating an agent, scroll down to <span class="text-emerald-400 font-bold">Connect Your Agent</span> to start it up. ↓
-                </p>
+                <a
+                  href="#connect-your-agent"
+                  class="mt-3 group block w-full rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-500/10 to-emerald-500/[0.04] hover:from-emerald-500/15 hover:to-emerald-500/[0.06] hover:border-emerald-400/60 px-4 py-4 shadow-[0_0_24px_rgba(34,197,94,0.12)] hover:shadow-[0_0_32px_rgba(34,197,94,0.22)] transition-all"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-0.5">
+                        Ready to trade?
+                      </p>
+                      <p class="text-sm font-bold text-white leading-tight">
+                        Set up your agent below to start →
+                      </p>
+                      <p class="text-[11px] text-emerald-200/70 mt-0.5 leading-snug">
+                        Copy your agent's prompt into Claude Code or Codex Terminal and it starts running.
+                      </p>
+                    </div>
+                    <span class="text-2xl text-emerald-400 animate-pulse drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
+                      ↓
+                    </span>
+                  </div>
+                </a>
               </div>
 
               <%!-- ── Main Panel ── --%>
@@ -3107,7 +3125,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 <% end %>
 
                 <%!-- Connect Your Agent — per-track instructions, secrets masked by default --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
+                <div id="connect-your-agent" class="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
                   <div>
                     <h3 class="text-xs font-black text-white uppercase tracking-widest mb-2">
                       Connect Your Agent
