@@ -593,6 +593,7 @@ const CrosshairChart = {
     if (!svg) return
 
     const crosshairLine = this.el.querySelector("[data-crosshair-x]")
+    const crosshairDot = this.el.querySelector("[data-crosshair-dot]")
     const tooltip = this.el.querySelector("[data-crosshair-tooltip]")
     const tooltipPrice = this.el.querySelector("[data-crosshair-price]")
     const tooltipTime = this.el.querySelector("[data-crosshair-time]")
@@ -619,6 +620,17 @@ const CrosshairChart = {
         crosshairLine.setAttribute("x2", nearest.x)
         crosshairLine.classList.remove("hidden")
       }
+      // Dot at the line intersection. Server includes `y` per point
+      // (PR #420); fall back to hiding the dot if older payloads don't.
+      if (crosshairDot) {
+        if (typeof nearest.y === "number") {
+          crosshairDot.setAttribute("cx", nearest.x)
+          crosshairDot.setAttribute("cy", nearest.y)
+          crosshairDot.classList.remove("hidden")
+        } else {
+          crosshairDot.classList.add("hidden")
+        }
+      }
       if (tooltip) tooltip.classList.remove("hidden")
       if (tooltipPrice) tooltipPrice.textContent = nearest.v
       if (tooltipTime) tooltipTime.textContent = nearest.t
@@ -626,6 +638,7 @@ const CrosshairChart = {
 
     const onLeave = () => {
       if (crosshairLine) crosshairLine.classList.add("hidden")
+      if (crosshairDot) crosshairDot.classList.add("hidden")
       if (tooltip) tooltip.classList.add("hidden")
     }
 
