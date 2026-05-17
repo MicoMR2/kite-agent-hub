@@ -4385,10 +4385,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <div
                             data-crosshair-tooltip
                             class="kah-chart-tooltip hidden absolute pointer-events-none px-3 py-2 rounded-lg bg-gray-900/95 border border-white/15 text-xs font-mono tabular-nums shadow-xl"
-                            style="z-index: 5;"
+                            style="z-index: 5; color: #ffffff;"
                           >
-                            <span data-crosshair-time class="kah-chart-tooltip-time mr-2"></span>
-                            <span data-crosshair-price class="kah-chart-tooltip-price font-semibold"></span>
+                            <span data-crosshair-time class="mr-2" style="color: #d1d5db;"></span>
+                            <span data-crosshair-price class="font-semibold" style="color: #ffffff;"></span>
                           </div>
                         </div>
                         <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
@@ -5593,10 +5593,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <div
                           data-crosshair-tooltip
                           class="kah-chart-tooltip hidden absolute pointer-events-none px-3 py-2 rounded-lg bg-gray-900/95 border border-white/15 text-xs font-mono tabular-nums shadow-xl"
-                          style="z-index: 5;"
+                          style="z-index: 5; color: #ffffff;"
                         >
-                          <span data-crosshair-time class="kah-chart-tooltip-time mr-2"></span>
-                          <span data-crosshair-price class="kah-chart-tooltip-price font-semibold"></span>
+                          <span data-crosshair-time class="mr-2" style="color: #d1d5db;"></span>
+                          <span data-crosshair-price class="font-semibold" style="color: #ffffff;"></span>
                         </div>
                       </div>
                       <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
@@ -5870,10 +5870,10 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <div
                           data-crosshair-tooltip
                           class="kah-chart-tooltip hidden absolute pointer-events-none px-3 py-2 rounded-lg bg-gray-900/95 border border-white/15 text-xs font-mono tabular-nums shadow-xl"
-                          style="z-index: 5;"
+                          style="z-index: 5; color: #ffffff;"
                         >
-                          <span data-crosshair-time class="kah-chart-tooltip-time mr-2"></span>
-                          <span data-crosshair-price class="kah-chart-tooltip-price font-semibold"></span>
+                          <span data-crosshair-time class="mr-2" style="color: #d1d5db;"></span>
+                          <span data-crosshair-price class="font-semibold" style="color: #ffffff;"></span>
                         </div>
                       </div>
                       <%!-- X-axis time labels --%>
