@@ -10,7 +10,7 @@ defmodule KiteAgentHubWeb.TradesLive do
   # from `phx-value-col` / `phx-value-platform` is matched against
   # these atoms before being passed to Ecto's `order_by` or `where`.
   # Anything off-list is silently ignored — never raw input to the DB.
-  @sort_whitelist ~w[inserted_at fill_price contracts platform status action market notional_usd]a
+  @sort_whitelist ~w[inserted_at fill_price contracts platform status action market notional_usd realized_pnl]a
   @platform_whitelist ~w[all alpaca kalshi polymarket oanda oanda_practice forex]
 
   @impl true
@@ -235,8 +235,29 @@ defmodule KiteAgentHubWeb.TradesLive do
   # push_patch (these are stateful assigns, not URL state).
   defp load_trades_for(socket, agent_id, page) do
     opts = current_filter_opts(socket, page)
-    Trading.list_trades_with_display_pnl(agent_id, opts)
+
+    agent_id
+    |> Trading.list_trades_with_display_pnl(opts)
+    |> maybe_resort_by_display_pnl(socket.assigns.sort_by, socket.assigns.sort_dir)
   end
+
+  # `display_pnl` is a Trading-context Elixir computation (FIFO from
+  # settled fills) — it isn't a DB column, so when the user sorts by
+  # P&L the server can't ORDER BY it directly. We sort by `:realized_pnl`
+  # at the DB level (close enough for paging), then re-sort the loaded
+  # page in memory by display_pnl so what the user sees matches what
+  # they clicked.
+  defp maybe_resort_by_display_pnl(trades, :realized_pnl, dir) do
+    Enum.sort_by(trades, &display_pnl_key/1, sort_compare(dir))
+  end
+
+  defp maybe_resort_by_display_pnl(trades, _other, _dir), do: trades
+
+  defp display_pnl_key(%{display_pnl: %Decimal{} = d}), do: Decimal.to_float(d)
+  defp display_pnl_key(_), do: 0.0
+
+  defp sort_compare(:asc), do: &<=/2
+  defp sort_compare(_), do: &>=/2
 
   defp current_filter_opts(socket, page) do
     [
@@ -521,9 +542,7 @@ defmodule KiteAgentHubWeb.TradesLive do
                     <.sort_header label="Qty" col={:contracts} classes="text-right px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
                     <.sort_header label="Fill" col={:fill_price} classes="text-right px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
                     <.sort_header label="Notional" col={:notional_usd} classes="hidden sm:table-cell text-right px-4 py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
-                    <th class="text-right px-3 py-3 sm:px-4 sm:py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                      P&L
-                    </th>
+                    <.sort_header label="P&L" col={:realized_pnl} classes="text-right px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
                     <.sort_header label="Status" col={:status} classes="text-center px-3 py-3 sm:px-4 sm:py-4" sort_by={@sort_by} sort_dir={@sort_dir} />
                     <th class="hidden sm:table-cell text-center px-4 py-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                       Chain

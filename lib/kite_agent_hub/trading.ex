@@ -250,7 +250,7 @@ defmodule KiteAgentHub.Trading do
   # accepted from caller-supplied `:order_by`. Anything outside the list
   # falls back to `:inserted_at`. Defence-in-depth on top of the
   # whitelist already enforced at the TradesLive event boundary.
-  @list_trades_sort_whitelist ~w[inserted_at fill_price contracts platform status action market notional_usd]a
+  @list_trades_sort_whitelist ~w[inserted_at fill_price contracts platform status action market notional_usd realized_pnl]a
 
   def list_trades(agent_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
