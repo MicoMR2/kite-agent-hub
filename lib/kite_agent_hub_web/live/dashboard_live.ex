@@ -363,6 +363,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
         :forex ->
           send(self(), :load_forex)
           schedule_tab_refresh(:forex)
+          # Warmup burst: 3 extra :load_forex ticks at 2s intervals so
+          # the Session NAV sparkline accumulates 4 samples in the
+          # first ~6 seconds. Without this the user stares at the
+          # "Building chart…" placeholder for a full 30s waiting on the
+          # regular refresh cadence (Mico 10037). We send bare
+          # `:load_forex` (not the `{:tab_refresh, :forex}` envelope)
+          # so the warmup never re-arms the 30s scheduler — if it did
+          # we'd end up with 4 stacked timers all firing 30s later. The
+          # cost of firing the OANDA fetch even if the user switches
+          # tabs in the first 6s is a small handful of extra requests
+          # against an already-rate-limited practice account.
+          Process.send_after(self(), :load_forex, 2_000)
+          Process.send_after(self(), :load_forex, 4_000)
+          Process.send_after(self(), :load_forex, 6_000)
           assign(socket, :forex_loading, true)
 
         :portfolio ->
@@ -1127,6 +1141,19 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp forex_field_float(_, _), do: 0.0
+
+  # Render a unix timestamp as a session-relative HH:MM clock string for
+  # the Session NAV sparkline x-axis labels. We display in UTC to avoid
+  # pulling tz state into the LV; the sparkline only spans a session so
+  # users care about relative ordering, not wall-clock localisation.
+  defp format_session_time(ts) when is_integer(ts) do
+    case DateTime.from_unix(ts) do
+      {:ok, dt} -> Calendar.strftime(dt, "%H:%M")
+      _ -> "—"
+    end
+  end
+
+  defp format_session_time(_), do: "—"
 
   # Pull names off OANDAs instruments list, capped at the pricing
   # endpoints 100-instrument limit. Empty list when malformed.
@@ -2488,6 +2515,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
               </div>
             </.link>
             <div class="flex items-center gap-4">
+              <%!-- Persistent "agents make mistakes" reminder (Mico 10039).
+                   Always visible in the top nav next to the BLOCK ticker
+                   so users don't have to scroll to the Connect section to
+                   see it. Plain `text-yellow-300` and `bg-yellow-500/[0.08]`
+                   read fine in both dark and light themes (the app's light
+                   palette overrides keep accent yellow legible). --%>
+              <div class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-yellow-500/30 bg-yellow-500/[0.08] text-[10px] font-bold uppercase tracking-widest text-yellow-300 whitespace-nowrap" title="Review every trade and chat — these are autonomous agents and they make mistakes.">
+                <span aria-hidden="true">⚠</span>
+                <span>Agents make mistakes</span>
+              </div>
               <%= if @block_number do %>
                 <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] shadow-[0_0_10px_rgba(255,255,255,0.02)]">
                   <span class="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_#22c55e] animate-pulse">
@@ -5114,73 +5151,127 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
 
                 <%!-- Session NAV sparkline. Ring buffer is capped to 288
-                     samples (24h at 5-min cadence). Sparkline only renders
-                     when we have at least 2 samples — single-point and
-                     empty fall back to a placeholder so the SVG never
-                     receives a malformed `points` attribute. --%>
-                <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+                     samples (24h × 5-min cadence after #410 settled the
+                     warmup burst). Renders only when ≥2 samples so the
+                     SVG never receives a malformed `points` attr. --%>
+                <div class="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-6 mb-6 backdrop-blur-md">
                   <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
                     <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
                       Session NAV
                     </p>
                     <span class="text-[10px] text-gray-600 font-mono">
-                      <%= length(@forex_nav_history) %> samples · 5-min cadence
+                      <%= length(@forex_nav_history) %> samples · 30s cadence
                     </span>
                   </div>
                   <p class="text-[10px] text-gray-600 mb-3 italic">
-                    NAV captured every dashboard refresh since you opened the tab. Capped at 288 samples (~24h).
+                    NAV captured since you opened the tab. Capped at 288 samples (~24h of 30s ticks).
                   </p>
                   <%= cond do %>
                     <% length(@forex_nav_history) > 1 -> %>
                       <% nav_samples =
                         @forex_nav_history
-                        |> Enum.reverse()
-                        |> Enum.map(fn {_ts, nav} -> %{equity: nav} end) %>
-                      <% pts = sparkline_points(nav_samples, 640, 150) %>
-                      <% first_nav = nav_samples |> List.first() |> Map.get(:equity, 0.0) %>
-                      <% last_nav = nav_samples |> List.last() |> Map.get(:equity, 0.0) %>
+                        |> Enum.reverse() %>
+                      <% nav_values = Enum.map(nav_samples, fn {_ts, nav} -> nav end) %>
+                      <% first_nav = List.first(nav_values) %>
+                      <% last_nav = List.last(nav_values) %>
+                      <% min_nav = Enum.min(nav_values) %>
+                      <% max_nav = Enum.max(nav_values) %>
                       <% delta = last_nav - first_nav %>
                       <% delta_pct = if first_nav > 0.0, do: delta / first_nav * 100.0, else: 0.0 %>
                       <% stroke = if delta >= 0, do: "#22c55e", else: "#ef4444" %>
-                      <svg viewBox="0 0 640 160" preserveAspectRatio="none" class="w-full h-40">
-                        <line x1="0" y1="40" x2="640" y2="40" stroke="white" stroke-opacity="0.05" />
-                        <line x1="0" y1="80" x2="640" y2="80" stroke="white" stroke-opacity="0.05" />
-                        <line x1="0" y1="120" x2="640" y2="120" stroke="white" stroke-opacity="0.05" />
+                      <% pts = sparkline_points(Enum.map(nav_samples, fn {_ts, nav} -> %{equity: nav} end), 640, 150) %>
+                      <% first_ts = nav_samples |> List.first() |> elem(0) %>
+                      <% last_ts = nav_samples |> List.last() |> elem(0) %>
+                      <% mid_ts = div(first_ts + last_ts, 2) %>
+                      <% {tip_x, tip_y} = case String.split(pts, " ") |> List.last() |> String.split(",") do
+                        [x, y] -> {x, y}
+                        _ -> {"640", "150"}
+                      end %>
+                      <svg viewBox="0 0 640 160" preserveAspectRatio="none" class="w-full h-44">
+                        <%!-- Grid lines + a faint midline for visual anchor --%>
+                        <line x1="0" y1="30" x2="640" y2="30" stroke="white" stroke-opacity="0.04" />
+                        <line x1="0" y1="75" x2="640" y2="75" stroke="white" stroke-opacity="0.08" stroke-dasharray="4,4" />
+                        <line x1="0" y1="120" x2="640" y2="120" stroke="white" stroke-opacity="0.04" />
                         <defs>
                           <linearGradient id="forex-nav-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color={stroke} stop-opacity="0.2" />
+                            <stop offset="0%" stop-color={stroke} stop-opacity="0.32" />
+                            <stop offset="50%" stop-color={stroke} stop-opacity="0.12" />
                             <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
                           </linearGradient>
+                          <filter id="forex-nav-glow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="3" result="blur" />
+                            <feMerge>
+                              <feMergeNode in="blur" />
+                              <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                          </filter>
                         </defs>
                         <polygon points={"#{pts} 640,150 0,150"} fill="url(#forex-nav-fill)" />
                         <polyline
                           points={pts}
                           fill="none"
                           stroke={stroke}
-                          stroke-width="2"
+                          stroke-width="2.25"
                           vector-effect="non-scaling-stroke"
                           stroke-linejoin="round"
                           stroke-linecap="round"
+                          filter="url(#forex-nav-glow)"
                         />
+                        <%!-- Glowing tip dot at the most recent sample --%>
+                        <circle cx={tip_x} cy={tip_y} r="6" fill={stroke} fill-opacity="0.25" />
+                        <circle cx={tip_x} cy={tip_y} r="3.5" fill={stroke} />
+                        <circle cx={tip_x} cy={tip_y} r="1.5" fill="white" />
                       </svg>
-                      <div class="flex justify-between mt-2 text-[10px] text-gray-500 font-mono tabular-nums">
-                        <span>${:erlang.float_to_binary(first_nav, decimals: 2)}</span>
-                        <span class={[
-                          "font-bold",
-                          delta >= 0 && "text-emerald-400",
-                          delta < 0 && "text-red-400"
+
+                      <%!-- Time axis labels under the chart --%>
+                      <div class="flex justify-between text-[10px] text-gray-600 font-mono mt-1 tabular-nums">
+                        <span>{format_session_time(first_ts)}</span>
+                        <span>{format_session_time(mid_ts)}</span>
+                        <span>{format_session_time(last_ts)}</span>
+                      </div>
+
+                      <%!-- Range + delta strip --%>
+                      <div class="grid grid-cols-3 gap-3 mt-3">
+                        <div class="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+                          <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Open</p>
+                          <p class="text-sm font-mono tabular-nums text-gray-200">${:erlang.float_to_binary(first_nav, decimals: 2)}</p>
+                        </div>
+                        <div class={[
+                          "rounded-lg border px-3 py-2 text-center",
+                          delta >= 0 && "border-emerald-500/30 bg-emerald-500/[0.06]",
+                          delta < 0 && "border-red-500/30 bg-red-500/[0.06]"
                         ]}>
-                          {if delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(delta), decimals: 2)} ({:erlang.float_to_binary(abs(delta_pct), decimals: 2)}%)
-                        </span>
-                        <span>${:erlang.float_to_binary(last_nav, decimals: 2)}</span>
+                          <p class={[
+                            "text-[9px] uppercase tracking-widest font-bold",
+                            delta >= 0 && "text-emerald-400",
+                            delta < 0 && "text-red-400"
+                          ]}>Session Δ</p>
+                          <p class={[
+                            "text-sm font-mono tabular-nums font-bold",
+                            delta >= 0 && "text-emerald-400",
+                            delta < 0 && "text-red-400"
+                          ]}>
+                            {if delta >= 0, do: "+", else: "-"}${:erlang.float_to_binary(abs(delta), decimals: 2)} ({:erlang.float_to_binary(abs(delta_pct), decimals: 2)}%)
+                          </p>
+                        </div>
+                        <div class="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-right">
+                          <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Range</p>
+                          <p class="text-sm font-mono tabular-nums text-gray-200">${:erlang.float_to_binary(min_nav, decimals: 2)} – ${:erlang.float_to_binary(max_nav, decimals: 2)}</p>
+                        </div>
                       </div>
                     <% true -> %>
                       <div class="py-10 text-center">
-                        <p class="text-xs text-gray-500">
-                          Collecting NAV samples — chart appears after a couple of refreshes.
+                        <div class="w-12 h-1 mx-auto rounded-full bg-emerald-500/30 overflow-hidden mb-4">
+                          <div class="h-full w-1/3 bg-emerald-400 animate-pulse rounded-full"></div>
+                        </div>
+                        <p class="text-xs text-gray-400 font-bold uppercase tracking-widest">
+                          Building chart…
+                        </p>
+                        <p class="text-[10px] text-gray-600 mt-2">
+                          Capturing NAV samples — first chart appears in under 10s.
                         </p>
                         <p class="text-[10px] text-gray-700 mt-1 font-mono">
-                          {length(@forex_nav_history)} / 2 samples needed
+                          {length(@forex_nav_history)} / 2 samples
                         </p>
                       </div>
                   <% end %>
