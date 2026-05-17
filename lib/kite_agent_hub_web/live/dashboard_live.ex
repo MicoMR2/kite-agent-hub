@@ -4246,50 +4246,138 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <% end %>
                     </div>
 
-                    <%= if length(@alpaca_history) > 1 do %>
-                      <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
-                        <%!-- Grid lines --%>
-                        <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
-                        <line x1="0" y1="80" x2="400" y2="80" stroke="white" stroke-opacity="0.05" />
-                        <line x1="0" y1="120" x2="400" y2="120" stroke="white" stroke-opacity="0.05" />
-                        <%!-- Gradient fill --%>
-                        <defs>
-                          <linearGradient id="equity-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color="#22c55e" stop-opacity="0.2" />
-                            <stop offset="100%" stop-color="#22c55e" stop-opacity="0.0" />
-                          </linearGradient>
-                        </defs>
-                        <polygon
-                          points={"#{sparkline_points(@alpaca_history, 400, 150)} 400,150 0,150"}
-                          fill="url(#equity-fill)"
-                        />
-                        <%!-- Line --%>
-                        <polyline
-                          points={sparkline_points(@alpaca_history, 400, 150)}
-                          fill="none"
-                          stroke="#22c55e"
-                          stroke-width="2"
-                          vector-effect="non-scaling-stroke"
-                        />
-                      </svg>
-                      <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
-                        <span>
-                          ${List.first(@alpaca_history, %{})
-                          |> Map.get(:equity, 0)
-                          |> Float.round(0)
-                          |> trunc()}
-                        </span>
-                        <span>
-                          ${List.last(@alpaca_history, %{})
-                          |> Map.get(:equity, 0)
-                          |> Float.round(0)
-                          |> trunc()}
-                        </span>
-                      </div>
-                    <% else %>
-                      <p class="text-center text-gray-600 text-xs py-10">
-                        No equity history for this range.
-                      </p>
+                    <%!-- Same trading-chart treatment as the Forex instrument
+                         view (Mico 13772 — modernize alongside Forex). The
+                         range tab strip above is unchanged; only the SVG
+                         body is upgraded. CrosshairChart hook reads
+                         `data-points` from the server-rendered JSON, same
+                         CyberSec 13769 rules. --%>
+                    <% alpaca_chart = alpaca_equity_chart_data(@alpaca_history, 640, 200) %>
+                    <%= case alpaca_chart do %>
+                      <% :empty -> %>
+                        <p class="text-center text-gray-600 text-xs py-10">
+                          No equity history for this range.
+                        </p>
+                      <% c -> %>
+                        <% stroke = if c.delta >= 0, do: "#22c55e", else: "#ef4444" %>
+                        <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+                          <p class="text-2xl font-mono tabular-nums text-white">
+                            ${:erlang.float_to_binary(c.last, decimals: 2)}
+                          </p>
+                          <span class={[
+                            "text-xs font-mono tabular-nums px-2 py-0.5 rounded",
+                            c.delta >= 0 && "bg-emerald-500/15 text-emerald-300",
+                            c.delta < 0 && "bg-red-500/15 text-red-300"
+                          ]}>
+                            {if c.delta >= 0, do: "+", else: ""}${:erlang.float_to_binary(c.delta,
+                              decimals: 2
+                            )} ({:erlang.float_to_binary(c.delta_pct, decimals: 2)}%)
+                          </span>
+                        </div>
+                        <div
+                          id="alpaca-equity-chart"
+                          phx-hook="CrosshairChart"
+                          class="relative"
+                          data-points={c.crosshair_data}
+                        >
+                          <svg
+                            viewBox="0 0 700 220"
+                            preserveAspectRatio="none"
+                            class="w-full h-56 select-none cursor-crosshair"
+                          >
+                            <defs>
+                              <linearGradient
+                                id="alpaca-equity-fill"
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop offset="0%" stop-color={stroke} stop-opacity="0.32" />
+                                <stop offset="60%" stop-color={stroke} stop-opacity="0.10" />
+                                <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                              </linearGradient>
+                            </defs>
+                            <g transform="translate(0,10)">
+                              <%= for {tick, idx} <- Enum.with_index(c.y_ticks) do %>
+                                <line
+                                  x1="0"
+                                  y1={tick.y}
+                                  x2="640"
+                                  y2={tick.y}
+                                  stroke="white"
+                                  stroke-opacity={if idx == 2, do: "0.12", else: "0.05"}
+                                  stroke-dasharray={if idx == 2, do: "4,4", else: ""}
+                                />
+                                <text
+                                  x="648"
+                                  y={tick.y + 3}
+                                  fill="rgba(156,163,175,0.7)"
+                                  font-size="9"
+                                  font-family="ui-monospace, monospace"
+                                  text-anchor="start"
+                                >
+                                  ${tick.label}
+                                </text>
+                              <% end %>
+                              <polygon
+                                points={c.area_points}
+                                fill="url(#alpaca-equity-fill)"
+                              />
+                              <polyline
+                                points={c.points}
+                                fill="none"
+                                stroke={stroke}
+                                stroke-width="1.75"
+                                stroke-linejoin="round"
+                                stroke-linecap="round"
+                                vector-effect="non-scaling-stroke"
+                              />
+                              <line
+                                data-crosshair-x
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="200"
+                                stroke="white"
+                                stroke-opacity="0.45"
+                                stroke-width="0.5"
+                                stroke-dasharray="2,3"
+                                class="hidden"
+                              />
+                            </g>
+                          </svg>
+                          <div
+                            data-crosshair-tooltip
+                            class="hidden absolute top-2 left-2 pointer-events-none px-2 py-1 rounded-md bg-black/80 border border-white/10 text-[10px] font-mono tabular-nums shadow-lg"
+                            style="z-index: 5;"
+                          >
+                            <span data-crosshair-time class="text-gray-400 mr-2"></span>
+                            <span data-crosshair-price class="text-white"></span>
+                          </div>
+                        </div>
+                        <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
+                          <span>{Enum.at(c.x_ticks, 0).label}</span>
+                          <span>{Enum.at(c.x_ticks, 1).label}</span>
+                          <span>{Enum.at(c.x_ticks, 2).label}</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-3 text-[10px] text-gray-500 font-mono flex-wrap gap-2">
+                          <span class="inline-flex items-center gap-1.5">
+                            <span class={[
+                              "inline-block w-3 h-[2px] rounded",
+                              c.delta >= 0 && "bg-emerald-400",
+                              c.delta < 0 && "bg-red-400"
+                            ]}>
+                            </span>
+                            Equity
+                          </span>
+                          <span>
+                            Hi ${:erlang.float_to_binary(c.max, decimals: 2)} · Lo ${:erlang.float_to_binary(
+                              c.min,
+                              decimals: 2
+                            )}
+                          </span>
+                        </div>
                     <% end %>
                   </div>
 
@@ -6999,6 +7087,136 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp forex_instrument_chart_data(_, _, _, _), do: :empty
+
+  # Same trading-chart treatment for the Alpaca portfolio equity series.
+  # Input is the LV assign `@alpaca_history` — a list of `%{t: unix_ts,
+  # v: equity_float}` rows pulled by `AlpacaClient.portfolio_history/5`.
+  # Returns the same map shape as `forex_instrument_chart_data/4` so the
+  # template + `CrosshairChart` hook can render it identically. Equity
+  # is in dollars so labels are formatted with 2 decimals; tooltip
+  # values include the `$` symbol baked into the value string.
+  defp alpaca_equity_chart_data(history, width, height)
+       when is_list(history) and length(history) > 1 do
+    parsed =
+      history
+      |> Enum.map(fn row ->
+        v = Map.get(row, :v)
+        t = Map.get(row, :t)
+
+        cond do
+          is_number(v) -> %{v: v * 1.0, t: t}
+          true -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if length(parsed) < 2 do
+      :empty
+    else
+      values = Enum.map(parsed, & &1.v)
+      min_v = Enum.min(values)
+      max_v = Enum.max(values)
+      raw_range = max_v - min_v
+      range = if raw_range == 0.0, do: max(min_v * 0.001, 0.01), else: raw_range
+      last_idx = length(parsed) - 1
+      pad_y = 6.0
+      inner_h = height - 2 * pad_y
+
+      to_xy = fn v, i ->
+        x = i / last_idx * width
+        y = height - pad_y - (v - min_v) / range * inner_h
+        {Float.round(x, 2), Float.round(y, 2)}
+      end
+
+      pt_strings =
+        values
+        |> Enum.with_index()
+        |> Enum.map(fn {v, i} ->
+          {x, y} = to_xy.(v, i)
+          "#{x},#{y}"
+        end)
+
+      points_str = Enum.join(pt_strings, " ")
+
+      area_str =
+        "#{points_str} #{Float.round(width * 1.0, 2)},#{Float.round(height * 1.0, 2)} 0,#{Float.round(height * 1.0, 2)}"
+
+      y_ticks =
+        for q <- [0.0, 0.25, 0.5, 0.75, 1.0] do
+          val = max_v - q * raw_range
+          y = pad_y + q * inner_h
+
+          %{
+            y: Float.round(y, 2),
+            label: :erlang.float_to_binary(val, decimals: 0)
+          }
+        end
+
+      first_label = format_alpaca_ts(List.first(parsed).t)
+      mid_label = format_alpaca_ts(Enum.at(parsed, div(last_idx, 2)).t)
+      last_label = format_alpaca_ts(List.last(parsed).t)
+
+      x_ticks = [
+        %{label: first_label},
+        %{label: mid_label},
+        %{label: last_label}
+      ]
+
+      crosshair_points =
+        parsed
+        |> Enum.with_index()
+        |> Enum.map(fn {%{v: v, t: t}, i} ->
+          {x, _y} = to_xy.(v, i)
+
+          %{
+            x: x,
+            v: "$" <> :erlang.float_to_binary(v, decimals: 2),
+            t: format_alpaca_ts(t)
+          }
+        end)
+
+      first_v = List.first(values)
+      last_v = List.last(values)
+      delta = last_v - first_v
+      delta_pct = if first_v > 0.0, do: delta / first_v * 100.0, else: 0.0
+
+      %{
+        points: points_str,
+        area_points: area_str,
+        y_ticks: y_ticks,
+        x_ticks: x_ticks,
+        crosshair_data: Jason.encode!(crosshair_points),
+        first: first_v,
+        last: last_v,
+        min: min_v,
+        max: max_v,
+        delta: delta,
+        delta_pct: delta_pct
+      }
+    end
+  rescue
+    _ -> :empty
+  end
+
+  defp alpaca_equity_chart_data(_, _, _), do: :empty
+
+  # Alpaca's portfolio_history endpoint returns Unix-second timestamps.
+  # For intraday periods this should read as a time-of-day; for daily
+  # periods (1W / 1M / etc.) a M/D date reads better. We render both
+  # so the label always has context.
+  defp format_alpaca_ts(ts) when is_integer(ts) do
+    case DateTime.from_unix(ts) do
+      {:ok, dt} ->
+        "#{pad2(dt.month)}/#{pad2(dt.day)} #{pad2(dt.hour)}:#{pad2(dt.minute)}"
+
+      _ ->
+        "—"
+    end
+  rescue
+    _ -> "—"
+  end
+
+  defp format_alpaca_ts(_), do: "—"
 
   defp parse_oanda_time(ts) when is_binary(ts) do
     case DateTime.from_iso8601(ts) do
