@@ -5611,7 +5611,13 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   </p>
                   <%= if breakdown.total_value > 0.0 do %>
                     <div class="relative" phx-mouseleave="portfolio_unhover">
-                      <svg viewBox="-50 -50 100 100" class="w-72 h-72 -rotate-90" style="transition: all 600ms ease;">
+                      <%!-- viewBox -60..60 (was -50..50) leaves breathing room
+                      for the stroke + hover drop-shadow. Arc outer radius
+                      hits 44 + 18/2 = 53 when hovered, plus an 8px shadow
+                      blur; the previous 100x100 viewBox clipped both. SVG
+                      itself uses overflow-visible so any future glow can't
+                      be cut by the SVG bounds either. --%>
+                      <svg viewBox="-60 -60 120 120" class="w-72 h-72 -rotate-90 overflow-visible" style="transition: all 600ms ease;">
                         <circle r="44" cx="0" cy="0" fill="transparent" stroke="rgba(255,255,255,0.04)" stroke-width="14" />
                         <%= for slice <- breakdown.slices, slice.value > 0 do %>
                           <% circumference = 2 * 3.141592653589793 * 44
