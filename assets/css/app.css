@@ -363,6 +363,22 @@ html[data-theme="light"] [class~="text-gray-700"] {
   color: #64748b !important;
 }
 
+/* Chart hover tooltips — pill is intentionally dark in BOTH themes so
+   it reads cleanly over light or dark chart canvases. The earlier
+   Tailwind `text-white` / `text-gray-300` inside the pill were getting
+   flipped to dark by the light-mode color overrides above, leaving
+   the tooltip text nearly invisible on its own dark background
+   (Mico 13868). Force high-contrast colors regardless of theme. */
+.kah-chart-tooltip {
+  color: #ffffff !important;
+}
+.kah-chart-tooltip-time {
+  color: #d1d5db !important;
+}
+.kah-chart-tooltip-price {
+  color: #ffffff !important;
+}
+
 /* Alpaca tab KPI strip — the per-card text colors (Equity / Cash /
    Buying Power / Reg-T BP) and the Margin Details rows use light
    broker-tinted palettes that vanish on the cream canvas. Re-key to
