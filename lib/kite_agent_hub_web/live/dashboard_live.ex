@@ -2665,16 +2665,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
                       <p class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-0.5">
-                        Next Step
+                        Ready to trade?
                       </p>
                       <p class="text-sm font-bold text-white leading-tight">
-                        Connect Your Agent
+                        Set up your agent below to start →
                       </p>
                       <p class="text-[11px] text-emerald-200/70 mt-0.5 leading-snug">
-                        After creating an agent, scroll down to copy its prompt into Claude Code or Codex Terminal.
+                        Copy your agent's prompt into Claude Code or Codex Terminal and it starts running.
                       </p>
                     </div>
-                    <span class="text-2xl text-emerald-400 group-hover:translate-y-1 transition-transform animate-bounce">
+                    <span class="text-2xl text-emerald-400 animate-pulse drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]">
                       ↓
                     </span>
                   </div>
