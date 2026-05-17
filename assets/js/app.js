@@ -400,6 +400,128 @@ const CountUp = {
   }
 }
 
+// DonutChart — client-side hover interactivity for the portfolio donut.
+// Replaces a server-side `phx-mouseenter` round-trip per Phorari 9982.
+// Reads broker data from `data-*` attributes set in HEEx (server-trusted),
+// updates the donut hole + arcs + cards locally with anime.js.
+// CyberSec 9983: writes only via textContent / classList / setAttribute —
+// never innerHTML.
+const DonutChart = {
+  mounted() {
+    this.arcs = Array.from(this.el.querySelectorAll("[data-arc]"))
+    this.cards = Array.from(this.el.querySelectorAll("[data-card]"))
+    this.holeDefault = this.el.querySelector("[data-donut-hole-default]")
+    this.holeHovered = this.el.querySelector("[data-donut-hole-hovered]")
+    this.holeLabel = this.el.querySelector("[data-hole-label]")
+    this.holeValue = this.el.querySelector("[data-hole-value]")
+    this.holePct = this.el.querySelector("[data-hole-pct]")
+    this.holePnl = this.el.querySelector("[data-hole-pnl]")
+
+    this._listeners = []
+
+    this.cards.forEach(card => {
+      const key = card.dataset.card
+      const onEnter = () => this._enter(key)
+      const onLeave = () => this._leave()
+      card.addEventListener("pointerenter", onEnter)
+      card.addEventListener("pointerleave", onLeave)
+      this._listeners.push([card, "pointerenter", onEnter], [card, "pointerleave", onLeave])
+    })
+
+    this.arcs.forEach(arc => {
+      const key = arc.dataset.arc
+      const onEnter = () => this._enter(key)
+      const onLeave = () => this._leave()
+      arc.addEventListener("pointerenter", onEnter)
+      arc.addEventListener("pointerleave", onLeave)
+      this._listeners.push([arc, "pointerenter", onEnter], [arc, "pointerleave", onLeave])
+    })
+  },
+
+  destroyed() {
+    if (!this._listeners) return
+    this._listeners.forEach(([el, ev, fn]) => el.removeEventListener(ev, fn))
+    this._listeners = []
+  },
+
+  _enter(key) {
+    if (this._activeKey === key) return
+    this._activeKey = key
+
+    const hoveredCard = this.cards.find(c => c.dataset.card === key)
+    if (!hoveredCard) return
+    const color = hoveredCard.dataset.color
+
+    // Hole content swap. textContent only — never innerHTML.
+    if (this.holeDefault && this.holeHovered) {
+      this.holeDefault.classList.add("hidden")
+      this.holeHovered.classList.remove("hidden")
+    }
+    if (this.holeLabel) {
+      this.holeLabel.textContent = hoveredCard.dataset.label || ""
+      this.holeLabel.style.color = color
+    }
+    if (this.holeValue) this.holeValue.textContent = hoveredCard.dataset.value || ""
+    if (this.holePct) {
+      this.holePct.textContent = `${hoveredCard.dataset.pct}% of total`
+      this.holePct.style.color = color
+    }
+    if (this.holePnl) {
+      const pnl = hoveredCard.dataset.pnl || ""
+      const sign = hoveredCard.dataset.pnlSign || "+"
+      this.holePnl.textContent = pnl
+      this.holePnl.style.color = sign === "+" ? "#22c55e" : "#ef4444"
+    }
+
+    // Arcs: scale up the hovered one + glow, dim others.
+    this.arcs.forEach(arc => {
+      const isHovered = arc.dataset.arc === key
+      anime.remove(arc)
+      if (isHovered) {
+        arc.style.filter = `drop-shadow(0 0 10px ${color})`
+        anime({ targets: arc, scale: 1.06, opacity: 1, duration: 200, easing: "easeOutCubic" })
+      } else {
+        arc.style.filter = ""
+        anime({ targets: arc, scale: 1.0, opacity: 0.4, duration: 200, easing: "easeOutCubic" })
+      }
+    })
+
+    // Cards: matching card gets ring + scale, others stay neutral.
+    this.cards.forEach(card => {
+      if (card.dataset.card === key) {
+        card.style.boxShadow = `0 0 0 2px ${color}, 0 0 24px ${color}55`
+        card.style.transform = "scale(1.015)"
+      } else {
+        card.style.boxShadow = ""
+        card.style.transform = "scale(1.0)"
+        card.style.opacity = "0.65"
+      }
+    })
+  },
+
+  _leave() {
+    if (!this._activeKey) return
+    this._activeKey = null
+
+    if (this.holeDefault && this.holeHovered) {
+      this.holeHovered.classList.add("hidden")
+      this.holeDefault.classList.remove("hidden")
+    }
+
+    this.arcs.forEach(arc => {
+      anime.remove(arc)
+      arc.style.filter = ""
+      anime({ targets: arc, scale: 1.0, opacity: 1, duration: 200, easing: "easeOutCubic" })
+    })
+
+    this.cards.forEach(card => {
+      card.style.boxShadow = ""
+      card.style.transform = ""
+      card.style.opacity = ""
+    })
+  }
+}
+
 // FadeInStagger — anime.js entrance animation that lifts and fades in
 // every immediate child of the hook element with a small per-element
 // delay. Used for portfolio per-broker cards on mount.
@@ -437,6 +559,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     LocalTime,
     ChatInputClear,
     CountUp,
+    DonutChart,
     DraggableChat,
     FadeInStagger,
     QuickTradeForm,
