@@ -24,6 +24,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/kite_agent_hub"
 import topbar from "../vendor/topbar"
+import anime from "../vendor/anime.es"
 
 const ScrollBottom = {
   mounted() { this.el.scrollTop = this.el.scrollHeight },
@@ -365,6 +366,62 @@ const DraggableChat = {
   }
 }
 
+// CountUp — anime.js-driven numeric count-up on mount. Targets a number
+// via `data-target` (Number-coercible); optional `data-decimals` (default
+// 2) and `data-prefix` (e.g. "$") shape the formatted output. The hook
+// remembers the last animated value so LiveView re-renders that arrive
+// while no value has changed don't re-trigger the animation.
+const CountUp = {
+  mounted() { this._lastTarget = null; this._run() },
+  updated() { this._run() },
+  _run() {
+    const targetStr = this.el.dataset.target
+    if (targetStr === undefined || targetStr === null || targetStr === "") return
+    const target = Number(targetStr)
+    if (Number.isNaN(target)) return
+    if (this._lastTarget !== null && Math.abs(target - this._lastTarget) < 0.0001) return
+    const decimals = Number(this.el.dataset.decimals ?? 2)
+    const prefix = this.el.dataset.prefix ?? ""
+    const from = this._lastTarget ?? 0
+    const obj = { v: from }
+    this._lastTarget = target
+    anime({
+      targets: obj,
+      v: target,
+      duration: 900,
+      easing: "easeOutCubic",
+      update: () => {
+        const n = Number(obj.v).toFixed(decimals)
+        // Tabular-num friendly: split sign and absolute value so the
+        // existing template-side sign handling (▲/▼ pill) stays intact.
+        this.el.textContent = `${prefix}${n}`
+      }
+    })
+  }
+}
+
+// FadeInStagger — anime.js entrance animation that lifts and fades in
+// every immediate child of the hook element with a small per-element
+// delay. Used for portfolio per-broker cards on mount.
+const FadeInStagger = {
+  mounted() {
+    const targets = Array.from(this.el.children)
+    if (targets.length === 0) return
+    targets.forEach(el => {
+      el.style.opacity = "0"
+      el.style.transform = "translateY(8px)"
+    })
+    anime({
+      targets,
+      opacity: [0, 1],
+      translateY: [8, 0],
+      duration: 600,
+      delay: anime.stagger(60),
+      easing: "easeOutCubic"
+    })
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   // 10s gives WebSocket time to handshake on slower connections before
@@ -379,7 +436,9 @@ const liveSocket = new LiveSocket("/live", Socket, {
     CopyToClipboard,
     LocalTime,
     ChatInputClear,
+    CountUp,
     DraggableChat,
+    FadeInStagger,
     QuickTradeForm,
     QuickTradeConfirm,
     Magnetic,
