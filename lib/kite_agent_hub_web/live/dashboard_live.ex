@@ -5660,7 +5660,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               )
                             ]}
                           >
-                            <span class="text-[11px] font-mono font-bold truncate">{name}</span>
+                            <span class="text-[11px] font-mono truncate">{name}</span>
                             <span class={[
                               "text-[10px] font-mono tabular-nums shrink-0",
                               if(active?, do: "text-white", else: "text-gray-400")
