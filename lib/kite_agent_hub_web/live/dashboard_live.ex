@@ -4312,6 +4312,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </filter>
                             </defs>
                             <g transform="translate(0,10)">
+                              <%!-- Subtle chart canvas tint — gives the plot
+                                   area its own surface vs the card background
+                                   (Phorari 13809: lighter chart bg). --%>
+                              <rect
+                                x="0"
+                                y="0"
+                                width="640"
+                                height="200"
+                                fill="white"
+                                fill-opacity="0.03"
+                              />
                               <%= for {tick, idx} <- Enum.with_index(c.y_ticks) do %>
                                 <line
                                   x1="0"
@@ -4346,7 +4357,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 d={c.path_d}
                                 fill="none"
                                 stroke={stroke}
-                                stroke-width="1.75"
+                                stroke-width="2.25"
                                 stroke-linejoin="round"
                                 stroke-linecap="round"
                                 vector-effect="non-scaling-stroke"
@@ -4378,11 +4389,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </svg>
                           <div
                             data-crosshair-tooltip
-                            class="hidden absolute top-2 left-2 pointer-events-none px-2 py-1 rounded-md bg-black/80 border border-white/10 text-[10px] font-mono tabular-nums shadow-lg"
+                            class="hidden absolute pointer-events-none px-3 py-2 rounded-lg bg-gray-900/95 border border-white/15 text-xs font-mono tabular-nums shadow-xl text-white"
                             style="z-index: 5;"
                           >
-                            <span data-crosshair-time class="text-gray-400 mr-2"></span>
-                            <span data-crosshair-price class="text-white"></span>
+                            <span data-crosshair-time class="text-gray-300 mr-2"></span>
+                            <span data-crosshair-price class="text-white font-semibold"></span>
                           </div>
                         </div>
                         <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
@@ -5806,7 +5817,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               d={c.path_d}
                               fill="none"
                               stroke={stroke}
-                              stroke-width="1.75"
+                              stroke-width="2.25"
                               stroke-linejoin="round"
                               stroke-linecap="round"
                               vector-effect="non-scaling-stroke"
@@ -5843,7 +5854,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                              price via textContent only (CyberSec 13769). --%>
                         <div
                           data-crosshair-tooltip
-                          class="hidden absolute top-2 left-2 pointer-events-none px-2 py-1 rounded-md bg-black/80 border border-white/10 text-[10px] font-mono tabular-nums shadow-lg"
+                          class="hidden absolute pointer-events-none px-3 py-2 rounded-lg bg-gray-900/95 border border-white/15 text-xs font-mono tabular-nums shadow-xl text-white"
                           style="z-index: 5;"
                         >
                           <span data-crosshair-time class="text-gray-400 mr-2"></span>
