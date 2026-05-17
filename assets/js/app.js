@@ -556,6 +556,89 @@ const DonutChart = {
   }
 }
 
+// CrosshairChart — pointermove crosshair + tooltip for the forex
+// instrument price chart. Reads pre-computed [{x, v, t}] points from
+// the container's `data-points` attribute (server-encoded JSON; the
+// hook never parses formatted DOM text — CyberSec 13769). All DOM
+// writes happen via textContent / classList / setAttribute, no
+// innerHTML.
+const CrosshairChart = {
+  mounted() { this._bind() },
+
+  // LiveView re-renders this container whenever @forex_chart_price or
+  // @forex_candles change (every 30s poll, plus on MID/BID/ASK toggle).
+  // Re-bind so listeners attach to the fresh DOM nodes and the new
+  // data-points payload.
+  updated() { this._bind() },
+
+  destroyed() {
+    if (this._cleanup) this._cleanup()
+  },
+
+  _bind() {
+    if (this._cleanup) this._cleanup()
+
+    let points
+    try {
+      points = JSON.parse(this.el.dataset.points || "[]")
+    } catch (e) {
+      points = []
+    }
+    if (!Array.isArray(points) || points.length === 0) {
+      this._cleanup = null
+      return
+    }
+
+    const svg = this.el.querySelector("svg")
+    if (!svg) return
+
+    const crosshairLine = this.el.querySelector("[data-crosshair-x]")
+    const tooltip = this.el.querySelector("[data-crosshair-tooltip]")
+    const tooltipPrice = this.el.querySelector("[data-crosshair-price]")
+    const tooltipTime = this.el.querySelector("[data-crosshair-time]")
+
+    const VIEW_W = 700  // matches the SVG viewBox width in HEEx
+    const PLOT_W = 640  // points are computed against this; right margin = price labels
+
+    const onMove = ev => {
+      const rect = svg.getBoundingClientRect()
+      if (rect.width === 0) return
+      const xRatio = (ev.clientX - rect.left) / rect.width
+      const cursorX = Math.max(0, Math.min(PLOT_W, xRatio * VIEW_W))
+
+      // Walk the (small) point list to find the nearest x.
+      let nearest = points[0]
+      let bestDelta = Math.abs(points[0].x - cursorX)
+      for (let i = 1; i < points.length; i++) {
+        const d = Math.abs(points[i].x - cursorX)
+        if (d < bestDelta) { bestDelta = d; nearest = points[i] }
+      }
+
+      if (crosshairLine) {
+        crosshairLine.setAttribute("x1", nearest.x)
+        crosshairLine.setAttribute("x2", nearest.x)
+        crosshairLine.classList.remove("hidden")
+      }
+      if (tooltip) tooltip.classList.remove("hidden")
+      if (tooltipPrice) tooltipPrice.textContent = nearest.v
+      if (tooltipTime) tooltipTime.textContent = nearest.t
+    }
+
+    const onLeave = () => {
+      if (crosshairLine) crosshairLine.classList.add("hidden")
+      if (tooltip) tooltip.classList.add("hidden")
+    }
+
+    svg.addEventListener("pointermove", onMove)
+    svg.addEventListener("pointerleave", onLeave)
+    this._cleanup = () => {
+      svg.removeEventListener("pointermove", onMove)
+      svg.removeEventListener("pointerleave", onLeave)
+      this._cleanup = null
+    }
+  }
+}
+
 // FadeInStagger — anime.js entrance animation that lifts and fades in
 // every immediate child of the hook element with a small per-element
 // delay. Used for portfolio per-broker cards on mount.
@@ -593,6 +676,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     LocalTime,
     ChatInputClear,
     CountUp,
+    CrosshairChart,
     DonutChart,
     DraggableChat,
     FadeInStagger,

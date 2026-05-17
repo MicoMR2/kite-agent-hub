@@ -2024,6 +2024,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
     do:
       "Each point is the ask price (what you pay buying) at the close of a 5-minute window. Useful when planning long entries."
 
+  # Short legend label for the chart price source.
+  defp chart_caption_short("M"), do: "Mid"
+  defp chart_caption_short("B"), do: "Bid"
+  defp chart_caption_short("A"), do: "Ask"
+  defp chart_caption_short(_), do: "Mid"
+
   defp chart_caption(_),
     do: "Each point is the closing price of a 5-minute window."
 
@@ -5282,7 +5288,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       upl_f >= 0 && "text-emerald-400",
                       upl_f < 0 && "text-red-400"
                     ]}>
-                      {if upl_f >= 0, do: "+", else: "-"}<span class="text-gray-500 font-light">$</span><span
+                      {if upl_f >= 0, do: "+", else: "-"}<span class="text-gray-500 font-light">$</span>
+                      <span
                         id="forex-kpi-upl"
                         phx-hook="CountUp"
                         data-target={abs(upl_f)}
@@ -5441,7 +5448,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           </p>
                           <p class="text-sm font-mono tabular-nums text-gray-200">
                             ${:erlang.float_to_binary(min_nav, decimals: 2)} – ${:erlang.float_to_binary(
-                              max_nav, decimals: 2)}
+                              max_nav,
+                              decimals: 2
+                            )}
                           </p>
                         </div>
                       </div>
@@ -5464,14 +5473,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 </div>
               <% end %>
 
-              <%!-- Chart (OANDA candles only) — sparkline of mid-close
-                   prices over the last 10 hours (120 × 5m candles).
-                   Quick visual on direction; for serious chart work
-                   use OANDAs full charting at trade.oanda.com. --%>
+              <%!-- Chart (OANDA candles only) — rich instrument view:
+                   gradient area fill, 20-period MA dotted overlay,
+                   right-side Y-axis price ticks, X-axis time labels,
+                   pointermove crosshair + tooltip. Data is all
+                   server-computed by `forex_instrument_chart_data/4`;
+                   the `CrosshairChart` hook reads pre-encoded JSON
+                   from `data-points` and only writes textContent /
+                   classList / setAttribute (CyberSec 13769). --%>
               <%= if @forex_provider == :oanda and @forex_candles != [] do %>
                 <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
                   <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
-                    <p class="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest">
                       {@forex_symbol} — last 10h
                     </p>
                     <div class="flex items-center gap-1.5">
@@ -5502,20 +5515,153 @@ defmodule KiteAgentHubWeb.DashboardLive do
                   <p class="text-[10px] text-gray-600 mb-3">
                     {chart_caption(@forex_chart_price)}
                   </p>
-                  <% pts = Oanda.sparkline_points(@forex_candles, 640, 120) %>
-                  <%= if pts != "" do %>
-                    <svg viewBox="0 0 640 120" preserveAspectRatio="none" class="w-full h-32">
-                      <polyline
-                        points={pts}
-                        fill="none"
-                        stroke="#22c55e"
-                        stroke-width="1.5"
-                        stroke-linejoin="round"
-                        stroke-linecap="round"
-                      />
-                    </svg>
-                  <% else %>
-                    <p class="text-xs text-gray-500 py-2">No chart data yet.</p>
+                  <% chart = forex_instrument_chart_data(@forex_candles, @forex_chart_price, 640, 200) %>
+                  <%= case chart do %>
+                    <% :empty -> %>
+                      <p class="text-xs text-gray-500 py-2">No chart data yet.</p>
+                    <% c -> %>
+                      <% stroke = if c.delta >= 0, do: "#22c55e", else: "#ef4444" %>
+                      <%!-- Last-price banner + Δ pill above chart --%>
+                      <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+                        <p class="text-2xl font-mono tabular-nums text-white">
+                          {:erlang.float_to_binary(c.last, decimals: c.decimals)}
+                        </p>
+                        <span class={[
+                          "text-xs font-mono tabular-nums px-2 py-0.5 rounded",
+                          c.delta >= 0 && "bg-emerald-500/15 text-emerald-300",
+                          c.delta < 0 && "bg-red-500/15 text-red-300"
+                        ]}>
+                          {if c.delta >= 0, do: "+", else: ""}{:erlang.float_to_binary(c.delta,
+                            decimals: c.decimals
+                          )} ({:erlang.float_to_binary(c.delta_pct, decimals: 2)}%)
+                        </span>
+                      </div>
+                      <%!-- Chart container — CrosshairChart hook reads
+                           `data-points` (server-encoded JSON) and writes
+                           textContent only. Outer div is `position: relative`
+                           so the tooltip can be absolutely positioned over
+                           the SVG. --%>
+                      <div
+                        id="forex-instrument-chart"
+                        phx-hook="CrosshairChart"
+                        class="relative"
+                        data-points={c.crosshair_data}
+                      >
+                        <svg
+                          viewBox="0 0 700 220"
+                          preserveAspectRatio="none"
+                          class="w-full h-56 select-none cursor-crosshair"
+                        >
+                          <defs>
+                            <linearGradient id="forex-chart-fill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stop-color={stroke} stop-opacity="0.35" />
+                              <stop offset="60%" stop-color={stroke} stop-opacity="0.10" />
+                              <stop offset="100%" stop-color={stroke} stop-opacity="0.0" />
+                            </linearGradient>
+                          </defs>
+                          <%!-- Plot area is x=0..640 inside a 700-wide viewBox;
+                               the 60px right margin is for price labels. The
+                               `g` shifts everything down 10px so the top tick
+                               label doesn't get clipped. --%>
+                          <g transform="translate(0,10)">
+                            <%= for {tick, idx} <- Enum.with_index(c.y_ticks) do %>
+                              <line
+                                x1="0"
+                                y1={tick.y}
+                                x2="640"
+                                y2={tick.y}
+                                stroke="white"
+                                stroke-opacity={if idx == 2, do: "0.12", else: "0.05"}
+                                stroke-dasharray={if idx == 2, do: "4,4", else: ""}
+                              />
+                              <text
+                                x="648"
+                                y={tick.y + 3}
+                                fill="rgba(156,163,175,0.7)"
+                                font-size="9"
+                                font-family="ui-monospace, monospace"
+                                text-anchor="start"
+                              >
+                                {tick.label}
+                              </text>
+                            <% end %>
+                            <polygon points={c.area_points} fill="url(#forex-chart-fill)" />
+                            <%= if c.ma_points != "" do %>
+                              <polyline
+                                points={c.ma_points}
+                                fill="none"
+                                stroke="#f59e0b"
+                                stroke-opacity="0.7"
+                                stroke-width="1"
+                                stroke-dasharray="3,3"
+                                vector-effect="non-scaling-stroke"
+                              />
+                            <% end %>
+                            <polyline
+                              points={c.points}
+                              fill="none"
+                              stroke={stroke}
+                              stroke-width="1.75"
+                              stroke-linejoin="round"
+                              stroke-linecap="round"
+                              vector-effect="non-scaling-stroke"
+                            />
+                            <line
+                              data-crosshair-x
+                              x1="0"
+                              y1="0"
+                              x2="0"
+                              y2="200"
+                              stroke="white"
+                              stroke-opacity="0.45"
+                              stroke-width="0.5"
+                              stroke-dasharray="2,3"
+                              class="hidden"
+                            />
+                          </g>
+                        </svg>
+                        <%!-- Tooltip — hook toggles `hidden`, writes time/
+                             price via textContent only (CyberSec 13769). --%>
+                        <div
+                          data-crosshair-tooltip
+                          class="hidden absolute top-2 left-2 pointer-events-none px-2 py-1 rounded-md bg-black/80 border border-white/10 text-[10px] font-mono tabular-nums shadow-lg"
+                          style="z-index: 5;"
+                        >
+                          <span data-crosshair-time class="text-gray-400 mr-2"></span>
+                          <span data-crosshair-price class="text-white"></span>
+                        </div>
+                      </div>
+                      <%!-- X-axis time labels --%>
+                      <div class="flex justify-between mt-1 text-[10px] text-gray-600 font-mono tabular-nums pr-[60px]">
+                        <span>{Enum.at(c.x_ticks, 0).label}</span>
+                        <span>{Enum.at(c.x_ticks, 1).label}</span>
+                        <span>{Enum.at(c.x_ticks, 2).label}</span>
+                      </div>
+                      <%!-- Legend strip --%>
+                      <div class="flex items-center justify-between mt-3 text-[10px] text-gray-500 font-mono flex-wrap gap-2">
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class={[
+                            "inline-block w-3 h-[2px] rounded",
+                            c.delta >= 0 && "bg-emerald-400",
+                            c.delta < 0 && "bg-red-400"
+                          ]}>
+                          </span>
+                          Price ({chart_caption_short(@forex_chart_price)})
+                        </span>
+                        <%= if c.ma_points != "" do %>
+                          <span class="inline-flex items-center gap-1.5 text-amber-300/80">
+                            <span class="inline-block w-3 border-t border-dashed border-amber-400">
+                            </span>
+                            MA-20
+                          </span>
+                        <% end %>
+                        <span>
+                          Hi {:erlang.float_to_binary(c.max, decimals: c.decimals)} · Lo {:erlang.float_to_binary(
+                            c.min,
+                            decimals: c.decimals
+                          )}
+                        </span>
+                      </div>
                   <% end %>
                 </div>
               <% end %>
@@ -6070,7 +6216,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     realized_total < 0 && "text-red-400"
                   ]}>
                     {if realized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
-                      abs(realized_total), decimals: 2)}
+                      abs(realized_total),
+                      decimals: 2
+                    )}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">Alpaca + Kalshi settled</p>
                 </div>
@@ -6084,7 +6232,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     unrealized_total < 0 && "text-red-400"
                   ]}>
                     {if unrealized_total >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
-                      abs(unrealized_total), decimals: 2)}
+                      abs(unrealized_total),
+                      decimals: 2
+                    )}
                   </p>
                   <p class="text-[10px] text-gray-600 mt-1">ForEx mark-to-market</p>
                 </div>
@@ -6302,7 +6452,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           slice.pnl < 0 && "text-red-400"
                         ]}>
                           {if slice.pnl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
-                            abs(slice.pnl), decimals: 2)}
+                            abs(slice.pnl),
+                            decimals: 2
+                          )}
                         </span>
                       </div>
                     </div>
@@ -6692,6 +6844,176 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp sparkline_points(_, _, _), do: ""
+
+  # Rich chart data for the forex instrument price chart. Builds the
+  # main line points, gradient-area polygon, 20-period MA overlay,
+  # Y-axis tick metadata, X-axis time labels, and a crosshair-points
+  # payload (JSON-encoded) — all server-side so the `CrosshairChart`
+  # hook reads from a server-trusted `data-points` attr instead of
+  # parsing formatted DOM text (CyberSec 13769).
+  defp forex_instrument_chart_data(candles, price_code, width, height)
+       when is_list(candles) and candles != [] do
+    sub_key =
+      case price_code do
+        "B" -> "bid"
+        "A" -> "ask"
+        _ -> "mid"
+      end
+
+    parsed =
+      candles
+      |> Enum.map(fn c ->
+        close =
+          case get_in(c, [sub_key, "c"]) || get_in(c, ["mid", "c"]) do
+            s when is_binary(s) ->
+              case Float.parse(s) do
+                {f, _} -> f
+                :error -> nil
+              end
+
+            n when is_number(n) ->
+              n * 1.0
+
+            _ ->
+              nil
+          end
+
+        if is_number(close), do: %{close: close, time: Map.get(c, "time")}, else: nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if length(parsed) < 2 do
+      :empty
+    else
+      closes = Enum.map(parsed, & &1.close)
+      min_v = Enum.min(closes)
+      max_v = Enum.max(closes)
+      raw_range = max_v - min_v
+      range = if raw_range == 0.0, do: 0.0001, else: raw_range
+      last_idx = length(parsed) - 1
+      pad_y = 6.0
+      inner_h = height - 2 * pad_y
+
+      to_xy = fn v, i ->
+        x = i / last_idx * width
+        y = height - pad_y - (v - min_v) / range * inner_h
+        {Float.round(x, 2), Float.round(y, 2)}
+      end
+
+      pt_strings =
+        closes
+        |> Enum.with_index()
+        |> Enum.map(fn {v, i} ->
+          {x, y} = to_xy.(v, i)
+          "#{x},#{y}"
+        end)
+
+      points_str = Enum.join(pt_strings, " ")
+
+      area_str =
+        "#{points_str} #{Float.round(width * 1.0, 2)},#{Float.round(height * 1.0, 2)} 0,#{Float.round(height * 1.0, 2)}"
+
+      ma_window = 20
+
+      ma_points_str =
+        if length(closes) >= ma_window do
+          closes
+          |> Enum.with_index()
+          |> Enum.map(fn {_v, i} ->
+            if i < ma_window - 1 do
+              nil
+            else
+              window = Enum.slice(closes, i - ma_window + 1, ma_window)
+              avg = Enum.sum(window) / ma_window
+              {x, y} = to_xy.(avg, i)
+              "#{x},#{y}"
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join(" ")
+        else
+          ""
+        end
+
+      # Use 5 decimals for FX-style pairs (sub-100), 3 for crosses or
+      # commodities above 100 (USD_JPY, XAU_USD, etc.).
+      decimals = if max_v >= 100, do: 3, else: 5
+
+      y_ticks =
+        for q <- [0.0, 0.25, 0.5, 0.75, 1.0] do
+          val = max_v - q * raw_range
+          y = pad_y + q * inner_h
+
+          %{
+            y: Float.round(y, 2),
+            label: :erlang.float_to_binary(val, decimals: decimals)
+          }
+        end
+
+      first_label = parse_oanda_time(List.first(parsed).time)
+      mid_label = parse_oanda_time(Enum.at(parsed, div(last_idx, 2)).time)
+      last_label = parse_oanda_time(List.last(parsed).time)
+
+      x_ticks = [
+        %{label: first_label},
+        %{label: mid_label},
+        %{label: last_label}
+      ]
+
+      crosshair_points =
+        parsed
+        |> Enum.with_index()
+        |> Enum.map(fn {%{close: c, time: t}, i} ->
+          {x, _y} = to_xy.(c, i)
+
+          %{
+            x: x,
+            v: :erlang.float_to_binary(c, decimals: decimals),
+            t: parse_oanda_time(t)
+          }
+        end)
+
+      first_v = List.first(closes)
+      last_v = List.last(closes)
+      delta = last_v - first_v
+      delta_pct = if first_v > 0.0, do: delta / first_v * 100.0, else: 0.0
+
+      %{
+        points: points_str,
+        area_points: area_str,
+        ma_points: ma_points_str,
+        y_ticks: y_ticks,
+        x_ticks: x_ticks,
+        crosshair_data: Jason.encode!(crosshair_points),
+        first: first_v,
+        last: last_v,
+        min: min_v,
+        max: max_v,
+        delta: delta,
+        delta_pct: delta_pct,
+        decimals: decimals
+      }
+    end
+  rescue
+    _ -> :empty
+  end
+
+  defp forex_instrument_chart_data(_, _, _, _), do: :empty
+
+  defp parse_oanda_time(ts) when is_binary(ts) do
+    case DateTime.from_iso8601(ts) do
+      {:ok, dt, _} -> "#{pad2(dt.hour)}:#{pad2(dt.minute)}"
+      _ -> "—"
+    end
+  rescue
+    _ -> "—"
+  end
+
+  defp parse_oanda_time(_), do: "—"
+
+  defp pad2(n) when is_integer(n) and n >= 0 and n < 10, do: "0#{n}"
+  defp pad2(n) when is_integer(n), do: "#{n}"
+  defp pad2(_), do: "00"
 
   # Cumulative net Kalshi P&L curve. `settlements` come from
   # `KalshiClient.settlements/4` with `:revenue` (gross payout) and
