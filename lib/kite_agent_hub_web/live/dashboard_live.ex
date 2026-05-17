@@ -7787,6 +7787,17 @@ defmodule KiteAgentHubWeb.DashboardLive do
   defp alpaca_realized_pnl(%{account: %{realized_pnl: pnl}}) when is_number(pnl), do: pnl * 1.0
   defp alpaca_realized_pnl(_), do: 0.0
 
+  # Portfolio donut + total NAV expect the FULL Kalshi account value
+  # (cash + open contract MV), not just the position breakdown.
+  # `portfolio_value` from `load_kalshi_data/1` is sum-of-positions —
+  # when there are zero open contracts and a non-zero cash balance,
+  # the donut would show $0 for Kalshi even though Mico has uninvested
+  # cash sitting there (Mico 13917). Add cash when both are present;
+  # fall back to whichever one we have when only one is populated.
+  defp kalshi_value(%{portfolio_value: pv, balance: %{available_balance: bal}})
+       when is_number(pv) and is_number(bal),
+       do: (pv + bal) * 1.0
+
   defp kalshi_value(%{portfolio_value: pv}) when is_number(pv), do: pv * 1.0
   defp kalshi_value(%{balance: %{available_balance: bal}}) when is_number(bal), do: bal * 1.0
   defp kalshi_value(_), do: 0.0
