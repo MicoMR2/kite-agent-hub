@@ -62,6 +62,17 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     # x402 fee enforcement live in later PRs (PR-4 x402 endpoint).
     field :payment_rail, :string, default: "none"
 
+    # User-configured drawdown thresholds (DrawdownGate Phase 1).
+    # Both default to nil = OFF (no enforcement). User sets these
+    # values themselves so KAH executes the user's pre-set rule
+    # rather than imposing platform-defined limits — same legal
+    # framing as a broker honoring the user's stop-loss, not a
+    # platform exercising investment discretion. Phase 2 adds UI;
+    # today these are settable via the PATCH /api/v1/agents/:id
+    # owner-only path.
+    field :halt_at_dd_pct, :decimal
+    field :flatten_at_dd_pct, :decimal
+
     belongs_to :organization, KiteAgentHub.Orgs.Organization
     has_many :trade_records, KiteAgentHub.Trading.TradeRecord
 
@@ -84,7 +95,9 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :llm_provider,
       :llm_model,
       :llm_endpoint_url,
-      :payment_rail
+      :payment_rail,
+      :halt_at_dd_pct,
+      :flatten_at_dd_pct
     ])
     |> fill_chain_id_default()
     |> validate_required([:name, :organization_id])
@@ -129,7 +142,9 @@ defmodule KiteAgentHub.Trading.KiteAgent do
       :wallet_address,
       :vault_address,
       :attestations_enabled,
-      :markets
+      :markets,
+      :halt_at_dd_pct,
+      :flatten_at_dd_pct
     ])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
@@ -139,7 +154,34 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_wallet_for_trading()
     |> validate_evm_address(:wallet_address)
     |> validate_evm_address(:vault_address)
+    |> validate_dd_threshold(:halt_at_dd_pct)
+    |> validate_dd_threshold(:flatten_at_dd_pct)
     |> unique_constraint(:wallet_address)
+  end
+
+  # Drawdown thresholds are stored as negative decimals (e.g. -3.0
+  # for "halt at -3% daily DD"). Positive values would mean "halt
+  # when up X%", which is nonsensical for a drawdown guardrail.
+  # `nil` is allowed and means "disabled" — the most common state.
+  defp validate_dd_threshold(changeset, field) do
+    case get_change(changeset, field) do
+      nil ->
+        changeset
+
+      %Decimal{} = value ->
+        if Decimal.lt?(value, 0) do
+          changeset
+        else
+          add_error(
+            changeset,
+            field,
+            "must be a negative percentage (e.g. -3.0 for halt at -3% daily DD)"
+          )
+        end
+
+      _ ->
+        add_error(changeset, field, "must be a decimal or nil")
+    end
   end
 
   @doc "Rotate the api_token to a new server-generated value."

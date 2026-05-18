@@ -135,11 +135,16 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
   # Accept only the whitelist; drop anything else silently so clients
   # that send api_token / wallet_address / status by mistake don't
-  # escalate. The schema's profile_changeset re-enforces this with
-  # `cast(attrs, [:name, :tags, :bio])`, but filtering here keeps
-  # input audit trails clean.
+  # escalate. The schema's profile_changeset re-enforces this, but
+  # filtering here keeps input audit trails clean.
+  #
+  # `halt_at_dd_pct` / `flatten_at_dd_pct` are the user-configured
+  # drawdown thresholds (DrawdownGate Phase 1). Owner-only by virtue
+  # of `authenticate_as/2` already gating the PATCH route — only the
+  # agent's own bearer token can hit this code path, and the URL ID
+  # match ensures the caller is editing their own agent record.
   defp profile_attrs(params) do
-    Map.take(params, ["name", "tags", "bio"])
+    Map.take(params, ["name", "tags", "bio", "halt_at_dd_pct", "flatten_at_dd_pct"])
   end
 
   defp serialize(agent, opts) do
