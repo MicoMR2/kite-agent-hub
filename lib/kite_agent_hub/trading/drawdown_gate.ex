@@ -115,7 +115,11 @@ defmodule KiteAgentHub.Trading.DrawdownGate do
   end
 
   defp evaluate_halt(%KiteAgent{halt_at_dd_pct: nil} = agent, dd_pct, equity) do
-    write_audit(agent, nil, equity, dd_pct, "allowed", nil)
+    # Halt is opt-out for this agent, but flatten may still be set —
+    # evaluate it independently so a user who set ONLY a flatten
+    # threshold still gets the unwind behavior they configured.
+    flatten_note = maybe_trigger_flatten(agent, dd_pct, equity)
+    write_audit(agent, "halt", nil, equity, dd_pct, "allowed", flatten_note)
     :ok
   end
 
@@ -123,19 +127,100 @@ defmodule KiteAgentHub.Trading.DrawdownGate do
     threshold = Decimal.to_float(agent.halt_at_dd_pct)
 
     if dd_pct <= threshold do
-      write_audit(agent, agent.halt_at_dd_pct, equity, dd_pct, "blocked", nil)
+      flatten_note = maybe_trigger_flatten(agent, dd_pct, equity)
+
+      write_audit(
+        agent,
+        "halt",
+        agent.halt_at_dd_pct,
+        equity,
+        dd_pct,
+        "blocked",
+        flatten_note
+      )
 
       reason =
         "user-configured halt at #{threshold}% — current daily DD #{Float.round(dd_pct, 2)}%. " <>
           "Note: Phase 1b realized-P&L only (Alpaca settled trades vs Alpaca last_equity); " <>
-          "unrealized P&L on open positions + OANDA/Kalshi positions will be included in Phase 2."
+          "unrealized P&L on open positions + OANDA/Kalshi positions will be included in Phase 2." <>
+          flatten_suffix(flatten_note)
 
       {:error, :daily_drawdown_halt, reason}
     else
-      write_audit(agent, agent.halt_at_dd_pct, equity, dd_pct, "allowed", nil)
+      flatten_note = maybe_trigger_flatten(agent, dd_pct, equity)
+      write_audit(agent, "halt", agent.halt_at_dd_pct, equity, dd_pct, "allowed", flatten_note)
       :ok
     end
   end
+
+  # When the user-configured `flatten_at_dd_pct` is set AND today's
+  # DD breaches it, write a `threshold_type="flatten"` audit row and
+  # schedule the `FlattenWorker` (Oban-deduped to one job per agent
+  # per day). Returns a short status string the caller can append to
+  # the audit reason / 422 message so the user sees it surfaced.
+  #
+  # Per CyberSec ask 14209 #3: phrase the surfaced copy as
+  # "scheduled" not "enqueued" so we don't promise the close
+  # definitively if Oban.insert ever errors.
+  defp maybe_trigger_flatten(%KiteAgent{flatten_at_dd_pct: nil}, _dd_pct, _equity), do: nil
+
+  defp maybe_trigger_flatten(%KiteAgent{} = agent, dd_pct, equity) do
+    threshold = Decimal.to_float(agent.flatten_at_dd_pct)
+
+    if dd_pct <= threshold do
+      case schedule_flatten(agent, threshold) do
+        {:ok, _job} ->
+          write_audit(
+            agent,
+            "flatten",
+            agent.flatten_at_dd_pct,
+            equity,
+            dd_pct,
+            "blocked",
+            "Flatten worker scheduled — user-configured flatten at #{threshold}% breached at #{Float.round(dd_pct, 2)}%"
+          )
+
+          " Flatten worker scheduled."
+
+        {:error, reason} ->
+          # Oban insert failed (DB blip or duplicate within the 24h
+          # unique window). The user still gets the halt 422; we just
+          # don't promise the flatten in copy. Audit captures the
+          # attempt either way.
+          Logger.warning(
+            "DrawdownGate: flatten enqueue failed for agent #{agent.id}: #{inspect(reason)}"
+          )
+
+          write_audit(
+            agent,
+            "flatten",
+            agent.flatten_at_dd_pct,
+            equity,
+            dd_pct,
+            "skipped",
+            "flatten_enqueue_failed: #{inspect(reason)}"
+          )
+
+          nil
+      end
+    end
+  end
+
+  defp schedule_flatten(%KiteAgent{} = agent, threshold) do
+    %{
+      "agent_id" => agent.id,
+      "reason" => "daily_dd_flatten",
+      "threshold_pct" => threshold
+    }
+    |> KiteAgentHub.Workers.FlattenWorker.new()
+    |> Oban.insert()
+  rescue
+    e ->
+      {:error, Exception.message(e)}
+  end
+
+  defp flatten_suffix(nil), do: ""
+  defp flatten_suffix(suffix) when is_binary(suffix), do: suffix
 
   # Phase 1b: realized-P&L DD against Alpaca's `last_equity` baseline.
   # Unrealized P&L from open positions is NOT included yet — that ships
@@ -187,10 +272,14 @@ defmodule KiteAgentHub.Trading.DrawdownGate do
   end
 
   defp write_audit(agent, threshold_value, equity, dd_pct, action, reason) do
+    write_audit(agent, "halt", threshold_value, equity, dd_pct, action, reason)
+  end
+
+  defp write_audit(agent, threshold_type, threshold_value, equity, dd_pct, action, reason) do
     %DdAuditLog{}
     |> DdAuditLog.changeset(%{
       kite_agent_id: agent.id,
-      threshold_type: "halt",
+      threshold_type: threshold_type,
       threshold_value: threshold_value,
       equity: equity,
       dd_pct: dd_pct,

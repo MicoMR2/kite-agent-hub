@@ -17,7 +17,11 @@ defmodule KiteAgentHub.Trading.DdAuditLog do
   @foreign_key_type :binary_id
 
   @threshold_types ~w(halt flatten)
-  @actions ~w(allowed blocked skipped)
+  # `allowed | blocked | skipped` are written by `DrawdownGate` on the
+  # POST-trade hot path. `executed_close | close_failed` are written by
+  # `KiteAgentHub.Workers.FlattenWorker` when the user-configured
+  # flatten threshold actually fires a position unwind.
+  @actions ~w(allowed blocked skipped executed_close close_failed)
 
   schema "agent_dd_audit_log" do
     field :threshold_type, :string
