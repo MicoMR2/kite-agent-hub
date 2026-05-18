@@ -105,6 +105,11 @@ config :kite_agent_hub, Oban,
        # Prune stale chat messages every 6 hours — keeps at least the last
        # 100 per org, deletes anything older than 24h beyond that.
        {"0 */6 * * *", KiteAgentHub.Workers.MessagePrunerWorker},
+       # Daily retention sweep for forex_nav_snapshots (PR-E follow-on).
+       # NAV samples write at ~1 row/30s/agent so a sweep is needed to
+       # cap table growth — keeps the last 30 days, far more than the
+       # 288 samples the sparkline actually renders. Runs at 06:00 UTC.
+       {"0 6 * * *", KiteAgentHub.Workers.ForexNavSnapshotPruner},
        # Every minute, poll Alpaca for fills on open trades.
        # Re-enabled 2026-05-07 after PR #315 (Oban dedicated repo)
        # eliminated the pg_notify-driven pool saturation that was
