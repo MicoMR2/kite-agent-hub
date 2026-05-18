@@ -95,6 +95,30 @@ defmodule KiteAgentHub.Trading.DrawdownGateTest do
     assert audit_rows_for(agent_b) == []
   end
 
+  describe "flatten path (Phase 2b)" do
+    alias KiteAgentHub.Trading
+
+    test "flatten threshold set + no Alpaca creds → no flatten audit (DD calc short-circuits)" do
+      # With no Alpaca creds, `compute_dd/1` returns
+      # `{:error, :no_alpaca_credentials}` before reaching
+      # `evaluate_halt/3`, so `maybe_trigger_flatten/3` is never
+      # called. The only audit row should be the halt-side skip.
+      agent =
+        make_agent(
+          flatten_at_dd_pct: Decimal.new("-5.0"),
+          halt_at_dd_pct: Decimal.new("-3.0")
+        )
+
+      assert :ok = DrawdownGate.check_or_reject(agent)
+
+      rows = Trading.recent_dd_audit_for_agent(agent.id)
+      assert length(rows) == 1
+      assert hd(rows).threshold_type == "halt"
+      assert hd(rows).action == "skipped"
+      assert hd(rows).reason == "no_alpaca_credentials_phase_1b"
+    end
+  end
+
   describe "recent_dd_audit_for_agent/2" do
     alias KiteAgentHub.Trading
 
