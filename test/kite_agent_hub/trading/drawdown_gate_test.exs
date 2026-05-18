@@ -95,6 +95,59 @@ defmodule KiteAgentHub.Trading.DrawdownGateTest do
     assert audit_rows_for(agent_b) == []
   end
 
+  describe "compute_dd_from_broker_data/3 (Phase 2c math)" do
+    alias KiteAgentHub.Repo
+    alias KiteAgentHub.Trading.TradeRecord
+
+    test "combines today's realized + unrealized P&L into dd_pct vs NAV" do
+      # NAV $10_000, today realized -$200 (one settled losing
+      # trade), unrealized -$300 from open positions. Expected
+      # DD% = (-200 + -300) / 10_000 * 100 = -5.0%.
+      agent = make_agent()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      {:ok, _} =
+        Repo.insert(%TradeRecord{
+          kite_agent_id: agent.id,
+          market: "AAPL",
+          side: "long",
+          action: "sell",
+          contracts: Decimal.new("10"),
+          fill_price: Decimal.new("100.00"),
+          status: "settled",
+          realized_pnl: Decimal.new("-200.00"),
+          updated_at: now,
+          inserted_at: now
+        })
+
+      assert {:ok, dd_pct, nav} =
+               DrawdownGate.compute_dd_from_broker_data(agent, 10_000.0, -300.0)
+
+      assert nav == 10_000.0
+      assert_in_delta dd_pct, -5.0, 0.0001
+    end
+
+    test "with no realized trades + zero unrealized → dd_pct is 0.0" do
+      agent = make_agent()
+
+      assert {:ok, dd_pct, _nav} =
+               DrawdownGate.compute_dd_from_broker_data(agent, 10_000.0, 0.0)
+
+      assert dd_pct == 0.0
+    end
+
+    test "positive unrealized (winners) yields positive dd_pct — math correctness only" do
+      # The gate's halt threshold is negative, so positive DD
+      # never blocks. But the math must still be right.
+      agent = make_agent()
+
+      assert {:ok, dd_pct, _nav} =
+               DrawdownGate.compute_dd_from_broker_data(agent, 10_000.0, 500.0)
+
+      assert_in_delta dd_pct, 5.0, 0.0001
+    end
+  end
+
   describe "flatten path (Phase 2b)" do
     alias KiteAgentHub.Trading
 

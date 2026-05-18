@@ -141,8 +141,8 @@ defmodule KiteAgentHub.Trading.DrawdownGate do
 
       reason =
         "user-configured halt at #{threshold}% — current daily DD #{Float.round(dd_pct, 2)}%. " <>
-          "Note: Phase 1b realized-P&L only (Alpaca settled trades vs Alpaca last_equity); " <>
-          "unrealized P&L on open positions + OANDA/Kalshi positions will be included in Phase 2." <>
+          "Note: Phase 2c covers Alpaca realized + unrealized P&L vs Alpaca last_equity. " <>
+          "OANDA/Kalshi positions will be included in Phase 2d." <>
           flatten_suffix(flatten_note)
 
       {:error, :daily_drawdown_halt, reason}
@@ -241,34 +241,85 @@ defmodule KiteAgentHub.Trading.DrawdownGate do
   end
 
   defp fetch_and_compute(agent, key_id, secret, env) do
-    task =
+    # Phase 2c: account NAV + positions list now run in parallel
+    # under a single shared `@broker_timeout_ms` deadline. Sequential
+    # `Task.yield` calls would have stacked the budget to 2 ×
+    # @broker_timeout_ms; computing one wall-clock deadline up front
+    # and re-deriving "remaining" for each yield keeps total wall
+    # time bounded (CyberSec ask 14230 #1).
+    deadline = System.monotonic_time(:millisecond) + @broker_timeout_ms
+
+    account_task =
       Task.Supervisor.async_nolink(KiteAgentHub.TaskSupervisor, fn ->
         KiteAgentHub.TradingPlatforms.AlpacaClient.account(key_id, secret, env)
       end)
 
-    case Task.yield(task, @broker_timeout_ms) || Task.shutdown(task, :brutal_kill) do
-      {:ok, {:ok, %{last_equity: nav}}}
-      when is_float(nav) and nav > 0 ->
-        realized =
-          agent.id
-          |> KiteAgentHub.Trading.today_realized_pnl_for_agent()
-          |> Decimal.to_float()
+    positions_task =
+      Task.Supervisor.async_nolink(KiteAgentHub.TaskSupervisor, fn ->
+        KiteAgentHub.TradingPlatforms.AlpacaClient.positions(key_id, secret, env)
+      end)
 
-        dd_pct = realized / nav * 100.0
-        {:ok, dd_pct, nav}
+    with {:ok, %{last_equity: nav}} when is_float(nav) and nav > 0 <-
+           yield_with_deadline(account_task, deadline),
+         {:ok, positions} when is_list(positions) <-
+           yield_with_deadline(positions_task, deadline) do
+      compute_dd_from_broker_data(agent, nav, unrealized_total(positions))
+    else
+      :timeout ->
+        {:error, :alpaca_timeout}
 
-      {:ok, {:ok, _account_without_nav}} ->
+      {:ok, _account_without_nav} ->
         {:error, :alpaca_nav_missing}
 
-      {:ok, {:error, reason}} ->
+      {:error, reason} ->
         {:error, reason}
-
-      nil ->
-        {:error, :alpaca_timeout}
 
       other ->
         {:error, {:unexpected, other}}
     end
+  end
+
+  # Wait on `task` until the shared deadline is reached; on timeout
+  # we brutally shut it down so the supervisor doesn't leak. Returns
+  # the inner client result (`{:ok, ...} | {:error, ...}`) or the
+  # bare `:timeout` atom.
+  defp yield_with_deadline(task, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    case Task.yield(task, remaining) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      {:exit, reason} -> {:error, {:task_exit, reason}}
+      nil -> :timeout
+    end
+  end
+
+  defp unrealized_total(positions) when is_list(positions) do
+    Enum.reduce(positions, 0.0, fn p, acc ->
+      case Map.get(p, :unrealized_pl) do
+        n when is_number(n) -> acc + n
+        _ -> acc
+      end
+    end)
+  end
+
+  @doc """
+  Phase 2c math, exposed so tests can pin the formula without a live
+  Alpaca round-trip. Combines today's realized P&L (closed trades
+  settled today UTC) with the broker-reported unrealized P&L on open
+  positions, expressed as a percentage of the broker's `last_equity`
+  baseline.
+  """
+  @spec compute_dd_from_broker_data(KiteAgent.t(), float(), float()) ::
+          {:ok, float(), float()}
+  def compute_dd_from_broker_data(%KiteAgent{} = agent, nav, unrealized_pl)
+      when is_float(nav) and nav > 0 and is_float(unrealized_pl) do
+    realized =
+      agent.id
+      |> KiteAgentHub.Trading.today_realized_pnl_for_agent()
+      |> Decimal.to_float()
+
+    dd_pct = (realized + unrealized_pl) / nav * 100.0
+    {:ok, dd_pct, nav}
   end
 
   defp write_audit(agent, threshold_value, equity, dd_pct, action, reason) do
