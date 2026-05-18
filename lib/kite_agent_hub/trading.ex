@@ -23,6 +23,26 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
+  @doc """
+  Look up an agent by its on-chain `wallet_address`. Intended for
+  **identity resolution only** — turning a public wallet address
+  observed in a settled trade row / Kitescan into the owning agent
+  record so callers can render attribution.
+
+  ## DO NOT use this for authentication
+
+  Wallet addresses are public on-chain (anyone reading Kitescan or
+  the `trades` table has them). They contain no secret material and
+  therefore prove nothing about who is making a request. **Never
+  pass this function's result to an auth gate** — that is the bug
+  PR #433 (F5) removed from ChatController, and the rule
+  `TradesController:397-398` documents for the rest of the API.
+
+  Token-based authentication goes through `get_agent_by_token/1`
+  via the `AuthenticateAgent` plug. Wallet-based auth (if ever
+  needed) requires a cryptographic signature challenge, not a bare
+  address lookup.
+  """
   def get_agent_by_wallet(wallet_address) do
     Repo.get_by(KiteAgent, wallet_address: wallet_address)
   end

@@ -45,10 +45,12 @@ defmodule KiteAgentHubWeb.API.AgentsController do
   """
   use KiteAgentHubWeb, :controller
 
+  alias KiteAgentHub.Api.RateLimiter
   alias KiteAgentHub.Trading
 
   def update(conn, %{"id" => id} = params) do
     with {:ok, agent} <- authenticate_as(conn, id),
+         :ok <- RateLimiter.check(agent.id),
          {:ok, updated} <- Trading.update_agent_profile(agent, profile_attrs(params)) do
       conn |> json(%{ok: true, agent: serialize(updated, include_token: false)})
     else
@@ -57,6 +59,9 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
       {:error, :forbidden} ->
         conn |> put_status(:forbidden) |> json(%{ok: false, error: "agent mismatch"})
+
+      {:error, :rate_limited} ->
+        conn |> put_status(:too_many_requests) |> json(%{ok: false, error: "rate limited"})
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
@@ -67,6 +72,7 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
   def rotate_token(conn, %{"id" => id}) do
     with {:ok, agent} <- authenticate_as(conn, id),
+         :ok <- RateLimiter.check(agent.id),
          {:ok, updated} <- Trading.rotate_agent_api_token(agent) do
       conn |> json(%{ok: true, agent: serialize(updated, include_token: true)})
     else
@@ -75,6 +81,9 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
       {:error, :forbidden} ->
         conn |> put_status(:forbidden) |> json(%{ok: false, error: "agent mismatch"})
+
+      {:error, :rate_limited} ->
+        conn |> put_status(:too_many_requests) |> json(%{ok: false, error: "rate limited"})
 
       {:error, _changeset} ->
         conn
@@ -85,6 +94,7 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
   def archive(conn, %{"id" => id}) do
     with {:ok, agent} <- authenticate_as(conn, id),
+         :ok <- RateLimiter.check(agent.id),
          {:ok, %{agent: archived, cancelled_count: count}} <- Trading.archive_agent(agent) do
       conn
       |> json(%{
@@ -98,6 +108,9 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
       {:error, :forbidden} ->
         conn |> put_status(:forbidden) |> json(%{ok: false, error: "agent mismatch"})
+
+      {:error, :rate_limited} ->
+        conn |> put_status(:too_many_requests) |> json(%{ok: false, error: "rate limited"})
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn

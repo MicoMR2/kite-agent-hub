@@ -161,4 +161,30 @@ defmodule KiteAgentHubWeb.API.AgentsControllerTest do
       assert Repo.reload!(agent).status == "archived"
     end
   end
+
+  describe "rate limiting (F4 audit fix)" do
+    test "11th rapid PATCH /agents/:id is 429", %{conn: conn, agent: agent} do
+      # The RateLimiter caps each agent at 10 writes per 1s bucket.
+      # Hammer PATCH (token stays stable, unlike rotate_token which
+      # would invalidate the bearer on each call). Confirm the 11th
+      # call is rejected with 429 + the consistent error shape.
+      results =
+        for i <- 1..11 do
+          conn
+          |> auth(agent.api_token)
+          |> patch(~p"/api/v1/agents/#{agent.id}", %{name: "Burst #{i}"})
+        end
+
+      statuses = Enum.map(results, & &1.status)
+      ok_count = Enum.count(statuses, &(&1 == 200))
+      throttled_count = Enum.count(statuses, &(&1 == 429))
+
+      assert ok_count >= 10, "first 10 writes in the bucket should succeed"
+      assert throttled_count >= 1, "expected at least one 429 within the 11-call burst"
+
+      throttled = Enum.find(results, &(&1.status == 429))
+      body = Jason.decode!(throttled.resp_body)
+      assert body["error"] == "rate limited"
+    end
+  end
 end
