@@ -754,6 +754,27 @@ defmodule KiteAgentHub.Trading do
   end
 
   @doc """
+  Sum of realized P&L for the given agent's trades that settled today
+  (UTC). Used by `KiteAgentHub.Trading.DrawdownGate` to compute the
+  realized-only daily-DD component.
+
+  Returns a `Decimal` (zero when nothing has settled today). "Today"
+  is the calendar day in UTC — the same boundary used by `last_equity`
+  in the Alpaca account summary, so the two figures line up.
+  """
+  def today_realized_pnl_for_agent(agent_id) when is_binary(agent_id) do
+    midnight_utc =
+      DateTime.utc_now()
+      |> DateTime.to_date()
+      |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+
+    TradeRecord
+    |> where(kite_agent_id: ^agent_id, status: "settled")
+    |> where([t], t.updated_at >= ^midnight_utc)
+    |> Repo.aggregate(:sum, :realized_pnl) || Decimal.new(0)
+  end
+
+  @doc """
   Returns aggregated P&L stats for an agent:
   %{total_pnl, win_count, loss_count, open_count, trade_count}
   """
