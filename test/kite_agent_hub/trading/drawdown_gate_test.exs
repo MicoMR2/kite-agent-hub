@@ -95,6 +95,39 @@ defmodule KiteAgentHub.Trading.DrawdownGateTest do
     assert audit_rows_for(agent_b) == []
   end
 
+  describe "recent_dd_audit_for_agent/2" do
+    alias KiteAgentHub.Trading
+
+    test "returns rows scoped to the given agent, newest-first" do
+      agent_a = make_agent(halt_at_dd_pct: Decimal.new("-3.0"))
+      agent_b = make_agent(halt_at_dd_pct: Decimal.new("-3.0"))
+
+      :ok = DrawdownGate.check_or_reject(agent_a)
+      :ok = DrawdownGate.check_or_reject(agent_b)
+      :ok = DrawdownGate.check_or_reject(agent_a)
+
+      rows = Trading.recent_dd_audit_for_agent(agent_a.id)
+      assert length(rows) == 2
+      assert Enum.all?(rows, &(&1.kite_agent_id == agent_a.id))
+
+      [r0, r1] = rows
+      assert DateTime.compare(r0.inserted_at, r1.inserted_at) in [:gt, :eq]
+    end
+
+    test "respects the :limit argument" do
+      agent = make_agent(halt_at_dd_pct: Decimal.new("-3.0"))
+      for _ <- 1..5, do: DrawdownGate.check_or_reject(agent)
+
+      assert length(Trading.recent_dd_audit_for_agent(agent.id, 3)) == 3
+      assert length(Trading.recent_dd_audit_for_agent(agent.id, 20)) == 5
+    end
+
+    test "returns [] when no audit rows exist for the agent" do
+      agent = make_agent()
+      assert Trading.recent_dd_audit_for_agent(agent.id) == []
+    end
+  end
+
   describe "today_realized_pnl_for_agent/1" do
     alias KiteAgentHub.Trading
     alias KiteAgentHub.Trading.TradeRecord
@@ -179,7 +212,11 @@ defmodule KiteAgentHub.Trading.DrawdownGateTest do
           inserted_at: now
         })
 
-      assert Decimal.equal?(Trading.today_realized_pnl_for_agent(agent_a.id), Decimal.new("100.00"))
+      assert Decimal.equal?(
+               Trading.today_realized_pnl_for_agent(agent_a.id),
+               Decimal.new("100.00")
+             )
+
       assert Decimal.equal?(Trading.today_realized_pnl_for_agent(agent_b.id), Decimal.new(0))
     end
   end
