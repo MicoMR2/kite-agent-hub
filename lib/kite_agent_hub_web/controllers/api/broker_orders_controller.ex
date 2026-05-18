@@ -48,7 +48,7 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
 
   require Logger
 
-  alias KiteAgentHub.{Credentials, Trading}
+  alias KiteAgentHub.Credentials
   alias KiteAgentHub.TradingPlatforms.AlpacaClient
 
   # Intentionally permissive — pass through whatever status the agent
@@ -216,16 +216,13 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
     end
   end
 
+  # Auth is enforced at the :api pipeline plug (`AuthenticateAgent`).
+  # This helper just reads the resolved agent from `conn.assigns`
+  # so the existing `with`-chain call sites keep working unchanged.
   defp authenticate(conn) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] ->
-        case Trading.get_agent_by_token(token) do
-          nil -> {:error, :unauthorized}
-          agent -> {:ok, agent}
-        end
-
-      _ ->
-        {:error, :unauthorized}
+    case conn.assigns[:current_agent] do
+      %_{} = agent -> {:ok, agent}
+      _ -> {:error, :unauthorized}
     end
   end
 end

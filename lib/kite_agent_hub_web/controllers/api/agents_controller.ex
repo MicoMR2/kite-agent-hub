@@ -108,26 +108,15 @@ defmodule KiteAgentHubWeb.API.AgentsController do
 
   # ── Helpers ───────────────────────────────────────────────────────────────────
 
-  # Auth AND ownership in one pass: the bearer token identifies exactly
-  # one agent; the URL id must match. Anything else → :forbidden so we
-  # don't leak whether a given id exists across orgs.
+  # Token auth happens at the :api pipeline plug; this helper only
+  # adds the URL-ID ownership check on top. `conn.assigns.current_agent`
+  # identifies exactly one agent; the URL id must match. Anything else
+  # → :forbidden so we don't leak whether a given id exists across orgs.
   defp authenticate_as(conn, url_id) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] ->
-        case Trading.get_agent_by_token(token) do
-          nil ->
-            {:error, :unauthorized}
-
-          agent ->
-            if agent.id == url_id do
-              {:ok, agent}
-            else
-              {:error, :forbidden}
-            end
-        end
-
-      _ ->
-        {:error, :unauthorized}
+    case conn.assigns[:current_agent] do
+      %_{id: ^url_id} = agent -> {:ok, agent}
+      %_{} -> {:error, :forbidden}
+      _ -> {:error, :unauthorized}
     end
   end
 

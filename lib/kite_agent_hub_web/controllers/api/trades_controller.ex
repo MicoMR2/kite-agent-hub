@@ -394,18 +394,16 @@ defmodule KiteAgentHubWeb.API.TradesController do
 
   # ── Private ───────────────────────────────────────────────────────────────────
 
-  # Auth is via the secret agent api_token ONLY. Wallet addresses are
-  # public on-chain and must never be accepted as a credential.
+  # Auth happens at the router-level `AuthenticateAgent` plug
+  # (see :api pipeline in router.ex). The plug enforces
+  # `Authorization: Bearer <api_token>` and halts with 401 before
+  # any controller action runs; this helper just reads the resolved
+  # agent out of `conn.assigns` so existing `with`-chain call sites
+  # keep working unchanged.
   defp authenticate(conn) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] ->
-        case Trading.get_agent_by_token(token) do
-          nil -> {:error, :unauthorized}
-          agent -> {:ok, agent}
-        end
-
-      _ ->
-        {:error, :unauthorized}
+    case conn.assigns[:current_agent] do
+      %_{} = agent -> {:ok, agent}
+      _ -> {:error, :unauthorized}
     end
   end
 

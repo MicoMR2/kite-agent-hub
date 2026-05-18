@@ -18,7 +18,7 @@ defmodule KiteAgentHubWeb.API.ChatController do
   use KiteAgentHubWeb, :controller
 
   require Logger
-  alias KiteAgentHub.{Trading, Chat}
+  alias KiteAgentHub.Chat
 
   @wait_timeout_ms 60_000
 
@@ -97,42 +97,25 @@ defmodule KiteAgentHubWeb.API.ChatController do
 
       {:error, :unauthorized} ->
         unauthorized(conn)
-
-      {:error, :db_unavailable} ->
-        # DB pool was saturated mid-auth. Same recovery: soft 204 so
-        # the client reconnects without surfacing a 500.
-        conn |> send_resp(:no_content, "")
     end
   end
 
   # ── Private ───────────────────────────────────────────────────────────────
 
+  # Auth is enforced at the :api pipeline plug (`AuthenticateAgent`),
+  # which is token-only — the wallet-address fallback that used to live
+  # in `safe_lookup_agent/1` has been deliberately removed. Wallet
+  # addresses are public on-chain (Kitescan, every settled trade row)
+  # and must never be accepted as a credential — same rule
+  # `TradesController:397-398` documents and the rest of the API
+  # already enforced. Anyone running a wallet-as-bearer chat client
+  # needs to switch to the agent's secret `api_token`. DB-unavailable
+  # handling lives in the plug too (logs + 503 soft timeout).
   defp authenticate(conn) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] ->
-        case safe_lookup_agent(token) do
-          {:error, _} = err -> err
-          nil -> {:error, :unauthorized}
-          agent -> {:ok, agent}
-        end
-
-      _ ->
-        {:error, :unauthorized}
+    case conn.assigns[:current_agent] do
+      %_{} = agent -> {:ok, agent}
+      _ -> {:error, :unauthorized}
     end
-  end
-
-  defp safe_lookup_agent(token) do
-    Trading.get_agent_by_token(token) || Trading.get_agent_by_wallet(token)
-  rescue
-    _ in DBConnection.ConnectionError ->
-      require Logger
-      Logger.warning("ChatController.authenticate: DB unavailable, treating as soft timeout")
-      {:error, :db_unavailable}
-
-    e ->
-      require Logger
-      Logger.warning("ChatController.authenticate: rescued #{Exception.message(e)}")
-      {:error, :db_unavailable}
   end
 
   defp safe_list_messages(org_id, after_id) do

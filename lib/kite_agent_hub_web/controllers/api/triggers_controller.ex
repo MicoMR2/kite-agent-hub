@@ -20,7 +20,6 @@ defmodule KiteAgentHubWeb.API.TriggersController do
   use KiteAgentHubWeb, :controller
 
   alias KiteAgentHub.Api.RateLimiter
-  alias KiteAgentHub.Trading
   alias KiteAgentHub.Trading.TriggerEvents
 
   # Server-side cap on long-poll wait. Not client-overridable
@@ -71,16 +70,12 @@ defmodule KiteAgentHubWeb.API.TriggersController do
   # circuits the request without burning a connection. Token lookup
   # itself is an indexed equality match in Postgres (parity with
   # TradesController.authenticate/1).
+  # Auth is enforced at the :api pipeline plug (`AuthenticateAgent`).
+  # This helper just reads the resolved agent from `conn.assigns`.
   defp authenticate(conn) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] when token != "" ->
-        case Trading.get_agent_by_token(token) do
-          nil -> {:error, :unauthorized}
-          agent -> {:ok, agent}
-        end
-
-      _ ->
-        {:error, :unauthorized}
+    case conn.assigns[:current_agent] do
+      %_{} = agent -> {:ok, agent}
+      _ -> {:error, :unauthorized}
     end
   end
 
