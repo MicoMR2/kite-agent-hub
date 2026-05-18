@@ -104,6 +104,19 @@ defmodule KiteAgentHubWeb.API.BrokerOrdersController do
   #   - ownership confirmed by looking it up in this agent's open-orders
   #     list from Alpaca (404 if not found) — prevents cancel on an
   #     order not issued through this agent's Alpaca credentials
+  #
+  # NOTE on credential scope: Alpaca credentials are resolved by
+  # `agent.organization_id`, not by individual agent. **This is
+  # org-shared by design** — KAH treats the brokerage account as
+  # belonging to the workspace (organization), and every agent in
+  # that org operates under the same broker connection. Consequence:
+  # agent A in org X can cancel an open Alpaca order placed by
+  # agent B in the same org, because both reach the broker through
+  # the org's shared credential pair. This is intentional, not a
+  # bug — it mirrors how a trading desk's broker login is shared by
+  # every trader on the desk. Per-agent broker isolation would
+  # require separate Alpaca subaccounts per agent and is not in
+  # scope here.
   def delete(conn, %{"id" => order_id}) do
     with {:ok, agent} <- authenticate(conn),
          :ok <- require_trading_agent(agent),
