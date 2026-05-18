@@ -156,6 +156,7 @@ defmodule KiteAgentHub.Trading.KiteAgent do
     |> validate_evm_address(:vault_address)
     |> validate_dd_threshold(:halt_at_dd_pct)
     |> validate_dd_threshold(:flatten_at_dd_pct)
+    |> validate_flatten_below_halt()
     |> unique_constraint(:wallet_address)
   end
 
@@ -163,24 +164,57 @@ defmodule KiteAgentHub.Trading.KiteAgent do
   # for "halt at -3% daily DD"). Positive values would mean "halt
   # when up X%", which is nonsensical for a drawdown guardrail.
   # `nil` is allowed and means "disabled" — the most common state.
+  # Bounded in (-100, 0) so a typo can't set an unreachable threshold
+  # (CyberSec ask 14192 #1).
   defp validate_dd_threshold(changeset, field) do
     case get_change(changeset, field) do
       nil ->
         changeset
 
       %Decimal{} = value ->
-        if Decimal.lt?(value, 0) do
-          changeset
-        else
-          add_error(
-            changeset,
-            field,
-            "must be a negative percentage (e.g. -3.0 for halt at -3% daily DD)"
-          )
+        cond do
+          not Decimal.lt?(value, 0) ->
+            add_error(
+              changeset,
+              field,
+              "must be a negative percentage (e.g. -3.0 for halt at -3% daily DD)"
+            )
+
+          not Decimal.gt?(value, Decimal.new("-100")) ->
+            add_error(changeset, field, "must be greater than -100%")
+
+          true ->
+            changeset
         end
 
       _ ->
         add_error(changeset, field, "must be a decimal or nil")
+    end
+  end
+
+  # When both thresholds are set, `flatten_at_dd_pct` MUST be a deeper
+  # loss than `halt_at_dd_pct` — flatten is the more drastic action,
+  # so it should trigger at a worse DD. If a user sets `halt=-5` and
+  # `flatten=-3`, the system would flatten before halting, which is
+  # backwards. Read from `apply_changes/1` so the check picks up
+  # already-persisted values when only one field is being updated.
+  defp validate_flatten_below_halt(changeset) do
+    merged = apply_changes(changeset)
+
+    case {merged.halt_at_dd_pct, merged.flatten_at_dd_pct} do
+      {%Decimal{} = halt, %Decimal{} = flatten} ->
+        if Decimal.lt?(flatten, halt) do
+          changeset
+        else
+          add_error(
+            changeset,
+            :flatten_at_dd_pct,
+            "must be more negative than halt threshold (flatten at a deeper loss than halt)"
+          )
+        end
+
+      _ ->
+        changeset
     end
   end
 

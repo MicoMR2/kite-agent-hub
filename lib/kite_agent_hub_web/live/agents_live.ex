@@ -57,12 +57,40 @@ defmodule KiteAgentHubWeb.AgentsLive do
      |> assign(:context_for_agent_id, nil)
      |> assign(:context_text, nil)
      |> assign(:context_news, [])
+     |> assign(:recent_dd_audit_by_agent, %{})
      |> assign(:vault_address, VaultConfig.address())}
   end
 
   @impl true
   def handle_event("edit", %{"id" => id}, socket) do
-    {:noreply, assign(socket, editing_id: id, form_errors: %{})}
+    # Lazy-load the DD audit rows for this agent when the edit panel
+    # opens — keeps the initial mount cheap (no audit fetch unless the
+    # user actually expands an agent). Scoped by agent_id; CyberSec
+    # ask 14192 #2.
+    audit =
+      case find_owned_agent(socket, id) do
+        nil ->
+          []
+
+        agent ->
+          try do
+            Trading.recent_dd_audit_for_agent(agent.id)
+          rescue
+            e ->
+              require Logger
+              Logger.warning("AgentsLive: DD audit fetch failed — #{Exception.message(e)}")
+              []
+          end
+      end
+
+    {:noreply,
+     socket
+     |> assign(:editing_id, id)
+     |> assign(:form_errors, %{})
+     |> assign(
+       :recent_dd_audit_by_agent,
+       Map.put(socket.assigns.recent_dd_audit_by_agent, id, audit)
+     )}
   end
 
   # Inline Agent Context viewer — moved off the dashboard front page per
@@ -148,6 +176,51 @@ defmodule KiteAgentHubWeb.AgentsLive do
         {:noreply, assign(socket, :form_errors, errors_of(changeset))}
     end
   end
+
+  def handle_event("save_drawdown_limits", %{"agent_id" => id} = params, socket) do
+    agent = Enum.find(socket.assigns.agents, &(&1.id == id))
+    actor_id = socket.assigns.current_scope.user.id
+
+    # UX convention: users type positive numbers ("5" = "halt at -5%
+    # daily DD") but the schema stores the negative decimal. Negate
+    # here; blank stays nil (= disabled). Phorari 14191 ask.
+    attrs = %{
+      "halt_at_dd_pct" => negate_threshold_input(params["halt_at_dd_pct_positive"]),
+      "flatten_at_dd_pct" => negate_threshold_input(params["flatten_at_dd_pct_positive"])
+    }
+
+    case Repo.with_user(actor_id, fn ->
+           Trading.update_agent_profile(agent, attrs)
+         end) do
+      {:ok, {:ok, updated}} ->
+        {:noreply,
+         socket
+         |> assign(:agents, replace_agent(socket.assigns.agents, updated))
+         |> assign(:form_errors, %{})
+         |> put_flash(:info, "Drawdown limits updated.")}
+
+      {:ok, {:error, %Ecto.Changeset{} = cs}} ->
+        {:noreply, assign(socket, :form_errors, errors_of(cs))}
+
+      {:ok, {:error, _other}} ->
+        {:noreply, put_flash(socket, :error, "Could not update drawdown limits.")}
+    end
+  end
+
+  # Empty input → nil (disabled). Otherwise parse positive number and
+  # store as the negative equivalent. Invalid parse falls through to
+  # the changeset validation, which surfaces a user-facing error.
+  defp negate_threshold_input(nil), do: nil
+  defp negate_threshold_input(""), do: nil
+
+  defp negate_threshold_input(value) when is_binary(value) do
+    case Decimal.parse(value) do
+      {dec, ""} -> Decimal.negate(Decimal.abs(dec))
+      _ -> value
+    end
+  end
+
+  defp negate_threshold_input(value), do: value
 
   def handle_event("save_risk_config", %{"agent_id" => id} = params, socket) do
     agent = Enum.find(socket.assigns.agents, &(&1.id == id))
@@ -647,6 +720,191 @@ defmodule KiteAgentHubWeb.AgentsLive do
     """
   end
 
+  attr :agent, :map, required: true
+  attr :form_errors, :map, default: %{}
+  attr :recent_dd_audit, :list, default: []
+
+  defp drawdown_limits_form(assigns) do
+    ~H"""
+    <div class="mt-6 pt-6 border-t border-white/5 space-y-5">
+      <div>
+        <div class="flex items-baseline justify-between">
+          <h4 class="text-[11px] font-black uppercase tracking-widest text-white">
+            Drawdown Circuit Breaker
+          </h4>
+          <p class="text-[10px] text-gray-500">
+            Leave blank to disable.
+          </p>
+        </div>
+
+        <p class="text-[10px] text-amber-400/80 mt-2 leading-relaxed">
+          These are <span class="font-bold">your</span>
+          risk limits, not KAH guarantees. KAH enforces only what you set here — leave blank to disable. Phase 1 covers Alpaca realized P&amp;L; unrealized + OANDA/Kalshi land in Phase 2.
+        </p>
+      </div>
+
+      <form phx-submit="save_drawdown_limits" class="space-y-4">
+        <input type="hidden" name="agent_id" value={@agent.id} />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+              Halt at — % daily DD
+            </label>
+            <div class="relative">
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-600 font-mono pointer-events-none">
+                -
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                max="99"
+                name="halt_at_dd_pct_positive"
+                value={positive_dd(@agent.halt_at_dd_pct)}
+                placeholder="off"
+                class="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+              />
+              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 pointer-events-none">
+                %
+              </span>
+            </div>
+            <p class="text-[10px] text-gray-600 mt-1">
+              Blocks new entries when today's loss hits this level.
+            </p>
+            <p
+              :if={err = get_in(@form_errors, [:halt_at_dd_pct, Access.at(0)])}
+              class="text-[10px] text-red-400 mt-1"
+            >
+              {err}
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">
+              Flatten at — % daily DD
+            </label>
+            <div class="relative">
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-600 font-mono pointer-events-none">
+                -
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                max="99"
+                name="flatten_at_dd_pct_positive"
+                value={positive_dd(@agent.flatten_at_dd_pct)}
+                placeholder="off"
+                class="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-white/30"
+              />
+              <span class="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 pointer-events-none">
+                %
+              </span>
+            </div>
+            <p class="text-[10px] text-gray-600 mt-1">
+              Closes all open positions when today's loss hits this level (Phase 2b — not enforced yet).
+            </p>
+            <p
+              :if={err = get_in(@form_errors, [:flatten_at_dd_pct, Access.at(0)])}
+              class="text-[10px] text-red-400 mt-1"
+            >
+              {err}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="px-5 py-2 rounded-xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-gray-100"
+        >
+          Save Drawdown Limits
+        </button>
+      </form>
+
+      <.dd_audit_log_table recent_dd_audit={@recent_dd_audit} />
+    </div>
+    """
+  end
+
+  # Convert the persisted negative decimal to a positive string for
+  # display. Empty when the field is nil (disabled) so the placeholder
+  # shows.
+  defp positive_dd(nil), do: ""
+  defp positive_dd(%Decimal{} = d), do: d |> Decimal.abs() |> Decimal.to_string()
+
+  attr :recent_dd_audit, :list, default: []
+
+  defp dd_audit_log_table(assigns) do
+    ~H"""
+    <div :if={@recent_dd_audit != []} class="pt-2">
+      <h5 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+        Recent Drawdown-Gate Activity
+      </h5>
+      <div class="overflow-x-auto rounded-xl border border-white/5 bg-black/30">
+        <table class="w-full text-[10px] text-gray-400 font-mono">
+          <thead class="bg-black/40">
+            <tr>
+              <th class="text-left px-3 py-2 uppercase tracking-widest font-bold">When</th>
+              <th class="text-left px-3 py-2 uppercase tracking-widest font-bold">Action</th>
+              <th class="text-right px-3 py-2 uppercase tracking-widest font-bold">Threshold</th>
+              <th class="text-right px-3 py-2 uppercase tracking-widest font-bold">Equity</th>
+              <th class="text-right px-3 py-2 uppercase tracking-widest font-bold">DD %</th>
+              <th class="text-left px-3 py-2 uppercase tracking-widest font-bold">Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for row <- @recent_dd_audit do %>
+              <tr class="border-t border-white/5">
+                <td class="px-3 py-2 text-gray-500">
+                  {Calendar.strftime(row.inserted_at, "%b %d %H:%M")}
+                </td>
+                <td class="px-3 py-2">
+                  <span class={[
+                    "inline-flex px-2 py-0.5 rounded-full border text-[9px] uppercase tracking-widest font-bold",
+                    dd_action_class(row.action)
+                  ]}>
+                    {row.action}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {if row.threshold_value,
+                    do: Decimal.to_string(row.threshold_value) <> "%",
+                    else: "—"}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {if row.equity,
+                    do: "$" <> :erlang.float_to_binary(row.equity, decimals: 2),
+                    else: "—"}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {if row.dd_pct,
+                    do: :erlang.float_to_binary(row.dd_pct, decimals: 2) <> "%",
+                    else: "—"}
+                </td>
+                <td class="px-3 py-2 text-gray-600 truncate max-w-xs">
+                  {row.reason || "—"}
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
+  defp dd_action_class("blocked"),
+    do: "border-red-500/30 bg-red-500/10 text-red-300"
+
+  defp dd_action_class("allowed"),
+    do: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+
+  defp dd_action_class("skipped"),
+    do: "border-amber-500/30 bg-amber-500/10 text-amber-300"
+
+  defp dd_action_class(_), do: "border-white/10 bg-white/5 text-gray-400"
+
   # ── Render ────────────────────────────────────────────────────────────────────
 
   @impl true
@@ -826,6 +1084,12 @@ defmodule KiteAgentHubWeb.AgentsLive do
               <.risk_limits_form
                 agent={agent}
                 form_errors={@form_errors}
+              />
+
+              <.drawdown_limits_form
+                agent={agent}
+                form_errors={@form_errors}
+                recent_dd_audit={Map.get(@recent_dd_audit_by_agent, agent.id, [])}
               />
             <% else %>
               <div class="space-y-3">

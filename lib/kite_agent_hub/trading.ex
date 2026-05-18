@@ -754,6 +754,24 @@ defmodule KiteAgentHub.Trading do
   end
 
   @doc """
+  Most recent `DrawdownGate` audit rows for an agent — newest first.
+  Used by the Settings UI to render the audit log viewer alongside
+  the threshold inputs so the user can see what their own rule did
+  on each recent trade attempt.
+
+  Scoped by `kite_agent_id`; never returns rows from another agent
+  (DrawdownGate Phase 2a CyberSec ask 14192 #2).
+  """
+  def recent_dd_audit_for_agent(agent_id, limit \\ 20) when is_binary(agent_id) do
+    from(a in KiteAgentHub.Trading.DdAuditLog,
+      where: a.kite_agent_id == ^agent_id,
+      order_by: [desc: a.inserted_at],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Sum of realized P&L for the given agent's trades that settled today
   (UTC). Used by `KiteAgentHub.Trading.DrawdownGate` to compute the
   realized-only daily-DD component.
