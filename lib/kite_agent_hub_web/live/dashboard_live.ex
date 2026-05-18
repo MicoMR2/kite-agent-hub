@@ -6653,8 +6653,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% pnl_sign = if slice.pnl >= 0, do: "+", else: "-"
                     pnl_value = :erlang.float_to_binary(abs(slice.pnl), decimals: 2) %>
                     <div
+                      phx-click="switch_tab"
+                      phx-value-tab={Atom.to_string(slice.key)}
+                      role="link"
+                      aria-label={"Open #{slice.label} tab"}
                       class={[
-                        "rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer",
+                        "rounded-2xl border p-5 backdrop-blur-md flex flex-col gap-3 transition-all cursor-pointer hover:border-white/20",
                         slice.tint_class
                       ]}
                       data-card={Atom.to_string(slice.key)}
