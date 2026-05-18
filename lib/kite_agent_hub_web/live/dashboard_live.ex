@@ -374,7 +374,9 @@ defmodule KiteAgentHubWeb.DashboardLive do
           # buffer never crossed the 2-sample threshold and the
           # sparkline stayed in "Building chart…" (Mico 10112 +
           # CyberSec 10113).
-          assign(socket, :forex_loading, true)
+          socket
+          |> seed_forex_nav_history()
+          |> assign(:forex_loading, true)
 
         :portfolio ->
           # Cross-broker breakdown reads from the existing alpaca_data,
@@ -1081,7 +1083,15 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
     pricing = Map.get(pricing_by_instrument, symbol)
 
-    nav_history = append_forex_nav_sample(socket.assigns[:forex_nav_history] || [], account)
+    agent_id_for_nav =
+      socket.assigns[:selected_agent] && socket.assigns.selected_agent.id
+
+    nav_history =
+      append_forex_nav_sample(
+        socket.assigns[:forex_nav_history] || [],
+        account,
+        agent_id_for_nav
+      )
 
     # Warmup chain (Mico 10112 + CyberSec 10113): the parallel +2/+4/+6s
     # burst from earlier was eaten by the `forex_fetching` guard
@@ -1119,20 +1129,70 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # 5-min refreshes — CyberSec 10010 cap to bound memory). Snapshots
   # without a NAV (account nil / OANDA unavailable) leave the buffer
   # untouched so reconnects don't introduce a gap row.
+  #
+  # Each new sample is ALSO fire-and-forget persisted into
+  # `forex_nav_snapshots` (PR-E / Mico 14140) so reopening the tab
+  # later seeds the ring buffer from DB instead of starting empty.
+  # The persist hop is wrapped in a supervised Task — a failed insert
+  # (DB blip, RLS edge case, validation reject) MUST NOT block the
+  # LV refresh, so we swallow {:error, _} after logging.
   @forex_nav_history_max 288
 
-  defp append_forex_nav_sample(history, account) when is_list(history) do
+  defp append_forex_nav_sample(history, account, agent_id) when is_list(history) do
     case forex_nav_value(account) do
       nil ->
         history
 
       nav when is_float(nav) ->
         ts = System.system_time(:second)
+        maybe_persist_nav_sample(agent_id, ts, nav)
         [{ts, nav} | history] |> Enum.take(@forex_nav_history_max)
     end
   end
 
-  defp append_forex_nav_sample(_history, _account), do: []
+  defp append_forex_nav_sample(_history, _account, _agent_id), do: []
+
+  defp maybe_persist_nav_sample(nil, _ts, _nav), do: :ok
+
+  defp maybe_persist_nav_sample(agent_id, ts, nav) when is_binary(agent_id) do
+    Task.Supervisor.start_child(KiteAgentHub.TaskSupervisor, fn ->
+      case KiteAgentHub.Forex.NavHistory.record_sample(agent_id, ts, nav) do
+        {:ok, _snap} ->
+          :ok
+
+        {:error, reason} ->
+          require Logger
+
+          Logger.warning(
+            "DashboardLive: forex NAV persist failed for agent #{agent_id}: #{inspect(reason)}"
+          )
+      end
+    end)
+
+    :ok
+  end
+
+  # On Forex-tab entry, seed the in-memory ring buffer from persisted
+  # samples so the sparkline opens with the agent's recent NAV
+  # trajectory instead of a single dot. Only seeds if the buffer is
+  # currently empty — preserves any samples the user has already
+  # accumulated this session.
+  defp seed_forex_nav_history(socket) do
+    current = socket.assigns[:forex_nav_history] || []
+    agent = socket.assigns[:selected_agent]
+
+    cond do
+      current != [] ->
+        socket
+
+      is_nil(agent) ->
+        socket
+
+      true ->
+        rows = KiteAgentHub.Forex.NavHistory.recent_for_agent(agent.id)
+        assign(socket, :forex_nav_history, rows)
+    end
+  end
 
   defp forex_nav_value(%{} = account) do
     raw =
