@@ -57,6 +57,7 @@ defmodule KiteAgentHubWeb.API.TradesController do
     with {:ok, agent} <- authenticate(conn),
          :ok <- require_trading_agent(agent),
          :ok <- RateLimiter.check(agent.id),
+         :ok <- KiteAgentHub.Trading.DrawdownGate.check_or_reject(agent),
          {:cont, conn} <- maybe_enforce_x402(conn, agent),
          {:ok, job_args, worker} <- build_job(params, agent) do
       case job_args |> worker.new() |> Oban.insert() do
@@ -89,6 +90,14 @@ defmodule KiteAgentHubWeb.API.TradesController do
         conn
         |> put_status(:too_many_requests)
         |> json(%{ok: false, error: "rate limited"})
+
+      {:error, :daily_drawdown_halt, reason} ->
+        # User-configured drawdown threshold breached (DrawdownGate).
+        # KAH is enforcing the user's own pre-set rule — see
+        # `DrawdownGate` moduledoc for the legal framing.
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{ok: false, error: "daily_drawdown_halt", reason: reason})
 
       # Halt branches from `maybe_enforce_x402/2`: status + body are
       # already written on the conn. Hand it back unchanged so Phoenix
