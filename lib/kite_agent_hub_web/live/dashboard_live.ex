@@ -5176,26 +5176,54 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                       </span>
                                     <% :miss -> %>
                                   <% end %>
-                                  <%!-- PR-J.₂ 24h yes-price sparkline from kalshi_historical_candlesticks (PR-I₁) --%>
+                                  <%!-- PR-J.7 24h yes-price sparkline. Polished layer
+                                       over PR-J.₂'s plain polyline: linear gradient
+                                       fill under the line (teal → transparent),
+                                       last-value label pinned at the end, anime.js
+                                       draw-in mount via SparklineMount hook, native
+                                       SVG <title> tooltip for hover. --%>
                                   <% spark_data = kalshi_position_sparkline_data(p.market_id) %>
                                   <%= if length(spark_data) >= 2 do %>
-                                    <svg
-                                      class="shrink-0 text-teal-400/70 mt-0.5"
-                                      width="64"
-                                      height="20"
-                                      viewBox="0 0 64 20"
-                                      preserveAspectRatio="none"
-                                      aria-label="24h yes-price trend"
+                                    <% spark_line = sparkline_points(spark_data, 80, 22) %>
+                                    <% spark_poly = kalshi_sparkline_polygon_points(spark_line, 80, 22) %>
+                                    <% spark_len = kalshi_sparkline_path_length(spark_data, 80, 22) %>
+                                    <% spark_last_cents = List.last(spark_data).v %>
+                                    <% spark_grad_id = "spark-grad-#{p.market_id}" %>
+                                    <div
+                                      class="flex items-center gap-1.5 shrink-0"
+                                      id={"kalshi-spark-#{p.market_id}"}
+                                      phx-hook="SparklineMount"
+                                      data-length={spark_len}
                                     >
-                                      <polyline
-                                        points={sparkline_points(spark_data, 64, 20)}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="1.25"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                      />
-                                    </svg>
+                                      <svg
+                                        class="shrink-0 text-teal-400"
+                                        width="80"
+                                        height="22"
+                                        viewBox="0 0 80 22"
+                                        preserveAspectRatio="none"
+                                        aria-label="24h yes-price trend"
+                                      >
+                                        <title>{:erlang.float_to_binary(spark_last_cents, decimals: 0)}¢ · last close, 24h trend</title>
+                                        <defs>
+                                          <linearGradient id={spark_grad_id} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stop-color="currentColor" stop-opacity="0.45" />
+                                            <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
+                                          </linearGradient>
+                                        </defs>
+                                        <polygon points={spark_poly} fill={"url(##{spark_grad_id})"} stroke="none" />
+                                        <polyline
+                                          points={spark_line}
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-width="1.5"
+                                          stroke-linecap="round"
+                                          stroke-linejoin="round"
+                                        />
+                                      </svg>
+                                      <span class="text-[9px] font-mono text-teal-300/80 tabular-nums">
+                                        {:erlang.float_to_binary(spark_last_cents, decimals: 0)}¢
+                                      </span>
+                                    </div>
                                   <% end %>
                                 </div>
                               </td>
@@ -8366,6 +8394,51 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_position_sparkline_data(_), do: []
+
+  # PR-J.7 helpers — build the gradient-fill polygon points by
+  # closing the polyline back to the baseline + return the last
+  # observed value as a small pinned label. Pure functions, no IO.
+  @doc false
+  def kalshi_sparkline_polygon_points(line_points, width, height)
+      when is_binary(line_points) and is_integer(width) and is_integer(height) do
+    case String.trim(line_points) do
+      "" -> ""
+      s -> "0,#{height} " <> s <> " #{width},#{height}"
+    end
+  end
+
+  def kalshi_sparkline_polygon_points(_, _, _), do: ""
+
+  @doc false
+  # Stable approximation of the polyline length used by the
+  # SparklineMount JS hook to set `stroke-dasharray`. Computed via
+  # the sum of segment euclidean distances. Returns 0 on degenerate
+  # input so the hook short-circuits without animation.
+  def kalshi_sparkline_path_length(data, width, height) when length(data) > 1 do
+    values = Enum.map(data, & &1.v)
+    min_v = Enum.min(values)
+    max_v = Enum.max(values)
+    range = max(max_v - min_v, 0.01)
+    count = length(data) - 1
+
+    points =
+      data
+      |> Enum.with_index()
+      |> Enum.map(fn {%{v: v}, i} ->
+        x = i / count * width
+        y = height - (v - min_v) / range * height
+        {x, y}
+      end)
+
+    points
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.reduce(0.0, fn [{x1, y1}, {x2, y2}], acc ->
+      acc + :math.sqrt(:math.pow(x2 - x1, 2) + :math.pow(y2 - y1, 2))
+    end)
+    |> Float.round(1)
+  end
+
+  def kalshi_sparkline_path_length(_, _, _), do: 0.0
 
   defp kalshi_status_badge("active"),
     do: {"Active", "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}
