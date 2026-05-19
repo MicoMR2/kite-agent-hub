@@ -55,6 +55,10 @@ defmodule KiteAgentHub.Application do
       # In-memory ring-buffer log — must start before AgentRunnerSupervisor
       # so runners can push entries from their first tick.
       KiteAgentHub.Kite.AgentLog,
+      # PR-I₂ Kalshi live-event-truth cache. ETS-backed, named table
+      # owner; the worker writes here and Phase 2 KalshiEdgeScorer
+      # reads from here without round-tripping to Kalshi every tick.
+      KiteAgentHub.Kite.KalshiLiveDataCache,
       # Alpaca WebSocket streaming supervisor — starts feeds on demand.
       # No feeds are started at boot; call AlpacaStreamSupervisor.start_feed/3
       # from the dashboard or a background task after resolving credentials.
