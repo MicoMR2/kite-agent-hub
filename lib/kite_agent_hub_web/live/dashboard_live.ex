@@ -4,7 +4,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   alias KiteAgentHub.{Onboarding, Orgs, Trading, Chat, Polymarket, Oanda}
 
   require Logger
-  alias KiteAgentHub.Kite.{RPC, EdgeScorer, KalshiLiveDataCache, PortfolioEdgeScorer}
+  alias KiteAgentHub.Kite.{RPC, EdgeScorer, KalshiHistory, KalshiLiveDataCache, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
   # Debounce interval for stats refresh triggered by trade broadcasts.
@@ -5121,6 +5121,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                       </span>
                                     <% :miss -> %>
                                   <% end %>
+                                  <%!-- PR-J.₂ 24h yes-price sparkline from kalshi_historical_candlesticks (PR-I₁) --%>
+                                  <% spark_data = kalshi_position_sparkline_data(p.market_id) %>
+                                  <%= if length(spark_data) >= 2 do %>
+                                    <svg
+                                      class="shrink-0 text-teal-400/70"
+                                      width="64"
+                                      height="20"
+                                      viewBox="0 0 64 20"
+                                      preserveAspectRatio="none"
+                                      aria-label="24h yes-price trend"
+                                    >
+                                      <polyline
+                                        points={sparkline_points(spark_data, 64, 20)}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.25"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                      />
+                                    </svg>
+                                  <% end %>
                                 </div>
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3">
@@ -8268,6 +8289,25 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_live_truth_badge(_), do: :miss
+
+  # PR-J.₂ position-row sparkline. Pulls up to 24h of 60-minute
+  # candles for the ticker from `kalshi_historical_candlesticks`
+  # (PR-I₁) and reshapes them into the `[%{v: float}]` list the
+  # existing `sparkline_points/3` helper expects. Returns `[]` when
+  # there's no history or fewer than 2 candles so the template can
+  # silently skip the SVG rather than render a flat line.
+  defp kalshi_position_sparkline_data(ticker) when is_binary(ticker) do
+    try do
+      KalshiHistory.list_candles(ticker, 60, limit: 24)
+      |> Enum.map(fn c -> c.yes_close_cents end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(fn v -> %{v: v * 1.0} end)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp kalshi_position_sparkline_data(_), do: []
 
   defp kalshi_status_badge("active"),
     do: {"Active", "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}
