@@ -101,6 +101,83 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc """
+  Fetch live event ground-truth data for a single Kalshi market.
+  Wraps `GET /live-data/{ticker}`. Returns the underlying-event state
+  (e.g., score, count, threshold) that Kalshi uses to settle the
+  contract — distinct from market price / orderbook data.
+
+  Returns `{:ok, parsed}` where `parsed` is a map with at least:
+  * `:ticker` — echoed back
+  * `:value` — best-effort numeric reading (score, count, etc.)
+  * `:metadata` — full raw event payload for caller-specific lookups
+  * `:fetched_at` — DateTime stamp when KAH received the response
+  """
+  def live_data(key_id, pem, ticker, env \\ "paper") do
+    if not valid_ticker?(ticker) do
+      {:error, "invalid kalshi ticker"}
+    else
+      case get("/live-data/#{ticker}", key_id, pem, env) do
+        {:ok, body} when is_map(body) -> {:ok, parse_live_data(body, ticker)}
+        {:ok, _} -> {:error, "kalshi live_data: unexpected response shape"}
+        err -> err
+      end
+    end
+  end
+
+  @doc """
+  Batch live-data fetch. Wraps `GET /live-data?tickers=a,b,c`.
+  Returns `{:ok, %{ticker => parsed_live_data}}`.
+  """
+  def multiple_live_data(key_id, pem, tickers, env \\ "paper") when is_list(tickers) do
+    case Enum.filter(tickers, &valid_ticker?/1) |> Enum.uniq() do
+      [] ->
+        {:ok, %{}}
+
+      valid ->
+        joined = Enum.join(valid, ",")
+        path = "/live-data?tickers=#{URI.encode_www_form(joined)}"
+
+        case get(path, key_id, pem, env) do
+          {:ok, %{"live_data" => list}} when is_list(list) ->
+            now = DateTime.utc_now()
+
+            map =
+              list
+              |> Enum.map(fn entry ->
+                ticker = entry["ticker"] || entry["market_ticker"]
+                {ticker, parse_live_data(entry, ticker, now)}
+              end)
+              |> Enum.reject(fn {t, _} -> is_nil(t) end)
+              |> Map.new()
+
+            {:ok, map}
+
+          {:ok, _} ->
+            {:ok, %{}}
+
+          err ->
+            err
+        end
+    end
+  end
+
+  @doc false
+  # Pure parser — exported under `@doc false` for hermetic tests.
+  # Tolerates Kalshi shape drift by surfacing the raw payload under
+  # `:metadata` and best-effort extracting a numeric `:value`. Live
+  # events ship a wide variety of shapes (sports score / election
+  # count / weather threshold etc.) — callers that need the specific
+  # semantic read from `:metadata`.
+  def parse_live_data(body, ticker, now \\ DateTime.utc_now()) when is_map(body) do
+    %{
+      ticker: ticker || body["ticker"] || body["market_ticker"],
+      value: parse_int(body["value"]) || parse_int(body["count"]) || parse_int(body["score"]),
+      metadata: body,
+      fetched_at: now
+    }
+  end
+
+  @doc """
   Fetch historical candlesticks for a Kalshi market. Wraps
   `GET /series/{series_ticker}/markets/{ticker}/candlesticks`.
 

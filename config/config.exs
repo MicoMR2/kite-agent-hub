@@ -115,6 +115,11 @@ config :kite_agent_hub, Oban,
        # no DB mutation on legacy zombies (NULL platform_order_id AND
        # NULL client_order_id) per CyberSec msg 10651.
        {"*/5 * * * *", KiteAgentHub.Workers.KalshiOrderReconciler},
+       # Every minute, refresh the live-event-truth cache for tickers
+       # KAH has open positions in (PR-I₂). Phase 2 KalshiEdgeScorer
+       # reads from this cache rather than round-tripping to Kalshi
+       # per scoring tick.
+       {"* * * * *", KiteAgentHub.Workers.KalshiLiveDataWorker},
        # Every minute, poll Alpaca for fills on open trades.
        # Re-enabled 2026-05-07 after PR #315 (Oban dedicated repo)
        # eliminated the pg_notify-driven pool saturation that was
