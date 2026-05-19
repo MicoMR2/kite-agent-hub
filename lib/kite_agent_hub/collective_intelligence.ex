@@ -14,10 +14,19 @@ defmodule KiteAgentHub.CollectiveIntelligence do
   alias KiteAgentHub.Repo
   alias KiteAgentHub.Trading.{OccSymbol, TradeRecord}
 
-  @consent_version "kci-v1-2026-04-25"
+  @consent_version "kci-v2-2026-05-19"
+  @prior_consent_version "kci-v1-2026-04-25"
   @crypto_markets ~w(BTCUSD ETHUSD SOLUSD BTC-USDC ETH-USDC SOL-USDC)
 
+  # PR-K3a: minimum distinct contributing orgs on a Kalshi market
+  # before its outcomes can be recorded. k=10 floor per CyberSec
+  # 10831 ③ + Phorari 10832 lock. Cross-field anonymity (ticker ×
+  # lifecycle × prob bucket × existing v1 fields) is the actual
+  # surface protected — see `kalshi_market_anonymity_safe?/1`.
+  @kalshi_k_anonymity_floor 10
+
   def consent_version, do: @consent_version
+  def prior_consent_version, do: @prior_consent_version
 
   def enabled_for_org?(org_id) when is_binary(org_id) do
     case fetch_org(org_id) do
@@ -33,7 +42,8 @@ defmodule KiteAgentHub.CollectiveIntelligence do
 
     with %{kite_agent: %{organization_id: org_id}} <- trade,
          true <- enabled_for_org?(org_id),
-         {:ok, attrs} <- insight_attrs(trade, org_id) do
+         {:ok, attrs} <- insight_attrs(trade, org_id),
+         :ok <- gate_kalshi_anonymity(trade, attrs) do
       %TradeInsight{}
       |> TradeInsight.changeset(attrs)
       |> Repo.insert(on_conflict: :nothing, conflict_target: :source_trade_hash)
@@ -45,6 +55,49 @@ defmodule KiteAgentHub.CollectiveIntelligence do
       _ -> :ok
     end
   end
+
+  # PR-K3a write-time anonymity gate (CyberSec 10831 ③ + ④). Only
+  # applies to Kalshi rows that would carry v2 fields. The check
+  # counts distinct organizations that have traded the same Kalshi
+  # market across the global trade_records table — if fewer than
+  # `@kalshi_k_anonymity_floor` distinct orgs have ever touched the
+  # market, the row is dropped entirely (no DB write). This protects
+  # the cross-field combination (ticker × lifecycle × prob bucket ×
+  # existing v1 fields) on low-population KX markets.
+  defp gate_kalshi_anonymity(%TradeRecord{platform: "kalshi"} = trade, %{
+         lifecycle_stage_at_exit: stage
+       })
+       when not is_nil(stage) do
+    if kalshi_market_anonymity_safe?(trade.market), do: :ok, else: {:gated, :low_population}
+  end
+
+  defp gate_kalshi_anonymity(_trade, _attrs), do: :ok
+
+  @doc false
+  # Exported for hermetic tests. Returns true when the Kalshi market
+  # has been traded by `@kalshi_k_anonymity_floor` or more distinct
+  # organizations across `trade_records`. The check is against the
+  # actual contributor pool (orgs that have placed a trade), not the
+  # already-inserted KCI rows — that closes the chicken-and-egg gap
+  # where the first 9 inserts could never land.
+  def kalshi_market_anonymity_safe?(ticker) when is_binary(ticker) do
+    import Ecto.Query
+    alias KiteAgentHub.Trading.KiteAgent
+
+    count =
+      from(t in TradeRecord,
+        join: a in KiteAgent,
+        on: a.id == t.kite_agent_id,
+        where: t.platform == "kalshi" and t.market == ^ticker,
+        distinct: a.organization_id,
+        select: a.organization_id
+      )
+      |> Repo.aggregate(:count)
+
+    count >= @kalshi_k_anonymity_floor
+  end
+
+  def kalshi_market_anonymity_safe?(_), do: false
 
   @doc """
   Insert a synthetic / public-seed insight directly. Used by the
@@ -208,22 +261,83 @@ defmodule KiteAgentHub.CollectiveIntelligence do
   end
 
   defp insight_attrs(%TradeRecord{} = trade, org_id) do
-    {:ok,
-     %{
-       source_trade_hash: source_hash("trade", trade.id),
-       source_org_hash: source_hash("org", org_id),
-       agent_type: agent_type(trade),
-       platform: normalize_platform(trade.platform),
-       market_class: market_class(trade),
-       side: trade.side,
-       action: trade.action,
-       status: trade.status || "open",
-       outcome_bucket: outcome_bucket(trade),
-       notional_bucket: notional_bucket(trade),
-       hold_time_bucket: hold_time_bucket(trade),
-       observed_week: observed_week(trade)
-     }}
+    base = %{
+      source_trade_hash: source_hash("trade", trade.id),
+      source_org_hash: source_hash("org", org_id),
+      agent_type: agent_type(trade),
+      platform: normalize_platform(trade.platform),
+      market_class: market_class(trade),
+      side: trade.side,
+      action: trade.action,
+      status: trade.status || "open",
+      outcome_bucket: outcome_bucket(trade),
+      notional_bucket: notional_bucket(trade),
+      hold_time_bucket: hold_time_bucket(trade),
+      observed_week: observed_week(trade)
+    }
+
+    {:ok, maybe_add_v2_kalshi_fields(base, trade, org_id)}
   end
+
+  # PR-K3a v2 Kalshi-specific buckets. Populated only when:
+  #   1. The trade is on the kalshi platform, AND
+  #   2. The owning org has explicitly re-consented to kci-v2
+  #
+  # v1-consented orgs continue contributing the platform-generic
+  # base attrs above; the v2 columns stay null in their inserts.
+  # CyberSec 10831 ② write-time enforcement.
+  defp maybe_add_v2_kalshi_fields(attrs, %TradeRecord{platform: "kalshi"} = trade, org_id) do
+    if org_consent_version(org_id) == @consent_version do
+      Map.merge(attrs, %{
+        lifecycle_stage_at_exit: kalshi_lifecycle_stage(trade),
+        implied_prob_at_entry_bucket: kalshi_prob_bucket(trade.fill_price),
+        consent_version: @consent_version
+      })
+    else
+      attrs
+    end
+  end
+
+  defp maybe_add_v2_kalshi_fields(attrs, _trade, _org_id), do: attrs
+
+  defp org_consent_version(org_id) do
+    case fetch_org(org_id) do
+      %Organization{collective_intelligence_consent_version: v} -> v
+      _ -> nil
+    end
+  end
+
+  defp kalshi_lifecycle_stage(%TradeRecord{status: status})
+       when status in ["settled", "cancelled", "expired"],
+       do: status
+
+  defp kalshi_lifecycle_stage(_), do: "open"
+
+  # Bucket the Kalshi entry price (stored as a 0..1 implied prob in
+  # the TradeRecord fill_price decimal) into the 10 fixed buckets the
+  # schema validates against. Defaults to nil (skipped at the row
+  # level) when fill_price isn't usable as a probability.
+  defp kalshi_prob_bucket(%Decimal{} = fill_price) do
+    case Decimal.to_float(fill_price) do
+      p when is_number(p) and p >= 0 and p <= 1 -> prob_bucket_label(p)
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp kalshi_prob_bucket(_), do: nil
+
+  defp prob_bucket_label(p) when p < 0.1, do: "0-10"
+  defp prob_bucket_label(p) when p < 0.2, do: "10-20"
+  defp prob_bucket_label(p) when p < 0.3, do: "20-30"
+  defp prob_bucket_label(p) when p < 0.4, do: "30-40"
+  defp prob_bucket_label(p) when p < 0.5, do: "40-50"
+  defp prob_bucket_label(p) when p < 0.6, do: "50-60"
+  defp prob_bucket_label(p) when p < 0.7, do: "60-70"
+  defp prob_bucket_label(p) when p < 0.8, do: "70-80"
+  defp prob_bucket_label(p) when p < 0.9, do: "80-90"
+  defp prob_bucket_label(_), do: "90-100"
 
   defp fetch_org(org_id) do
     case KiteAgentHub.Orgs.get_org_owner_user_id(org_id) do

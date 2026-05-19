@@ -13,6 +13,10 @@ defmodule KiteAgentHub.CollectiveIntelligence.TradeInsight do
   @platforms ~w(alpaca kalshi oanda_practice polymarket kite unknown)
   @market_classes ~w(equity option crypto forex prediction other)
   @outcome_buckets ~w(profit loss flat settled cancelled failed open)
+  # PR-K3a: Kalshi-specific v2 fields. Nullable on v1 rows.
+  @lifecycle_stages ~w(open settled cancelled expired)
+  @prob_buckets ~w(0-10 10-20 20-30 30-40 40-50 50-60 60-70 70-80 80-90 90-100)
+  @consent_versions ~w(kci-v1-2026-04-25 kci-v2-2026-05-19)
 
   schema "collective_trade_insights" do
     field :source_trade_hash, :string
@@ -27,6 +31,13 @@ defmodule KiteAgentHub.CollectiveIntelligence.TradeInsight do
     field :notional_bucket, :string
     field :hold_time_bucket, :string
     field :observed_week, :date
+    # PR-K3a v2 fields — populated only when the contributing org has
+    # explicitly re-consented to kci-v2-2026-05-19 (write-time gate
+    # in CollectiveIntelligence.record_trade_outcome/1 per CyberSec
+    # 10831 ②).
+    field :lifecycle_stage_at_exit, :string
+    field :implied_prob_at_entry_bucket, :string
+    field :consent_version, :string
 
     timestamps(type: :utc_datetime)
   end
@@ -45,7 +56,10 @@ defmodule KiteAgentHub.CollectiveIntelligence.TradeInsight do
       :outcome_bucket,
       :notional_bucket,
       :hold_time_bucket,
-      :observed_week
+      :observed_week,
+      :lifecycle_stage_at_exit,
+      :implied_prob_at_entry_bucket,
+      :consent_version
     ])
     |> validate_required([
       :source_trade_hash,
@@ -61,6 +75,19 @@ defmodule KiteAgentHub.CollectiveIntelligence.TradeInsight do
     |> validate_inclusion(:platform, @platforms)
     |> validate_inclusion(:market_class, @market_classes)
     |> validate_inclusion(:outcome_bucket, @outcome_buckets)
+    |> validate_inclusion_if_set(:lifecycle_stage_at_exit, @lifecycle_stages)
+    |> validate_inclusion_if_set(:implied_prob_at_entry_bucket, @prob_buckets)
+    |> validate_inclusion_if_set(:consent_version, @consent_versions)
     |> unique_constraint(:source_trade_hash)
+  end
+
+  # Skip inclusion validation when the field is nil — v1 rows leave
+  # the new v2 fields null and shouldn't trip validation. Only
+  # validates when the field has been explicitly set.
+  defp validate_inclusion_if_set(changeset, field, list) do
+    case get_field(changeset, field) do
+      nil -> changeset
+      _ -> validate_inclusion(changeset, field, list)
+    end
   end
 end
