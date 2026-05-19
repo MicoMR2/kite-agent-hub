@@ -247,8 +247,13 @@ defmodule KiteAgentHub.Workers.KalshiOrderReconciler do
   end
 
   defp log_error(trade, strategy, reason) do
+    # PR-D₄ sanitization (CyberSec 10671①②): only the status code
+    # from `reason` reaches the log; the full Kalshi response body
+    # — which may carry order details or Kalshi internal codes —
+    # stays out of the surface.
     Logger.warning(
-      "KalshiOrderReconciler error trade=#{trade.id} strategy=#{strategy} reason=#{inspect(reason)}"
+      "KalshiOrderReconciler error trade=#{trade.id} strategy=#{strategy} " <>
+        "status=#{KalshiClient.sanitize_for_log(reason)}"
     )
 
     :error

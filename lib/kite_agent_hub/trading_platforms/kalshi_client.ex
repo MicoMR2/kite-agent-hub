@@ -32,6 +32,46 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   defp base_host(_), do: @demo_host
 
   @doc """
+  Sanitize a Kalshi error tuple/string for use in a Logger line.
+  Returns a short, content-free reason string (`"401"`, `"404"`,
+  `"500"`, `"transport"`, `"sign"`, `"unknown"`) so downstream
+  loggers don't accidentally interpolate the raw response body that
+  the internal KalshiClient error strings embed via `inspect/1`.
+
+  PR-D₄ (CyberSec audit, msg 10671①②): keeps response bodies — which
+  may carry order details, internal Kalshi codes, or echoed user
+  identifiers — out of every Logger call site. The original error
+  string remains available to callers that need to pattern-match on
+  it for user-facing copy (e.g. `humanize_kalshi_error/2`); this
+  helper is the log-only path.
+  """
+  def sanitize_for_log({:error, reason}), do: sanitize_for_log(reason)
+
+  def sanitize_for_log(reason) when is_binary(reason) do
+    cond do
+      String.starts_with?(reason, "kalshi 401") -> "401"
+      String.starts_with?(reason, "kalshi 404") -> "404"
+      String.starts_with?(reason, "kalshi 429") -> "429"
+      String.starts_with?(reason, "kalshi 500") -> "500"
+      String.starts_with?(reason, "kalshi HTTP") -> "transport"
+      String.starts_with?(reason, "kalshi sign") -> "sign"
+      String.starts_with?(reason, "kalshi ") -> kalshi_status_from(reason)
+      true -> "unknown"
+    end
+  end
+
+  def sanitize_for_log(nil), do: "unknown"
+  def sanitize_for_log(reason) when is_atom(reason), do: Atom.to_string(reason)
+  def sanitize_for_log(_), do: "unknown"
+
+  defp kalshi_status_from(reason) do
+    case Regex.run(~r/\Akalshi (\d{3})/, reason) do
+      [_, code] -> code
+      _ -> "unknown"
+    end
+  end
+
+  @doc """
   Fetch the Kalshi exchange status — `exchange_active` + `trading_active`
   booleans. Used by `preflight/4` to gate trade enqueue when the
   exchange is in maintenance or trading is paused. Returns

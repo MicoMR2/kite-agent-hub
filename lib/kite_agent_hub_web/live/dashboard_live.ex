@@ -2375,7 +2375,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
       {:error, reason} ->
         require Logger
-        Logger.warning("DashboardLive: Kalshi load failed: #{inspect(reason)}")
+
+        Logger.warning(
+          "DashboardLive: Kalshi load failed status=#{KalshiClient.sanitize_for_log(reason)}"
+        )
+
         assign(socket, :kalshi_data, :error)
 
       _ ->
