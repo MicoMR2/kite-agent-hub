@@ -16,7 +16,14 @@ defmodule KiteAgentHub.Kite.KalshiLiveDataCache do
   use GenServer
 
   @table :kalshi_live_data_cache
-  @default_ttl_seconds 30
+  # 90s TTL paired with the 25s self-schedule cadence (worker.ex)
+  # gives belt-and-suspenders: the self-schedule keeps the cache
+  # warm within the freshness budget, and the 90s TTL means a
+  # missed refresh cycle still serves valid (if stale) data
+  # rather than crashing through to `:miss`. 90s of staleness is
+  # fine for live event-truth semantics (sports score / election
+  # count / weather threshold) — Phorari 10771 third delta.
+  @default_ttl_seconds 90
 
   # ── Client API ────────────────────────────────────────────────────
 
