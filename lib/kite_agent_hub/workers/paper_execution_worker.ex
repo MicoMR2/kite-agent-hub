@@ -296,8 +296,11 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
           handle_kalshi_response(trade, order, job_id)
         else
           {:error, reason} ->
+            # PR-D₄ sanitization: log the Kalshi status code only;
+            # full `reason` flows to humanize_kalshi_error/2 for the
+            # user-facing message but never reaches the log surface.
             Logger.warning(
-              "PaperExecutionWorker job=#{job_id} provider=kalshi failed: #{inspect(reason)}"
+              "PaperExecutionWorker job=#{job_id} provider=kalshi failed status=#{KalshiClient.sanitize_for_log(reason)}"
             )
 
             friendly = humanize_kalshi_error(reason, symbol)
