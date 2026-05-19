@@ -16,7 +16,12 @@ defmodule KiteAgentHub.Kite.KalshiLiveDataCache do
   use GenServer
 
   @table :kalshi_live_data_cache
-  @default_ttl_seconds 30
+  # TTL 90s paired with 60s cron leaves a 30s overlap buffer rather
+  # than a 30s gap — CyberSec 10763 ③ + Phorari 10764 reversal.
+  # 90s of staleness is fine for live event-truth semantics (sports
+  # scores / election counts / weather thresholds — none change
+  # faster than that in ways our scorer reacts to).
+  @default_ttl_seconds 90
 
   # ── Client API ────────────────────────────────────────────────────
 

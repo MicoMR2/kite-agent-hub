@@ -12,14 +12,7 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
   blocks on a single bad market.
   """
 
-  # `unique` window prevents duplicate jobs from piling up if a
-  # perform overlaps the next self-scheduled run. 20s < the 25s
-  # self-schedule interval below + the 60s cron tick, so dupes
-  # within a single refresh cycle are de-duped.
-  use Oban.Worker,
-    queue: :maintenance,
-    max_attempts: 2,
-    unique: [period: 20, fields: [:worker, :args]]
+  use Oban.Worker, queue: :maintenance, max_attempts: 2
 
   require Logger
 
@@ -27,12 +20,9 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
   alias KiteAgentHub.Kite.KalshiLiveDataCache
   alias KiteAgentHub.TradingPlatforms.KalshiClient
 
-  # CyberSec ③ msg 10760 + Phorari 10761: 30s cache TTL paired with
-  # 60s cron leaves a stale-then-empty gap. Self-schedule a follow-up
-  # at +25s on every successful run so the effective refresh cadence
-  # is ~25s — below the 30s TTL, no gap.
-  @self_schedule_seconds 25
-
+  # Refresh cadence: every-minute cron + 90s cache TTL leaves a 30s
+  # overlap buffer so scoring reads never fall into a stale-then-
+  # empty gap (CyberSec 10763 ③ + Phorari 10764).
   @impl Oban.Worker
   def perform(_job) do
     trades = Trading.list_open_kalshi_trades_for_reconcile(older_than_seconds: 0)
@@ -50,16 +40,7 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
       "KalshiLiveDataWorker sweep: orgs=#{map_size(tickers_by_org)} refreshed=#{refreshed} errors=#{errors}"
     )
 
-    schedule_next()
     :ok
-  end
-
-  defp schedule_next do
-    # Insert the next run; if Oban's `unique` already has a job
-    # within the 20s window the conflict is silently a no-op
-    # (returns `{:ok, job}` with the existing job).
-    __MODULE__.new(%{}, schedule_in: @self_schedule_seconds)
-    |> Oban.insert()
   end
 
   @doc false
@@ -86,11 +67,20 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
       {:ok, map_size(by_ticker)}
     else
       err ->
+        # CyberSec ⑥ msg 10760 + 10671②: log org + reason atom only.
+        # Kalshi response bodies stay out of the log surface; the
+        # KalshiClient pre-sanitizes, but the log format here was
+        # drifting from the standard.
         Logger.warning(
-          "KalshiLiveDataWorker org=#{org_id} refresh failed: #{inspect(err)}"
+          "KalshiLiveDataWorker refresh failed org=#{org_id} reason=#{reason_atom(err)}"
         )
 
         err
     end
   end
+
+  defp reason_atom({:error, reason}) when is_atom(reason), do: reason
+  defp reason_atom({:error, _reason}), do: :refresh_failed
+  defp reason_atom(:error), do: :refresh_failed
+  defp reason_atom(_), do: :unknown
 end
