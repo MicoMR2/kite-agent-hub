@@ -5126,145 +5126,181 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
 
-                  <%!-- Open Positions --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
-                    <div class="px-6 py-4 border-b border-white/10">
+                  <%!-- Open Positions — PR-J.5 card grid replacing the
+                       prior table. Mirrors kalshi.com's at-a-glance read:
+                       each position is its own card with friendly title,
+                       contract id, implied-prob bar showing yes/no skew,
+                       and the existing live-truth chip + sparkline. --%>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02]">
+                    <div class="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                       <h3 class="text-xs font-black text-white uppercase tracking-widest">
                         Open Positions
                       </h3>
+                      <%= if data.positions != [] do %>
+                        <span class="text-[10px] text-gray-600 uppercase tracking-widest">
+                          {length(data.positions)} held
+                        </span>
+                      <% end %>
                     </div>
                     <%= if data.positions == [] do %>
                       <p class="px-6 py-8 text-center text-sm text-gray-600">No open positions.</p>
                     <% else %>
-                      <table class="w-full text-sm">
-                        <thead>
-                          <tr class="border-b border-white/5">
-                            <%= for h <- ["Market", "Status", "Side", "Contracts", "Avg", "Bid / Ask", "Value"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                                {h}
-                              </th>
-                            <% end %>
-                          </tr>
-                        </thead>
-                        <tbody class="divide-y divide-white/5">
-                          <%= for p <- data.positions do %>
-                            <tr class="hover:bg-white/[0.02]">
-                              <td
-                                class="px-2 py-2 sm:px-4 sm:py-3 max-w-[22rem]"
-                                title={p.title}
-                              >
-                                <%!-- PR-J.1 (Mico 10808): friendly market title is the
-                                     primary read; the Kalshi contract ticker drops
-                                     underneath in a smaller mono dim weight so users
-                                     can still see WHICH contract they hold without
-                                     the row becoming a wall of monospace. --%>
-                                <div class="flex items-start gap-2 min-w-0">
-                                  <div class="min-w-0 flex-1">
-                                    <p class="text-sm text-white truncate">
-                                      {truncate_market(p.title, 48)}
-                                    </p>
-                                    <p class="text-[10px] text-gray-600 font-mono truncate mt-0.5">
-                                      {p.market_id}
-                                    </p>
-                                  </div>
-                                  <%!-- PR-J live event-truth chip from KalshiLiveDataCache --%>
-                                  <%= case kalshi_live_truth_badge(p.market_id) do %>
-                                    <% {:ok, v} -> %>
-                                      <span class="inline-flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded border border-teal-500/30 bg-teal-500/[0.08] text-[9px] font-mono text-teal-300 uppercase tracking-wider">
-                                        <span class="w-1 h-1 rounded-full bg-teal-400 animate-pulse"></span>
-                                        Live · {v}
-                                      </span>
-                                    <% :miss -> %>
-                                  <% end %>
-                                  <%!-- PR-J.7 24h yes-price sparkline. Polished layer
-                                       over PR-J.₂'s plain polyline: linear gradient
-                                       fill under the line (teal → transparent),
-                                       last-value label pinned at the end, anime.js
-                                       draw-in mount via SparklineMount hook, native
-                                       SVG <title> tooltip for hover. --%>
-                                  <% spark_data = kalshi_position_sparkline_data(p.market_id) %>
-                                  <%= if length(spark_data) >= 2 do %>
-                                    <% spark_line = sparkline_points(spark_data, 80, 22) %>
-                                    <% spark_poly = kalshi_sparkline_polygon_points(spark_line, 80, 22) %>
-                                    <% spark_len = kalshi_sparkline_path_length(spark_data, 80, 22) %>
-                                    <% spark_last_cents = List.last(spark_data).v %>
-                                    <% spark_grad_id = "spark-grad-#{p.market_id}" %>
-                                    <div
-                                      class="flex items-center gap-1.5 shrink-0"
-                                      id={"kalshi-spark-#{p.market_id}"}
-                                      phx-hook="SparklineMount"
-                                      data-length={spark_len}
-                                    >
-                                      <svg
-                                        class="shrink-0 text-teal-400"
-                                        width="80"
-                                        height="22"
-                                        viewBox="0 0 80 22"
-                                        preserveAspectRatio="none"
-                                        aria-label="24h yes-price trend"
-                                      >
-                                        <title>{:erlang.float_to_binary(spark_last_cents, decimals: 0)}¢ · last close, 24h trend</title>
-                                        <defs>
-                                          <linearGradient id={spark_grad_id} x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stop-color="currentColor" stop-opacity="0.45" />
-                                            <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
-                                          </linearGradient>
-                                        </defs>
-                                        <polygon points={spark_poly} fill={"url(##{spark_grad_id})"} stroke="none" />
-                                        <polyline
-                                          points={spark_line}
-                                          fill="none"
-                                          stroke="currentColor"
-                                          stroke-width="1.5"
-                                          stroke-linecap="round"
-                                          stroke-linejoin="round"
-                                        />
-                                      </svg>
-                                      <span class="text-[9px] font-mono text-teal-300/80 tabular-nums">
-                                        {:erlang.float_to_binary(spark_last_cents, decimals: 0)}¢
-                                      </span>
-                                    </div>
-                                  <% end %>
-                                </div>
-                              </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3">
+                      <div class="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <%= for p <- data.positions do %>
+                          <% prob_pct = kalshi_implied_prob_pct(p) %>
+                          <% display_pct = kalshi_side_prob_pct(p, prob_pct) %>
+                          <div class="group rounded-2xl border border-white/10 bg-white/[0.03] p-4 hover:border-white/20 hover:bg-white/[0.05] transition-all">
+                            <%!-- Top row: title hierarchy + status pill + side chip --%>
+                            <div class="flex items-start justify-between gap-3 mb-3">
+                              <div class="min-w-0 flex-1">
+                                <p class="text-sm text-white leading-snug" title={p.title}>
+                                  {truncate_market(p.title, 64)}
+                                </p>
+                                <p class="text-[10px] text-gray-600 font-mono truncate mt-1">
+                                  {p.market_id}
+                                </p>
+                              </div>
+                              <div class="flex flex-col items-end gap-1 shrink-0">
                                 <% {label, badge_classes} = kalshi_status_badge(p.status) %>
-                                <%!-- PR-J.1: badge weight reduced from font-black
-                                     to font-semibold so it sits with the row
-                                     instead of dominating it. --%>
                                 <span class={[
-                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap",
+                                  "text-[9px] font-semibold px-2 py-0.5 rounded border uppercase tracking-widest whitespace-nowrap",
                                   badge_classes
                                 ]}>
                                   {label}
                                 </span>
-                              </td>
-                              <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
+                                  "text-[9px] font-semibold px-2 py-0.5 rounded border uppercase",
                                   p.side == "yes" &&
                                     "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
                                   p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"
                                 ]}>
                                   {p.side}
                                 </span>
-                              </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-gray-300">
-                                {p.contracts}
-                              </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-400">
-                                {:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢
-                              </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-gray-300">
-                                {kalshi_live_quote(p)}
-                              </td>
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono text-white">
-                                ${:erlang.float_to_binary(p.value, decimals: 2)}
-                              </td>
-                            </tr>
-                          <% end %>
-                        </tbody>
-                      </table>
+                              </div>
+                            </div>
+
+                            <%!-- Live-truth chip + sparkline (kept from J + J.7) --%>
+                            <div class="flex items-center gap-2 mb-3 min-h-[22px]">
+                              <%= case kalshi_live_truth_badge(p.market_id) do %>
+                                <% {:ok, v} -> %>
+                                  <span class="inline-flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded border border-teal-500/30 bg-teal-500/[0.08] text-[9px] font-mono text-teal-300 uppercase tracking-wider">
+                                    <span class="w-1 h-1 rounded-full bg-teal-400 animate-pulse"></span>
+                                    Live · {v}
+                                  </span>
+                                <% :miss -> %>
+                              <% end %>
+                              <% spark_data = kalshi_position_sparkline_data(p.market_id) %>
+                              <%= if length(spark_data) >= 2 do %>
+                                <% spark_line = sparkline_points(spark_data, 96, 22) %>
+                                <% spark_poly = kalshi_sparkline_polygon_points(spark_line, 96, 22) %>
+                                <% spark_len = kalshi_sparkline_path_length(spark_data, 96, 22) %>
+                                <% spark_last_cents = List.last(spark_data).v %>
+                                <% spark_grad_id = "spark-grad-card-#{p.market_id}" %>
+                                <div
+                                  class="flex items-center gap-1.5 shrink-0 ml-auto"
+                                  id={"kalshi-spark-card-#{p.market_id}"}
+                                  phx-hook="SparklineMount"
+                                  data-length={spark_len}
+                                >
+                                  <svg
+                                    class="shrink-0 text-teal-400"
+                                    width="96"
+                                    height="22"
+                                    viewBox="0 0 96 22"
+                                    preserveAspectRatio="none"
+                                    aria-label="24h yes-price trend"
+                                  >
+                                    <title>{:erlang.float_to_binary(spark_last_cents, decimals: 0)}¢ · last close, 24h trend</title>
+                                    <defs>
+                                      <linearGradient id={spark_grad_id} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="currentColor" stop-opacity="0.45" />
+                                        <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
+                                      </linearGradient>
+                                    </defs>
+                                    <polygon points={spark_poly} fill={"url(##{spark_grad_id})"} stroke="none" />
+                                    <polyline
+                                      points={spark_line}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      stroke-width="1.5"
+                                      stroke-linecap="round"
+                                      stroke-linejoin="round"
+                                    />
+                                  </svg>
+                                  <span class="text-[9px] font-mono text-teal-300/80 tabular-nums">
+                                    {:erlang.float_to_binary(spark_last_cents, decimals: 0)}¢
+                                  </span>
+                                </div>
+                              <% end %>
+                            </div>
+
+                            <%!-- Implied-prob bar — visualizes the current
+                                 yes/no split. Server-rendered width via
+                                 inline `style` from `display_pct` (already
+                                 validated 0-100). Yes side fills teal, no
+                                 side fills red, matching the side chip. --%>
+                            <div class="mb-3">
+                              <div class="flex items-center justify-between mb-1">
+                                <span class="text-[9px] font-semibold text-gray-500 uppercase tracking-widest">
+                                  Implied {if p.side == "yes", do: "yes", else: "no"}
+                                </span>
+                                <span class={[
+                                  "text-xs font-semibold tabular-nums",
+                                  p.side == "yes" && "text-emerald-300",
+                                  p.side == "no" && "text-red-300"
+                                ]}>
+                                  {display_pct}%
+                                </span>
+                              </div>
+                              <div
+                                class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"
+                                role="progressbar"
+                                aria-valuenow={display_pct}
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                              >
+                                <div
+                                  class={[
+                                    "h-full rounded-full transition-all duration-500",
+                                    p.side == "yes" &&
+                                      "bg-gradient-to-r from-emerald-500/70 to-teal-400",
+                                    p.side == "no" && "bg-gradient-to-r from-red-500/70 to-red-400"
+                                  ]}
+                                  style={"width: #{display_pct}%"}
+                                />
+                              </div>
+                            </div>
+
+                            <%!-- Numbers grid: qty / avg / current / value --%>
+                            <div class="grid grid-cols-4 gap-2 text-[10px]">
+                              <div>
+                                <p class="text-gray-600 uppercase tracking-widest mb-0.5">Qty</p>
+                                <p class="text-white text-sm font-semibold tabular-nums">
+                                  {p.contracts}
+                                </p>
+                              </div>
+                              <div>
+                                <p class="text-gray-600 uppercase tracking-widest mb-0.5">Avg</p>
+                                <p class="text-gray-300 text-sm font-mono tabular-nums">
+                                  {:erlang.float_to_binary(p.avg_price * 100, decimals: 0)}¢
+                                </p>
+                              </div>
+                              <div>
+                                <p class="text-gray-600 uppercase tracking-widest mb-0.5">Bid/Ask</p>
+                                <p class="text-gray-300 text-xs font-mono tabular-nums">
+                                  {kalshi_live_quote(p)}
+                                </p>
+                              </div>
+                              <div>
+                                <p class="text-gray-600 uppercase tracking-widest mb-0.5">Value</p>
+                                <p class="text-white text-sm font-mono tabular-nums">
+                                  ${:erlang.float_to_binary(p.value, decimals: 2)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        <% end %>
+                      </div>
                     <% end %>
                   </div>
 
@@ -8437,6 +8473,26 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   def kalshi_market_url(_), do: nil
+
+  # PR-J.5 — implied probability of the market, derived from the
+  # position's `current_price` (Kalshi reports this as a 0..1 yes-side
+  # probability). Returns an integer 0-100 clamped to that band so
+  # the inline `style="width: …%"` is always render-safe.
+  @doc false
+  def kalshi_implied_prob_pct(%{current_price: p}) when is_number(p) do
+    (p * 100) |> Kernel.trunc() |> max(0) |> min(100)
+  end
+
+  def kalshi_implied_prob_pct(_), do: 0
+
+  # PR-J.5 — picks the side-relevant probability for the bar label.
+  # For a YES position we show the yes-side prob directly; for a NO
+  # position we show the inverse (no-side implied prob = 100 - yes).
+  @doc false
+  def kalshi_side_prob_pct(%{side: "no"}, yes_pct) when is_integer(yes_pct),
+    do: 100 - yes_pct
+
+  def kalshi_side_prob_pct(_, yes_pct), do: yes_pct
 
   # PR-J.7 helpers — build the gradient-fill polygon points by
   # closing the polyline back to the baseline + return the last
