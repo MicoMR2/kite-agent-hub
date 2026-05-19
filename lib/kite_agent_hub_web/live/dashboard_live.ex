@@ -5123,11 +5123,23 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
                               <td
-                                class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono max-w-[20rem]"
+                                class="px-2 py-2 sm:px-4 sm:py-3 max-w-[22rem]"
                                 title={p.title}
                               >
-                                <div class="flex items-center gap-2 min-w-0">
-                                  <span class="truncate">{truncate_market(p.title, 32)}</span>
+                                <%!-- PR-J.1 (Mico 10808): friendly market title is the
+                                     primary read; the Kalshi contract ticker drops
+                                     underneath in a smaller mono dim weight so users
+                                     can still see WHICH contract they hold without
+                                     the row becoming a wall of monospace. --%>
+                                <div class="flex items-start gap-2 min-w-0">
+                                  <div class="min-w-0 flex-1">
+                                    <p class="text-sm text-white truncate">
+                                      {truncate_market(p.title, 48)}
+                                    </p>
+                                    <p class="text-[10px] text-gray-600 font-mono truncate mt-0.5">
+                                      {p.market_id}
+                                    </p>
+                                  </div>
                                   <%!-- PR-J live event-truth chip from KalshiLiveDataCache --%>
                                   <%= case kalshi_live_truth_badge(p.market_id) do %>
                                     <% {:ok, v} -> %>
@@ -5141,7 +5153,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                   <% spark_data = kalshi_position_sparkline_data(p.market_id) %>
                                   <%= if length(spark_data) >= 2 do %>
                                     <svg
-                                      class="shrink-0 text-teal-400/70"
+                                      class="shrink-0 text-teal-400/70 mt-0.5"
                                       width="64"
                                       height="20"
                                       viewBox="0 0 64 20"
@@ -5162,8 +5174,11 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3">
                                 <% {label, badge_classes} = kalshi_status_badge(p.status) %>
+                                <%!-- PR-J.1: badge weight reduced from font-black
+                                     to font-semibold so it sits with the row
+                                     instead of dominating it. --%>
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase tracking-widest whitespace-nowrap",
                                   badge_classes
                                 ]}>
                                   {label}
@@ -5171,7 +5186,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
                                   p.side == "yes" &&
                                     "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
                                   p.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"
@@ -5227,7 +5242,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
                                   o.side == "yes" &&
                                     "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
                                   o.side == "no" &&
@@ -5238,7 +5253,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
                                   o.action == "buy" &&
                                     "text-blue-400 border-blue-500/20 bg-blue-500/10",
                                   o.action == "sell" &&
@@ -5305,12 +5320,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <tbody class="divide-y divide-white/5">
                           <%= for f <- Enum.take(data.fills, 10) do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono">
                                 {f.ticker}
                               </td>
                               <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
                                   f.side == "yes" &&
                                     "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
                                   f.side == "no" && "text-red-400 border-red-500/20 bg-red-500/10"
@@ -5320,7 +5335,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                               </td>
                               <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
                                   f.action == "buy" &&
                                     "text-blue-400 border-blue-500/20 bg-blue-500/10",
                                   f.action == "sell" &&
