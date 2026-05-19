@@ -1055,14 +1055,30 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   defp parse_position(p) do
+    # PR-J.8: Kalshi's position payload keys drifted (or always
+    # varied per endpoint). The pre-fix code only checked
+    # `p["position"]` for quantity and `p["average_price"]` for
+    # entry price — when both come back under different keys
+    # (`quantity` / `count`, `entry_price` / `price`), positions
+    # rendered as `0qty 0price` on the dashboard. Defensive
+    # multi-key fallbacks + a one-time warning log when both
+    # come back zero so we can observe in prod whether the actual
+    # response is missing the fields or the position is genuinely
+    # zero-sized.
+    contracts = parse_position_qty(p)
+    avg_cents = parse_position_avg_cents(p)
+    last_cents = parse_position_last_cents(p)
+
+    log_if_zeroed(p, contracts, avg_cents)
+
     %{
       market_id: p["market_id"] || p["ticker"],
       title: p["title"] || p["market_id"] || "—",
       side: p["side"],
-      contracts: p["position"] || 0,
-      avg_price: (p["average_price"] || 0) / 100.0,
-      current_price: (p["last_price"] || 0) / 100.0,
-      value: (p["position"] || 0) * (p["last_price"] || 0) / 100.0,
+      contracts: contracts,
+      avg_price: avg_cents / 100.0,
+      current_price: last_cents / 100.0,
+      value: contracts * last_cents / 100.0,
       settled: p["settled"] || false,
       # Lifecycle / live-quote fields are nil until enriched via
       # `enrich_positions/4`. Dashboard renders them when present and
@@ -1075,6 +1091,75 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
       live_no_ask_cents: nil
     }
   end
+
+  @doc false
+  # Exported for hermetic tests — pure key-fallback helpers.
+  def parse_position_qty(p) when is_map(p) do
+    Enum.find_value(
+      ["position", "quantity", "count", "size", "contracts"],
+      0,
+      fn k ->
+        case p[k] do
+          n when is_integer(n) -> n
+          n when is_float(n) -> trunc(n)
+          n when is_binary(n) -> parse_int(n)
+          _ -> nil
+        end
+      end
+    ) || 0
+  end
+
+  def parse_position_qty(_), do: 0
+
+  @doc false
+  def parse_position_avg_cents(p) when is_map(p) do
+    Enum.find_value(
+      ["average_price", "avg_price", "entry_price", "price", "fill_price"],
+      0,
+      fn k ->
+        case p[k] do
+          n when is_number(n) -> n
+          n when is_binary(n) -> parse_int(n)
+          _ -> nil
+        end
+      end
+    ) || 0
+  end
+
+  def parse_position_avg_cents(_), do: 0
+
+  @doc false
+  def parse_position_last_cents(p) when is_map(p) do
+    Enum.find_value(
+      ["last_price", "current_price", "mark_price"],
+      0,
+      fn k ->
+        case p[k] do
+          n when is_number(n) -> n
+          n when is_binary(n) -> parse_int(n)
+          _ -> nil
+        end
+      end
+    ) || 0
+  end
+
+  def parse_position_last_cents(_), do: 0
+
+  # Warn (once per parse) when a Kalshi position landed with zero
+  # contracts AND zero avg price simultaneously — almost always a
+  # shape-drift signal rather than a real position. Surfaces the
+  # raw response key set (NOT values) so we can spot the missing
+  # field without leaking trader-identifying details.
+  defp log_if_zeroed(p, 0, 0) when is_map(p) do
+    require Logger
+
+    Logger.warning(
+      "KalshiClient.parse_position zeroed — keys=#{inspect(Map.keys(p))} " <>
+        "ticker=#{inspect(p["ticker"] || p["market_id"])}"
+    )
+  end
+
+  defp log_if_zeroed(_p, _contracts, _avg), do: :ok
 
   defp parse_market(m) do
     %{
