@@ -829,79 +829,45 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # Ignore Task :DOWN — chain data is non-critical
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
-  # Async broker stats loading — PR #98. Mount returns instantly with
-  # empty_broker_stats/0; this fires after connect and pulls real numbers
-  # from Alpaca + Kalshi via safe_broker_stats/2. Same pattern as
-  # :load_edge_scores below.
+  # Async broker stats loading — PR #98 + PR-D₂. Mount returns
+  # instantly with empty_broker_stats/0; this handler spawns a
+  # supervised Task that does the Alpaca + Kalshi fetch out-of-band
+  # so the LV mailbox stays drainable for chat broadcasts and other
+  # fast updates (Mico msg 10687).
   def handle_info(:load_broker_stats, socket) do
-    stats =
+    org_id =
       case socket.assigns[:organization] do
-        %{id: org_id} -> safe_broker_stats(org_id, socket.assigns[:pnl_stats])
-        _ -> socket.assigns[:pnl_stats] || empty_broker_stats()
+        %{id: id} -> id
+        _ -> nil
       end
 
-    {:noreply, assign(socket, :pnl_stats, stats)}
+    prior = socket.assigns[:pnl_stats]
+    async_loader(:broker_stats, fn -> safe_broker_stats_or_prior(org_id, prior) end)
+    {:noreply, socket}
   end
 
-  # Async edge scorer loading. Wrapped in try/rescue so a scorer raise
-  # (e.g. nil field from a partially-loaded broker position) never kills
-  # the LiveView, which used to propagate as a page-reload storm for
-  # every dashboard visitor.
+  # Async edge scorer loading. Wrapped Task is itself wrapped in
+  # try/rescue so a scorer raise (e.g. nil field from a partially-
+  # loaded broker position) never kills the LV — the LV used to
+  # propagate scorer crashes as a page-reload storm for every visitor.
   def handle_info(:load_edge_scores, socket) do
-    require Logger
+    org = socket.assigns[:organization]
+    org_id = org && org.id
 
-    scores =
-      try do
-        EdgeScorer.score_all()
-      rescue
-        e ->
-          Logger.warning("DashboardLive: EdgeScorer crashed: #{inspect(e)}")
-          socket.assigns[:edge_scores] || []
-      end
+    async_loader(:edge_scores, fn ->
+      scores = safe_score_all()
+      portfolio = if org_id, do: safe_score_portfolio(org_id), else: nil
+      %{scores: scores, portfolio: portfolio}
+    end)
 
-    portfolio =
-      if socket.assigns.organization do
-        try do
-          PortfolioEdgeScorer.score_portfolio(socket.assigns.organization.id)
-        rescue
-          e ->
-            Logger.warning("DashboardLive: PortfolioEdgeScorer crashed: #{inspect(e)}")
-            socket.assigns[:portfolio_scores]
-        end
-      else
-        nil
-      end
-
-    {:noreply,
-     socket
-     |> assign(:edge_scores, scores)
-     |> assign(:portfolio_scores, portfolio)
-     |> assign(:edge_scores_loading, false)}
+    {:noreply, socket}
   end
 
   # Async wallet transaction history via Blockscout
   def handle_info(:load_wallet_txs, socket) do
     agent = socket.assigns.selected_agent
-
-    txs =
-      if agent && agent.wallet_address do
-        try do
-          case KiteAgentHub.Kite.Blockscout.transactions(
-                 agent.wallet_address,
-                 10,
-                 agent.chain_id || KiteAgentHub.Kite.ChainId.default()
-               ) do
-            {:ok, txs} -> txs
-            _ -> []
-          end
-        rescue
-          _ -> []
-        end
-      else
-        []
-      end
-
-    {:noreply, assign(socket, :wallet_txs, txs)}
+    async_loader(:wallet_txs, fn -> safe_wallet_txs(agent) end)
+    {:noreply, socket}
   end
 
   # Async ERC-20 token balances via Blockscout. Native KITE balance is fetched
@@ -909,23 +875,134 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # wallet holds (USDT and any others) so they show up in the wallet tab.
   def handle_info(:load_wallet_tokens, socket) do
     agent = socket.assigns.selected_agent
-
-    tokens =
-      if agent && agent.wallet_address do
-        try do
-          case KiteAgentHub.Kite.Blockscout.token_balances(agent.wallet_address) do
-            {:ok, list} -> list
-            _ -> []
-          end
-        rescue
-          _ -> []
-        end
-      else
-        []
-      end
-
-    {:noreply, assign(socket, :wallet_tokens, tokens)}
+    async_loader(:wallet_tokens, fn -> safe_wallet_tokens(agent) end)
+    {:noreply, socket}
   end
+
+  # PR-D₂ result handler. The async Task posts `{ref, {:loader_result,
+  # key, payload}}` once its work completes; we demonitor the ref and
+  # apply the payload to the socket here in the LV process.
+  # `apply_loader_result/3` dispatches on `key`. Crashes inside the
+  # Task surface as `{:DOWN, ref, :process, _pid, reason}` which is
+  # caught by the existing wildcard DOWN handler — prior assigns are
+  # preserved, the LV does not die.
+  def handle_info({ref, {:loader_result, key, payload}}, socket) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, apply_loader_result(socket, key, payload)}
+  end
+
+  defp apply_loader_result(socket, :broker_stats, stats) when is_map(stats) do
+    assign(socket, :pnl_stats, stats)
+  end
+
+  defp apply_loader_result(socket, :edge_scores, %{scores: scores, portfolio: portfolio}) do
+    socket
+    |> assign(:edge_scores, scores)
+    |> assign(:portfolio_scores, portfolio)
+    |> assign(:edge_scores_loading, false)
+  end
+
+  defp apply_loader_result(socket, :wallet_txs, txs) when is_list(txs) do
+    assign(socket, :wallet_txs, txs)
+  end
+
+  defp apply_loader_result(socket, :wallet_tokens, tokens) when is_list(tokens) do
+    assign(socket, :wallet_tokens, tokens)
+  end
+
+  # `:error` payload from a Task that caught its own exception —
+  # preserve prior assigns by returning the socket untouched. Same
+  # outcome as the wildcard DOWN handler at line 830 catching a
+  # genuine Task crash.
+  defp apply_loader_result(socket, _key, _payload), do: socket
+
+  # ── Async loader helpers ──────────────────────────────────────────
+  #
+  # `async_loader/2` spawns the work on `KiteAgentHub.TaskSupervisor`
+  # via `async_nolink` so a crash in the Task sends `:DOWN` to the LV
+  # but does NOT take the LV down. The Task body is itself wrapped in
+  # try/rescue per the dashboard_live rescue-everything rule
+  # (feedback_kah_lv_rescue) — on error we return `:error` and
+  # `apply_loader_result/3` ignores it, preserving the prior assign.
+
+  defp async_loader(key, fun) do
+    Task.Supervisor.async_nolink(KiteAgentHub.TaskSupervisor, fn ->
+      payload =
+        try do
+          fun.()
+        rescue
+          e ->
+            require Logger
+
+            Logger.warning(
+              "DashboardLive async loader #{inspect(key)} crashed: #{inspect(e)}"
+            )
+
+            :error
+        end
+
+      {:loader_result, key, payload}
+    end)
+  end
+
+  defp safe_broker_stats_or_prior(nil, prior), do: prior || empty_broker_stats()
+  defp safe_broker_stats_or_prior(org_id, prior), do: safe_broker_stats(org_id, prior)
+
+  defp safe_score_all do
+    try do
+      EdgeScorer.score_all()
+    rescue
+      e ->
+        require Logger
+        Logger.warning("DashboardLive async :edge_scores EdgeScorer crashed: #{inspect(e)}")
+        []
+    end
+  end
+
+  defp safe_score_portfolio(org_id) do
+    try do
+      PortfolioEdgeScorer.score_portfolio(org_id)
+    rescue
+      e ->
+        require Logger
+
+        Logger.warning(
+          "DashboardLive async :edge_scores PortfolioEdgeScorer crashed: #{inspect(e)}"
+        )
+
+        nil
+    end
+  end
+
+  defp safe_wallet_txs(%{wallet_address: addr} = agent)
+       when is_binary(addr) and addr != "" do
+    try do
+      chain = agent.chain_id || KiteAgentHub.Kite.ChainId.default()
+
+      case KiteAgentHub.Kite.Blockscout.transactions(addr, 10, chain) do
+        {:ok, txs} -> txs
+        _ -> []
+      end
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_wallet_txs(_agent), do: []
+
+  defp safe_wallet_tokens(%{wallet_address: addr})
+       when is_binary(addr) and addr != "" do
+    try do
+      case KiteAgentHub.Kite.Blockscout.token_balances(addr) do
+        {:ok, list} -> list
+        _ -> []
+      end
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_wallet_tokens(_agent), do: []
 
   # Async Alpaca data loading. Wrapped so a client timeout / malformed
   # response cannot crash the LV.
