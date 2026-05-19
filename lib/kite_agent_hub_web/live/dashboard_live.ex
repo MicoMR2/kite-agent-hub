@@ -82,17 +82,43 @@ defmodule KiteAgentHubWeb.DashboardLive do
     selected_agent = List.first(agents)
 
     if connected?(socket) do
-      try do
-        if selected_agent do
+      # Each side-effect lives in its own try/rescue. Pre-fix, a single
+      # `fetch_chain_data/1` raise would skip everything after it in the
+      # same block — most importantly `Chat.subscribe(org.id)` — leaving
+      # the LV un-subscribed for the session. Mico flagged the symptom
+      # at msg 10687 ("chat sometimes live, sometimes refresh-only");
+      # this isolates the chat subscription so any other connected-block
+      # failure can't drop it. Same shape applies to the agent-topic
+      # subscribe and the broker/edge-score send/2 kicks.
+      if selected_agent do
+        try do
           Phoenix.PubSub.subscribe(KiteAgentHub.PubSub, "agent:#{selected_agent.id}")
-          fetch_chain_data(selected_agent)
+        rescue
+          e ->
+            Logger.warning("Dashboard mount: agent PubSub subscribe failed: #{inspect(e)}")
         end
 
-        if org, do: Chat.subscribe(org.id)
+        try do
+          fetch_chain_data(selected_agent)
+        rescue
+          e ->
+            Logger.warning("Dashboard mount: fetch_chain_data failed: #{inspect(e)}")
+        end
+      end
+
+      if org do
+        try do
+          Chat.subscribe(org.id)
+        rescue
+          e -> Logger.warning("Dashboard mount: Chat.subscribe failed: #{inspect(e)}")
+        end
+      end
+
+      try do
         send(self(), :load_edge_scores)
         if org, do: send(self(), :load_broker_stats)
       rescue
-        e -> Logger.warning("Dashboard mount connected block failed: #{inspect(e)}")
+        e -> Logger.warning("Dashboard mount: loader kick send/2 failed: #{inspect(e)}")
       end
     end
 
