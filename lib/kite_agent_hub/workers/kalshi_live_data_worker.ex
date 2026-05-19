@@ -86,11 +86,19 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
       {:ok, map_size(by_ticker)}
     else
       err ->
+        # CyberSec ⑥ msg 10760 / 10671②: log org + reason atom only.
+        # KalshiClient pre-sanitizes errors but the prior `inspect(err)`
+        # format drifted from the standard log surface.
         Logger.warning(
-          "KalshiLiveDataWorker org=#{org_id} refresh failed: #{inspect(err)}"
+          "KalshiLiveDataWorker refresh failed org=#{org_id} reason=#{reason_atom(err)}"
         )
 
         err
     end
   end
+
+  defp reason_atom({:error, reason}) when is_atom(reason), do: reason
+  defp reason_atom({:error, _reason}), do: :refresh_failed
+  defp reason_atom(:error), do: :refresh_failed
+  defp reason_atom(_), do: :unknown
 end

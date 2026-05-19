@@ -134,8 +134,15 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
         {:ok, %{}}
 
       valid ->
+        # Tickers pre-validated via `valid_ticker?/1` (uppercase
+        # alphanumeric + dash, no special chars), so percent-encoding
+        # the comma separator would actively break the request —
+        # `URI.encode_www_form` encodes `,` → `%2C` and Kalshi would
+        # treat the whole string as a single literal ticker, silently
+        # returning an empty batch (CyberSec functional flag 10763).
+        # Matches the existing `markets_by_tickers/4` pattern.
         joined = Enum.join(valid, ",")
-        path = "/live-data?tickers=#{URI.encode_www_form(joined)}"
+        path = "/live-data?tickers=#{joined}"
 
         case get(path, key_id, pem, env) do
           {:ok, %{"live_data" => list}} when is_list(list) ->
