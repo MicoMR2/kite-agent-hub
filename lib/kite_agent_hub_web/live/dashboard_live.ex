@@ -948,6 +948,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
     assign(socket, :wallet_tokens, tokens)
   end
 
+  # PR-D2.3 — async Alpaca payload landed. `compute_alpaca_data/2`
+  # returns either `{:ok, assigns_map}` (apply each key) or
+  # `{:status, atom}` (set just `:alpaca_data`). Same fail-soft
+  # semantics as the prior inline path.
+  defp apply_loader_result(socket, :alpaca, {:ok, %{} = assigns}) do
+    assign(socket, Map.to_list(assigns))
+  end
+
+  defp apply_loader_result(socket, :alpaca, {:status, atom}) when is_atom(atom) do
+    assign(socket, :alpaca_data, atom)
+  end
+
   # `:error` payload from a Task that caught its own exception —
   # preserve prior assigns by returning the socket untouched. Same
   # outcome as the wildcard DOWN handler at line 830 catching a
@@ -1042,27 +1054,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
 
   defp safe_wallet_tokens(_agent), do: []
 
-  # Async Alpaca data loading. Wrapped so a client timeout / malformed
-  # response cannot crash the LV.
+  # PR-D2.3: async Alpaca data loading via async_loader/2. Pre-fix
+  # both handlers ran load_alpaca_data/2 inline, blocking the LV
+  # mailbox for the full multi-HTTP fetch — chat broadcasts queued
+  # behind. Now the work runs in a supervised Task and posts back
+  # via `apply_loader_result(socket, :alpaca, _)`.
   def handle_info(:load_alpaca, socket) do
-    socket =
-      try do
-        load_alpaca_data(socket)
-      rescue
-        _ -> assign(socket, :alpaca_data, :error)
-      end
-
+    org = socket.assigns[:organization]
+    period = socket.assigns[:alpaca_period] || "1M"
+    async_loader(:alpaca, fn -> compute_alpaca_data(org, period) end)
     {:noreply, socket}
   end
 
   def handle_info({:load_alpaca, period}, socket) do
-    socket =
-      try do
-        load_alpaca_data(socket, period)
-      rescue
-        _ -> assign(socket, :alpaca_data, :error)
-      end
-
+    org = socket.assigns[:organization]
+    async_loader(:alpaca, fn -> compute_alpaca_data(org, period) end)
     {:noreply, socket}
   end
 
@@ -2228,9 +2234,28 @@ defmodule KiteAgentHubWeb.DashboardLive do
     org = socket.assigns.organization
     period = period || socket.assigns[:alpaca_period] || "1M"
 
+    case compute_alpaca_data(org, period) do
+      {:ok, assigns} -> assign(socket, Map.to_list(assigns))
+      {:status, atom} -> assign(socket, :alpaca_data, atom)
+    end
+  end
+
+  # PR-D2.3: pure-ish data fetcher extracted out of `load_alpaca_data/2`
+  # so the async loader (`async_loader(:alpaca, ...)`) can run it in a
+  # supervised Task without holding the LV socket. Returns either
+  # `{:ok, %{key => value}}` (the assigns to apply once the Task lands
+  # back at the LV via `apply_loader_result/3`) or
+  # `{:status, atom}` for the known soft-fail surfaces
+  # (`:unauthorized`, `:not_configured`, `:error`).
+  #
+  # No raise path — every Alpaca HTTP call is wrapped in a `case` and
+  # falls through to `{:status, :error}` on a non-200 / non-:ok shape.
+  defp compute_alpaca_data(nil, _period), do: {:status, :not_configured}
+
+  defp compute_alpaca_data(%{id: org_id}, period) do
     require Logger
 
-    case credentials_module().fetch_secret_with_env(org.id, :alpaca) do
+    case credentials_module().fetch_secret_with_env(org_id, :alpaca) do
       {:ok, {key_id, secret, env}} ->
         Logger.info(
           "DashboardLive: Alpaca credentials found, period=#{period}, env=#{env}, key_prefix=#{String.slice(key_id || "", 0..3)}"
@@ -2257,8 +2282,6 @@ defmodule KiteAgentHubWeb.DashboardLive do
             {history, base_value} =
               case history_result do
                 {:ok, %{points: pts, base_value: bv}} -> {pts, bv}
-                # Backwards-compat in case any other caller still
-                # returns the legacy list-only shape.
                 {:ok, h} when is_list(h) -> {h, nil}
                 _ -> {[], nil}
               end
@@ -2269,30 +2292,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 _ -> []
               end
 
-            socket
-            |> assign(:alpaca_data, %{account: account, positions: positions, orders: orders})
-            |> assign(:alpaca_history, history)
-            |> assign(:alpaca_history_base_value, base_value)
-            |> assign(:alpaca_period, period)
+            {:ok,
+             %{
+               alpaca_data: %{account: account, positions: positions, orders: orders},
+               alpaca_history: history,
+               alpaca_history_base_value: base_value,
+               alpaca_period: period
+             }}
 
           {:error, :unauthorized} ->
             Logger.warning("DashboardLive: Alpaca unauthorized — keys may be expired")
-            assign(socket, :alpaca_data, :unauthorized)
+            {:status, :unauthorized}
 
           {:error, reason} ->
             Logger.warning("DashboardLive: Alpaca account fetch failed: #{inspect(reason)}")
-            assign(socket, :alpaca_data, :error)
+            {:status, :error}
         end
 
       {:error, :not_configured} ->
-        Logger.info("DashboardLive: Alpaca credentials not configured for org #{org.id}")
-        assign(socket, :alpaca_data, :not_configured)
+        Logger.info("DashboardLive: Alpaca credentials not configured for org #{org_id}")
+        {:status, :not_configured}
 
       {:error, reason} ->
         Logger.warning("DashboardLive: Alpaca credential fetch failed: #{inspect(reason)}")
-        assign(socket, :alpaca_data, :error)
+        {:status, :error}
     end
   end
+
+  defp compute_alpaca_data(_org, _period), do: {:status, :error}
 
   defp load_kalshi_data(socket) do
     org = socket.assigns.organization
