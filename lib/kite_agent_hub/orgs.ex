@@ -67,10 +67,16 @@ defmodule KiteAgentHub.Orgs do
     if can_manage_org?(user.id, org_id) do
       attrs =
         if enabled do
+          # PR-K3b backwards-compat fix: the v1 enable toggle MUST
+          # pin to the baseline v1 string, NOT @consent_version
+          # which is now v2 ("kci-v2-2026-05-19" post-K3a). Pre-fix
+          # this auto-extended every new v1 opt-in into v2 silently
+          # — violates CyberSec 10831 ②/⑦. v2 opt-in is a separate
+          # explicit action via `update_kci_v2_consent/3`.
           %{
             collective_intelligence_enabled: true,
             collective_intelligence_consented_at: DateTime.utc_now(:second),
-            collective_intelligence_consent_version: CollectiveIntelligence.consent_version()
+            collective_intelligence_consent_version: CollectiveIntelligence.prior_consent_version()
           }
         else
           %{
@@ -105,6 +111,55 @@ defmodule KiteAgentHub.Orgs do
   end
 
   def update_collective_intelligence(_user, _org_id, _enabled), do: {:error, :invalid_enabled}
+
+  @doc """
+  PR-K3b: separately toggle v2 (Kalshi-specific buckets) opt-in.
+  Distinct from `update_collective_intelligence/3` so v1 + v2
+  consents stay independent — turning on v1 does NOT extend to v2,
+  and v2 enable is gated on v1 already being enabled.
+
+  Enabling sets `collective_intelligence_consent_version` to the
+  current `CollectiveIntelligence.consent_version()`
+  ("kci-v2-2026-05-19"). Disabling drops back to the v1 prior
+  version (keeps the base v1 opt-in active; user opted-out only
+  of the v2 surface).
+  """
+  def update_kci_v2_consent(user, org_id, enabled) when is_boolean(enabled) do
+    if can_manage_org?(user.id, org_id) do
+      org = get_org!(org_id)
+
+      cond do
+        not org.collective_intelligence_enabled ->
+          {:error, :v1_not_enabled}
+
+        true ->
+          version =
+            if enabled,
+              do: CollectiveIntelligence.consent_version(),
+              else: CollectiveIntelligence.prior_consent_version()
+
+          attrs = %{
+            collective_intelligence_enabled: true,
+            collective_intelligence_consented_at: DateTime.utc_now(:second),
+            collective_intelligence_consent_version: version
+          }
+
+          case Repo.with_user(user.id, fn ->
+                 org
+                 |> Organization.collective_intelligence_changeset(attrs)
+                 |> Repo.update()
+               end) do
+            {:ok, {:ok, org}} -> {:ok, org}
+            {:ok, {:error, cs}} -> {:error, cs}
+            {:error, reason} -> {:error, reason}
+          end
+      end
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  def update_kci_v2_consent(_user, _org_id, _enabled), do: {:error, :invalid_enabled}
 
   defp slugify(name) do
     name

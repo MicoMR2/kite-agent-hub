@@ -83,6 +83,47 @@ defmodule KiteAgentHubWeb.WorkspaceLive do
     end
   end
 
+  # PR-K3b: separate v2 consent toggle (Kalshi-specific buckets).
+  # Default off, never auto-extended from v1 — user must explicitly
+  # opt in. CyberSec 10831 ②/⑦ binding.
+  def handle_event(
+        "toggle_kci_v2_consent",
+        %{"org_id" => org_id, "enabled" => enabled},
+        socket
+      ) do
+    user = socket.assigns.current_scope.user
+    enable? = enabled == "true"
+
+    case Orgs.update_kci_v2_consent(user, org_id, enable?) do
+      {:ok, _org} ->
+        message =
+          if enable?,
+            do: "v2 Kalshi-specific contributions enabled.",
+            else: "v2 Kalshi-specific contributions disabled (base v1 stays active)."
+
+        {:noreply,
+         socket
+         |> assign(:org_cards, org_cards(user))
+         |> put_flash(:info, message)}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Only workspace owners and admins can change this setting.")}
+
+      {:error, :v1_not_enabled} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Enable Kite Collective Intelligence (v1) before opting in to v2.")}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> assign(:org_cards, org_cards(user))
+         |> put_flash(:error, "Could not update v2 consent.")}
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -174,6 +215,50 @@ defmodule KiteAgentHubWeb.WorkspaceLive do
                           </button>
                         </form>
                       </div>
+
+                      <%!-- PR-K3b: v2 Kalshi-specific consent toggle.
+                           Only renders when v1 is enabled. Default off
+                           — never auto-extended from v1 (CyberSec
+                           10831 ②/⑦). --%>
+                      <%= if org.collective_intelligence_enabled do %>
+                        <% v2_on? =
+                          org.collective_intelligence_consent_version ==
+                            KiteAgentHub.CollectiveIntelligence.consent_version() %>
+                        <div class="mt-4 pt-4 border-t border-[#22c55e]/15 flex items-start justify-between gap-4 flex-wrap">
+                          <div class="max-w-xl">
+                            <h4 class="text-[10px] font-black text-teal-300 uppercase tracking-widest">
+                              v2 · Kalshi-specific buckets
+                            </h4>
+                            <p class="mt-2 text-xs text-gray-400 leading-relaxed">
+                              Additionally contribute Kalshi-specific anonymized signals — lifecycle stage at exit (settled / cancelled / expired) and entry-price bucket (10% bands). Adds depth for prediction-market lessons without changing what'\''s persisted from your other platforms.
+                            </p>
+                            <p class="mt-2 text-[10px] text-gray-600 leading-relaxed">
+                              Contributions on markets with fewer than 10 distinct contributing workspaces are suppressed at write time so low-population KX events can'\''t fingerprint a single trader.
+                            </p>
+                          </div>
+
+                          <form phx-submit="toggle_kci_v2_consent">
+                            <input type="hidden" name="org_id" value={org.id} />
+                            <input
+                              type="hidden"
+                              name="enabled"
+                              value={if v2_on?, do: "false", else: "true"}
+                            />
+                            <button
+                              type="submit"
+                              disabled={!can_manage?}
+                              class={[
+                                "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors",
+                                v2_on? && "bg-white/10 text-white hover:bg-white/15",
+                                !v2_on? && "bg-teal-500 text-black hover:bg-teal-400",
+                                !can_manage? && "opacity-50 cursor-not-allowed"
+                              ]}
+                            >
+                              {if v2_on?, do: "Opt out of v2", else: "Opt in to v2"}
+                            </button>
+                          </form>
+                        </div>
+                      <% end %>
                     </div>
                   </div>
                 <% end %>
