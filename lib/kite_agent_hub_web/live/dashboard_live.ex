@@ -928,6 +928,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
     |> assign(:edge_scores_loading, false)
   end
 
+  # PR-D₂.₂ — fixes the CyberSec 10767 non-blocking flag: when the
+  # async :edge_scores loader returned `:error` (either the Task
+  # rescued its own exception inside async_loader/2, or a downstream
+  # crash surfaced as `:DOWN`), the prior catch-all left
+  # `:edge_scores_loading` true forever and the spinner never
+  # cleared. Explicit `:error` clause now unsets the flag while
+  # preserving the existing scores/portfolio assigns so the UI
+  # falls back to the last good values.
+  defp apply_loader_result(socket, :edge_scores, :error) do
+    assign(socket, :edge_scores_loading, false)
+  end
+
   defp apply_loader_result(socket, :wallet_txs, txs) when is_list(txs) do
     assign(socket, :wallet_txs, txs)
   end
