@@ -9,8 +9,13 @@ defmodule KiteAgentHubWeb.API.KalshiEdgeScoresController do
   Distinct from `/api/v1/edge-scores`'s `kalshi_scores` field,
   which scores OPEN POSITIONS on entry-quality / momentum /
   risk-reward / liquidity. This endpoint scores the MARKETS the
-  agent has positions in on the time-decay / closeout edge — the
-  underlying-event signal closer to a Kelly-style EV read.
+  agent has positions in on the combined PR-K1 + PR-K2 signals:
+
+  * Signal 1 — time-decay / closeout edge (50 pts)
+  * Signal 2 — order-book imbalance × volume weight (50 pts)
+
+  Score = sum, clamped 0..100. Recommendation thresholds same as
+  K1 (≥75 :strong, ≥50 :moderate, else :pass).
 
   Auth: same `Authorization: Bearer <agent_api_token>` scheme.
   """
@@ -45,11 +50,26 @@ defmodule KiteAgentHubWeb.API.KalshiEdgeScoresController do
          {:ok, by_ticker} <- KalshiClient.markets_by_tickers(key_id, pem, tickers, env) do
       by_ticker
       |> Map.values()
+      |> Enum.map(&enrich_with_orderbook(&1, key_id, pem, env))
       |> KalshiEdgeScorer.score_markets(now)
     else
       _ -> []
     end
   end
+
+  # PR-K2: pull orderbook per ticker so the scorer can compute book
+  # imbalance. Failure path returns the market unchanged — signal 2
+  # contributes 0 pts (fail-soft per CyberSec ⑦ misshapen-input
+  # guard); signal 1 still scores.
+  defp enrich_with_orderbook(%{ticker: ticker} = market, key_id, pem, env)
+       when is_binary(ticker) do
+    case KalshiClient.orderbook(key_id, pem, ticker, env) do
+      {:ok, ob} -> Map.merge(market, %{yes_levels: ob.yes_levels, no_levels: ob.no_levels})
+      _ -> market
+    end
+  end
+
+  defp enrich_with_orderbook(market, _key_id, _pem, _env), do: market
 
   defp authenticate(conn) do
     case conn.assigns[:current_agent] do
