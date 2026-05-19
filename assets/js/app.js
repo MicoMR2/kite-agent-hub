@@ -419,6 +419,32 @@ const CountUp = {
   }
 }
 
+// SparklineMount — PR-J.7. Animates a per-row sparkline polyline by
+// transitioning `stroke-dashoffset` from full-path-length to 0 on
+// mount, giving the chart a brief "draw-in" entrance. The polyline
+// must have stroke-dasharray + stroke-dashoffset set to its own
+// total length in the HEEx (`data-length` attribute carries it so
+// the JS doesn't need to call getTotalLength on a path that may
+// not have laid out yet). On LV patches the hook updates without
+// re-animating — flashes per patch would be annoying on a row that
+// re-renders for unrelated reasons (live-truth chip refresh, etc.).
+const SparklineMount = {
+  mounted() {
+    const len = Number(this.el.dataset.length || 0)
+    if (!len || len <= 0) return
+    const path = this.el.querySelector("polyline")
+    if (!path) return
+    path.style.strokeDasharray = `${len}`
+    path.style.strokeDashoffset = `${len}`
+    anime({
+      targets: path,
+      strokeDashoffset: [len, 0],
+      duration: 800,
+      easing: "easeOutCubic"
+    })
+  }
+}
+
 // DonutChart — client-side hover interactivity for the portfolio donut.
 // Replaces a server-side `phx-mouseenter` round-trip per Phorari 9982.
 // Reads broker data from `data-*` attributes set in HEEx (server-trusted),
@@ -709,6 +735,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     LocalTime,
     ChatInputClear,
     CountUp,
+    SparklineMount,
     CrosshairChart,
     DonutChart,
     DraggableChat,
