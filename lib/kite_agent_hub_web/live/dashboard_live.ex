@@ -2385,7 +2385,16 @@ defmodule KiteAgentHubWeb.DashboardLive do
         portfolio_value: portfolio_value,
         gross_settled_pnl: gross_settled_pnl,
         total_fees_paid: total_fees_paid,
-        total_settled_pnl: total_settled_pnl
+        total_settled_pnl: total_settled_pnl,
+        # PR-J.5.1: map of market_ticker -> attestation_tx_hash for
+        # the agent's settled+attested Kalshi trades. Empty map when
+        # no agent is selected or no attestations yet. Dashboard
+        # cards look up by market_id; missing entries render no link.
+        attestations:
+          case socket.assigns[:selected_agent] do
+            %{id: agent_id} -> Trading.list_kalshi_attestations_for_agent(agent_id)
+            _ -> %{}
+          end
       })
     else
       nil ->
@@ -5298,6 +5307,37 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 </p>
                               </div>
                             </div>
+
+                            <%!-- PR-J.5.1 on-chain attestation link.
+                                 Renders only when the agent has settled
+                                 + attested this market on Kite chain.
+                                 URL helper validates the hex hash + uses
+                                 ChainId-resolved explorer base so the
+                                 link resolves correctly per testnet vs
+                                 mainnet (CyberSec ①+② msg 10911). --%>
+                            <% attest_hash = Map.get(data.attestations || %{}, p.market_id) %>
+                            <% attest_chain =
+                              (@selected_agent && @selected_agent.chain_id) ||
+                                KiteAgentHub.Kite.ChainId.default() %>
+                            <%= case kalshi_attestation_url(attest_hash, attest_chain) do %>
+                              <% nil -> %>
+                              <% url -> %>
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="mt-3 inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-300 hover:text-amber-200 uppercase tracking-widest transition-colors"
+                                  aria-label={"View on-chain attestation for #{p.market_id}"}
+                                >
+                                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Attested · {String.slice(attest_hash, 0, 10)}…
+                                  <svg class="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </a>
+                            <% end %>
                           </div>
                         <% end %>
                       </div>
@@ -8493,6 +8533,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
     do: 100 - yes_pct
 
   def kalshi_side_prob_pct(_, yes_pct), do: yes_pct
+
+  # PR-J.5.1 attestation explorer URL builder. Validates the
+  # 0x-prefixed 32-byte hex tx hash via regex (CyberSec ① msg
+  # 10911), resolves the chain-correct explorer base via the
+  # existing `KiteAgentHub.Kite.Contracts.explorer_url/1`
+  # registry (CyberSec ②), returns nil for any malformed input
+  # so the template `case` short-circuits to no-link.
+  @doc false
+  def kalshi_attestation_url(tx_hash, chain_id)
+      when is_binary(tx_hash) and is_integer(chain_id) do
+    if Regex.match?(~r/\A0x[a-fA-F0-9]{64}\z/, tx_hash) do
+      KiteAgentHub.Kite.Contracts.explorer_url(chain_id) <> "/tx/" <> tx_hash
+    else
+      nil
+    end
+  end
+
+  def kalshi_attestation_url(_, _), do: nil
 
   # PR-J.7 helpers — build the gradient-fill polygon points by
   # closing the polyline back to the baseline + return the last

@@ -960,6 +960,30 @@ defmodule KiteAgentHub.Trading do
   end
 
   @doc """
+  PR-J.5.1: returns `%{market => attestation_tx_hash}` for every
+  Kalshi trade belonging to the agent that has been attested.
+  The dashboard Open Positions cards look up by market ticker and
+  render a kitescan deep-link when present. The chain_id needed
+  for the explorer URL comes from the owning `KiteAgent` (already
+  available in socket assigns), per CyberSec ② msg 10911.
+
+  Latest attestation wins on duplicate-market — `order_by desc`
+  + `Map.new` overwrites earlier entries with newer ones.
+  """
+  def list_kalshi_attestations_for_agent(agent_id) do
+    TradeRecord
+    |> where(
+      [t],
+      t.kite_agent_id == ^agent_id and t.platform == "kalshi" and
+        not is_nil(t.attestation_tx_hash)
+    )
+    |> order_by([t], asc: t.updated_at)
+    |> select([t], {t.market, t.attestation_tx_hash})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Most recent N attested trades for an agent, newest first. Used by the
   dashboard's on-chain activity summary so judges can click straight
   through to the latest receipts on testnet.kitescan.ai. PR #103.
