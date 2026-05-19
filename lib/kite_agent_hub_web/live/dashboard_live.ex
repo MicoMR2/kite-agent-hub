@@ -5426,7 +5426,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     <% end %>
                   </div>
 
-                  <%!-- Settlements --%>
+                  <%!-- Settlements (PR-J.4: readability + per-row
+                       deep link to the Kalshi market page) --%>
                   <%= if data.settlements != [] do %>
                     <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-x-auto">
                       <div class="px-6 py-4 border-b border-white/10">
@@ -5437,8 +5438,8 @@ defmodule KiteAgentHubWeb.DashboardLive do
                       <table class="w-full text-sm">
                         <thead>
                           <tr class="border-b border-white/5">
-                            <%= for h <- ["Market", "Result", "Revenue", "Settled"] do %>
-                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">
+                            <%= for h <- ["Market", "Result", "Revenue", "Settled", ""] do %>
+                              <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-widest whitespace-nowrap">
                                 {h}
                               </th>
                             <% end %>
@@ -5447,12 +5448,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
                         <tbody class="divide-y divide-white/5">
                           <%= for s <- Enum.take(data.settlements, 10) do %>
                             <tr class="hover:bg-white/[0.02]">
-                              <td class="px-2 py-2 sm:px-4 sm:py-3 font-black text-white text-xs font-mono">
+                              <td class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono">
                                 {s.ticker}
                               </td>
                               <td class="px-4 py-3">
                                 <span class={[
-                                  "text-[10px] font-black px-2 py-1 rounded border uppercase",
+                                  "text-[10px] font-semibold px-2 py-1 rounded border uppercase",
                                   s.market_result == "yes" &&
                                     "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
                                   s.market_result == "no" &&
@@ -5461,7 +5462,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                   {s.market_result || "—"}
                                 </span>
                               </td>
-                              <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-bold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
+                              <td class={"px-2 py-2 sm:px-4 sm:py-3 tabular-nums font-mono font-semibold #{if s.revenue >= 0, do: "text-emerald-400", else: "text-red-400"}"}>
                                 {if s.revenue >= 0, do: "+", else: ""}${:erlang.float_to_binary(
                                   abs(s.revenue),
                                   decimals: 2
@@ -5479,6 +5480,24 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                   </span>
                                 <% else %>
                                   —
+                                <% end %>
+                              </td>
+                              <td class="px-2 py-2 sm:px-4 sm:py-3">
+                                <%= case kalshi_market_url(s.ticker) do %>
+                                  <% nil -> %>
+                                  <% url -> %>
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      class="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-300 hover:text-teal-200 uppercase tracking-widest transition-colors"
+                                      aria-label={"Open #{s.ticker} on kalshi.com"}
+                                    >
+                                      View
+                                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </a>
                                 <% end %>
                               </td>
                             </tr>
@@ -8394,6 +8413,30 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_position_sparkline_data(_), do: []
+
+  # PR-J.4: builds a kalshi.com link for a settled market ticker.
+  # Kalshi market URLs follow `kalshi.com/markets/{series_ticker}`
+  # where `series_ticker` is the first dash-delimited segment of the
+  # full event ticker (e.g. "KXFEDDECISION" from
+  # "KXFEDDECISION-26SEP-CUT25"). If the ticker doesn't match the
+  # expected shape we return nil so the template skips the link
+  # rather than ship a 404 URL.
+  @doc false
+  def kalshi_market_url(ticker) when is_binary(ticker) do
+    case String.split(ticker, "-", parts: 2) do
+      [series, _rest] when byte_size(series) > 0 ->
+        if Regex.match?(~r/\A[A-Z0-9]+\z/, series) do
+          "https://kalshi.com/markets/" <> series
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  def kalshi_market_url(_), do: nil
 
   # PR-J.7 helpers — build the gradient-fill polygon points by
   # closing the polyline back to the baseline + return the last
