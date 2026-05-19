@@ -12,13 +12,26 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
   blocks on a single bad market.
   """
 
-  use Oban.Worker, queue: :maintenance, max_attempts: 2
+  # `unique` window prevents duplicate jobs from piling up if a
+  # perform overlaps the next self-scheduled run. 20s < the 25s
+  # self-schedule interval below + the 60s cron tick, so dupes
+  # within a single refresh cycle are de-duped.
+  use Oban.Worker,
+    queue: :maintenance,
+    max_attempts: 2,
+    unique: [period: 20, fields: [:worker, :args]]
 
   require Logger
 
   alias KiteAgentHub.{Credentials, Trading}
   alias KiteAgentHub.Kite.KalshiLiveDataCache
   alias KiteAgentHub.TradingPlatforms.KalshiClient
+
+  # CyberSec ③ msg 10760 + Phorari 10761: 30s cache TTL paired with
+  # 60s cron leaves a stale-then-empty gap. Self-schedule a follow-up
+  # at +25s on every successful run so the effective refresh cadence
+  # is ~25s — below the 30s TTL, no gap.
+  @self_schedule_seconds 25
 
   @impl Oban.Worker
   def perform(_job) do
@@ -37,7 +50,16 @@ defmodule KiteAgentHub.Workers.KalshiLiveDataWorker do
       "KalshiLiveDataWorker sweep: orgs=#{map_size(tickers_by_org)} refreshed=#{refreshed} errors=#{errors}"
     )
 
+    schedule_next()
     :ok
+  end
+
+  defp schedule_next do
+    # Insert the next run; if Oban's `unique` already has a job
+    # within the 20s window the conflict is silently a no-op
+    # (returns `{:ok, job}` with the existing job).
+    __MODULE__.new(%{}, schedule_in: @self_schedule_seconds)
+    |> Oban.insert()
   end
 
   @doc false

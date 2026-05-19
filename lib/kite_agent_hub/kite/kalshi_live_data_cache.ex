@@ -31,32 +31,55 @@ defmodule KiteAgentHub.Kite.KalshiLiveDataCache do
   """
   def put(ticker, value) when is_binary(ticker) and is_map(value) do
     expires_at = System.monotonic_time(:second) + @default_ttl_seconds
-    :ets.insert(@table, {ticker, value, expires_at})
+    safe_insert({ticker, value, expires_at})
     :ok
   end
+
+  def put(_ticker, _value), do: :ok
 
   @doc """
   Fetch a cached entry. Returns `{:ok, value}` when present and
   unexpired, `:miss` when absent or stale (stale entries get
-  deleted on read so the table doesn't accumulate junk).
+  deleted on read so the table doesn't accumulate junk). Wrapped
+  in try/rescue so a cold-start / restart race where the table
+  isn't created yet returns `:miss` instead of crashing the
+  scoring caller (CyberSec ① msg 10760).
   """
   def get(ticker) when is_binary(ticker) do
     now = System.monotonic_time(:second)
 
-    case :ets.lookup(@table, ticker) do
+    case safe_lookup(ticker) do
       [{^ticker, value, expires_at}] when expires_at >= now ->
         {:ok, value}
 
       [{^ticker, _, _}] ->
-        :ets.delete(@table, ticker)
+        _ = safe_delete(ticker)
         :miss
 
-      [] ->
+      _ ->
         :miss
     end
   end
 
   def get(_ticker), do: :miss
+
+  defp safe_lookup(ticker) do
+    :ets.lookup(@table, ticker)
+  rescue
+    ArgumentError -> []
+  end
+
+  defp safe_insert(row) do
+    :ets.insert(@table, row)
+  rescue
+    ArgumentError -> false
+  end
+
+  defp safe_delete(ticker) do
+    :ets.delete(@table, ticker)
+  rescue
+    ArgumentError -> false
+  end
 
   @doc "Drop everything. Used in tests."
   def clear do
