@@ -4,7 +4,7 @@ defmodule KiteAgentHubWeb.DashboardLive do
   alias KiteAgentHub.{Onboarding, Orgs, Trading, Chat, Polymarket, Oanda}
 
   require Logger
-  alias KiteAgentHub.Kite.{RPC, EdgeScorer, PortfolioEdgeScorer}
+  alias KiteAgentHub.Kite.{RPC, EdgeScorer, KalshiLiveDataCache, PortfolioEdgeScorer}
   alias KiteAgentHub.TradingPlatforms.{AlpacaClient, KalshiClient}
 
   # Debounce interval for stats refresh triggered by trade broadcasts.
@@ -4793,21 +4793,130 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </p>
                   </div>
                 <% data -> %>
-                  <%!-- Account Summary Cards --%>
-                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <%= for {label, val, color} <- [
-                      {"Available Balance", "$#{:erlang.float_to_binary(data.balance.available_balance, decimals: 2)}", "text-white"},
-                      {"Portfolio Value", "$#{:erlang.float_to_binary(data.portfolio_value, decimals: 2)}", "text-emerald-400"},
-                      {"Settled P&L", "#{if data.total_settled_pnl >= 0, do: "+", else: ""}$#{:erlang.float_to_binary(abs(data.total_settled_pnl), decimals: 2)}", if(data.total_settled_pnl >= 0, do: "text-emerald-400", else: "text-red-400")},
-                      {"Open Positions", "#{length(data.positions)}", "text-blue-400"}
-                    ] do %>
-                      <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                          {label}
+                  <%!-- ═══════════ KALSHI HERO ═══════════
+                       Matches Alpaca/Forex/Portfolio reference set
+                       (Mico 10777 + Phorari 10791). Teal/cyan brand
+                       accent distinct from Alpaca amber + Forex
+                       emerald + Portfolio neutral. Sheen direction
+                       keyed off SERVER-rendered data-positive /
+                       data-negative attrs — JS never sign-detects
+                       a formatted currency string (CyberSec rule
+                       13757 + feedback_cybersec_textcontent). --%>
+                  <% pv_value = data.portfolio_value || 0.0 %>
+                  <% pnl_value = data.total_settled_pnl || 0.0 %>
+                  <% pnl_up? = pnl_value >= 0 %>
+                  <div
+                    class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-6 sm:p-10 backdrop-blur-md"
+                    data-positive={if pnl_up?, do: "true", else: "false"}
+                    data-negative={if pnl_up?, do: "false", else: "true"}
+                  >
+                    <div
+                      class="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-25 blur-3xl"
+                      style={
+                        if pnl_up? do
+                          "background: radial-gradient(circle, rgba(20,184,166,0.45), transparent 65%);"
+                        else
+                          "background: radial-gradient(circle, rgba(239,68,68,0.40), transparent 65%);"
+                        end
+                      }
+                    />
+                    <div class="relative flex flex-col gap-6">
+                      <div class="flex items-start justify-between gap-4 flex-wrap">
+                        <p class="text-[10px] sm:text-xs text-teal-300/80 uppercase tracking-[0.3em]">
+                          Kalshi · Portfolio Value
                         </p>
-                        <p class={"text-lg font-black tabular-nums #{color}"}>{val}</p>
+                        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-teal-500/30 bg-teal-500/[0.08] text-[10px] font-mono text-teal-300">
+                          <span class="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_#14b8a6] animate-pulse"></span>
+                          paper · live
+                        </span>
                       </div>
-                    <% end %>
+                      <h2 class="text-5xl sm:text-6xl lg:text-7xl tabular-nums tracking-tight text-white leading-none flex items-baseline">
+                        <span class="text-teal-400/60 font-light">$</span><span
+                          id="kalshi-portfolio-value"
+                          phx-hook="CountUp"
+                          data-target={pv_value}
+                          data-decimals="2"
+                        >{:erlang.float_to_binary(pv_value, decimals: 2)}</span>
+                      </h2>
+                      <div class="flex flex-wrap items-center gap-3">
+                        <div
+                          class={[
+                            "inline-flex items-center gap-3 px-4 py-2 rounded-xl font-mono text-base sm:text-lg tabular-nums shadow-lg",
+                            pnl_up? && "bg-emerald-600 text-white",
+                            not pnl_up? && "bg-red-600 text-white"
+                          ]}
+                          data-value-usd={:erlang.float_to_binary(pnl_value, decimals: 2)}
+                        >
+                          <span class="text-[9px] uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                            Settled
+                          </span>
+                          <span>{if pnl_up?, do: "▲", else: "▼"}</span>
+                          <span>${:erlang.float_to_binary(abs(pnl_value), decimals: 2)}</span>
+                        </div>
+                        <p class="text-[11px] text-gray-500 italic">
+                          Realized across closed Kalshi contracts
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <%!-- 4-up KPI strip — same chrome as the Forex tab --%>
+                  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                      <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                        Available
+                      </p>
+                      <p class="text-xl sm:text-2xl font-black tabular-nums text-white">
+                        <span class="text-gray-500 font-light">$</span><span
+                          id="kalshi-kpi-balance"
+                          phx-hook="CountUp"
+                          data-target={data.balance.available_balance}
+                          data-decimals="2"
+                        >{:erlang.float_to_binary(data.balance.available_balance, decimals: 2)}</span>
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-1">Cash to deploy</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                      <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                        Portfolio Value
+                      </p>
+                      <p class="text-xl sm:text-2xl font-black tabular-nums text-teal-300">
+                        <span class="text-gray-500 font-light">$</span><span
+                          id="kalshi-kpi-pv"
+                          phx-hook="CountUp"
+                          data-target={pv_value}
+                          data-decimals="2"
+                        >{:erlang.float_to_binary(pv_value, decimals: 2)}</span>
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-1">Sum of open contracts</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                      <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                        Settled P&L
+                      </p>
+                      <p class={[
+                        "text-xl sm:text-2xl font-black tabular-nums",
+                        pnl_up? && "text-emerald-400",
+                        not pnl_up? && "text-red-400"
+                      ]}>
+                        <span class="text-gray-500 font-light">{if pnl_up?, do: "+$", else: "-$"}</span><span
+                          id="kalshi-kpi-pnl"
+                          phx-hook="CountUp"
+                          data-target={abs(pnl_value)}
+                          data-decimals="2"
+                        >{:erlang.float_to_binary(abs(pnl_value), decimals: 2)}</span>
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-1">Realized to date</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                      <p class="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                        Open Positions
+                      </p>
+                      <p class="text-xl sm:text-2xl font-black tabular-nums text-white">
+                        {length(data.positions)}
+                      </p>
+                      <p class="text-[10px] text-gray-600 mt-1">Active contracts</p>
+                    </div>
                   </div>
 
                   <%!-- Quick Trade — trading agents only --%>
@@ -4998,10 +5107,21 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <%= for p <- data.positions do %>
                             <tr class="hover:bg-white/[0.02]">
                               <td
-                                class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono max-w-[16rem] truncate"
+                                class="px-2 py-2 sm:px-4 sm:py-3 text-white text-xs font-mono max-w-[20rem]"
                                 title={p.title}
                               >
-                                {truncate_market(p.title, 32)}
+                                <div class="flex items-center gap-2 min-w-0">
+                                  <span class="truncate">{truncate_market(p.title, 32)}</span>
+                                  <%!-- PR-J live event-truth chip from KalshiLiveDataCache --%>
+                                  <%= case kalshi_live_truth_badge(p.market_id) do %>
+                                    <% {:ok, v} -> %>
+                                      <span class="inline-flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded border border-teal-500/30 bg-teal-500/[0.08] text-[9px] font-mono text-teal-300 uppercase tracking-wider">
+                                        <span class="w-1 h-1 rounded-full bg-teal-400 animate-pulse"></span>
+                                        Live · {v}
+                                      </span>
+                                    <% :miss -> %>
+                                  <% end %>
+                                </div>
                               </td>
                               <td class="px-2 py-2 sm:px-4 sm:py-3">
                                 <% {label, badge_classes} = kalshi_status_badge(p.status) %>
@@ -8135,6 +8255,20 @@ defmodule KiteAgentHubWeb.DashboardLive do
   # tradable vs awaiting payout. See
   # https://docs.kalshi.com/getting_started/market_lifecycle for the
   # full state machine.
+  # PR-J live event-truth badge. Reads the in-memory cache populated
+  # by KalshiLiveDataWorker (PR-I₂). Returns `{:ok, value}` when the
+  # cache has a fresh entry for the ticker, `:miss` otherwise. The
+  # template renders a small teal chip only on `:ok` — silent on miss
+  # so the row stays clean for markets without underlying live data.
+  defp kalshi_live_truth_badge(ticker) when is_binary(ticker) do
+    case KalshiLiveDataCache.get(ticker) do
+      {:ok, %{value: v}} when is_number(v) -> {:ok, v}
+      _ -> :miss
+    end
+  end
+
+  defp kalshi_live_truth_badge(_), do: :miss
+
   defp kalshi_status_badge("active"),
     do: {"Active", "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"}
 
