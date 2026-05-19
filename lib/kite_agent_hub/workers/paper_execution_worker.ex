@@ -276,6 +276,7 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
     case create_kalshi_trade(agent, args, units, price) do
       {:ok, trade} ->
         with {:ok, {key_id, pem, env}} <- Credentials.fetch_secret_with_env(org_id, :kalshi),
+             :ok <- KalshiClient.preflight(key_id, pem, symbol, env),
              {:ok, order} <-
                KalshiClient.place_order(
                  key_id,
@@ -468,6 +469,30 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
   # had no way to tell whether the market was wrong or the contract
   # was just dead. Match the common "not found / expired / closed"
   # shapes against the response body and surface a clear message.
+  # Structured preflight atoms from KalshiClient.preflight/4 (PR-A).
+  # Render before the substring matcher below so the agent-facing
+  # copy is deterministic and Kalshi response bodies stay out of logs
+  # (CyberSec ②③ msg 10642).
+  defp humanize_kalshi_error(:ticker_not_found, ticker) when is_binary(ticker),
+    do:
+      "Kalshi market #{ticker} not found (preflight). " <>
+        "The ticker may have been retired or never existed on this environment."
+
+  defp humanize_kalshi_error(:market_closed, ticker) when is_binary(ticker),
+    do:
+      "Kalshi market #{ticker} is not open for trading (preflight). " <>
+        "Pick a market in the 'open' lifecycle state before retrying."
+
+  defp humanize_kalshi_error(:exchange_closed, ticker) when is_binary(ticker),
+    do:
+      "Kalshi exchange is closed for trading (preflight). " <>
+        "No orders accepted for #{ticker} until exchange + trading rails reopen."
+
+  defp humanize_kalshi_error(:validator_unavailable, ticker) when is_binary(ticker),
+    do:
+      "Kalshi preflight validator unavailable (#{ticker}). " <>
+        "Trade blocked fail-closed — retry once Kalshi probes recover."
+
   defp humanize_kalshi_error(reason, ticker) when is_binary(ticker) do
     text = reason |> inspect() |> String.downcase()
 

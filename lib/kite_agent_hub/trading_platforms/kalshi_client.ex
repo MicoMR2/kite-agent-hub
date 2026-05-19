@@ -31,6 +31,75 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   defp base_host("live"), do: @live_host
   defp base_host(_), do: @demo_host
 
+  @doc """
+  Fetch the Kalshi exchange status — `exchange_active` + `trading_active`
+  booleans. Used by `preflight/4` to gate trade enqueue when the
+  exchange is in maintenance or trading is paused. Returns
+  `{:ok, %{exchange_active: bool, trading_active: bool}}` or
+  `{:error, reason}`.
+  """
+  def exchange_status(key_id, pem, env \\ "paper") do
+    case get("/exchange/status", key_id, pem, env) do
+      {:ok, body} when is_map(body) -> {:ok, parse_exchange_status(body)}
+      {:ok, _} -> {:error, "kalshi exchange_status: unexpected response shape"}
+      err -> err
+    end
+  end
+
+  @doc """
+  Pre-trade validation: confirm the ticker exists + is open AND the
+  Kalshi exchange + trading rails are both active before letting a
+  POST /portfolio/orders attempt go out.
+
+  Returns `:ok` on green, or one of the structured error atoms:
+
+  * `{:error, :ticker_not_found}` — Kalshi returned 404 on the ticker
+  * `{:error, :market_closed}`    — market exists but lifecycle status is not tradable
+  * `{:error, :exchange_closed}`  — exchange or trading rail flag is false
+  * `{:error, :validator_unavailable}` — transport failure, 429, timeout, or
+    malformed response on either probe (fail-closed per CyberSec ⑤ msg 10642)
+
+  Atom-based reasons keep Kalshi response bodies (and any auth headers
+  they might carry) out of trade-worker logs (CyberSec ② msg 10642).
+  """
+  def preflight(key_id, pem, ticker, env \\ "paper") do
+    preflight_decision(market(key_id, pem, ticker, env), exchange_status(key_id, pem, env))
+  end
+
+  @doc false
+  # Pure decision function — exported under @doc false so hermetic
+  # tests can drive it directly with stubbed market + exchange-status
+  # results, no HTTP layer required.
+  def preflight_decision(market_result, exchange_status_result) do
+    with :ok <- check_market(market_result),
+         :ok <- check_exchange(exchange_status_result) do
+      :ok
+    end
+  end
+
+  # Kalshi market lifecycle (per /api-reference/market/get-market):
+  # "unopened" → "open" → "closed" → "settled". Only "open" is tradable.
+  # Allowlist "active" too as a defensive synonym (some demo fixtures
+  # report active for tradable markets).
+  defp check_market({:ok, %{status: status}}) when status in ["open", "active"], do: :ok
+  defp check_market({:ok, %{status: _status}}), do: {:error, :market_closed}
+  defp check_market({:ok, _}), do: {:error, :validator_unavailable}
+  defp check_market({:error, "kalshi 404" <> _}), do: {:error, :ticker_not_found}
+  defp check_market({:error, _reason}), do: {:error, :validator_unavailable}
+
+  defp check_exchange({:ok, %{exchange_active: true, trading_active: true}}), do: :ok
+  defp check_exchange({:ok, %{exchange_active: false}}), do: {:error, :exchange_closed}
+  defp check_exchange({:ok, %{trading_active: false}}), do: {:error, :exchange_closed}
+  defp check_exchange({:ok, _}), do: {:error, :validator_unavailable}
+  defp check_exchange({:error, _reason}), do: {:error, :validator_unavailable}
+
+  defp parse_exchange_status(body) do
+    %{
+      exchange_active: parse_bool(body["exchange_active"]) || false,
+      trading_active: parse_bool(body["trading_active"]) || false
+    }
+  end
+
   @doc "Fetch portfolio balance — available_balance, portfolio_value."
   def balance(key_id, pem, env \\ "paper") do
     case get("/portfolio/balance", key_id, pem, env) do
