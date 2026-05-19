@@ -480,6 +480,28 @@ defmodule KiteAgentHub.Trading do
     |> Repo.all()
   end
 
+  @doc """
+  Cross-org sweep of open Kalshi trades older than `older_than_seconds`,
+  preloading the agent so the reconciler can resolve `organization_id`
+  to fetch broker credentials. Bypasses RLS (maintenance pattern, same
+  as `ForexNavSnapshotPruner`) — invoked only from
+  `KalshiOrderReconciler`, never a user-facing path.
+  """
+  def list_open_kalshi_trades_for_reconcile(opts \\ []) do
+    older_than_seconds = Keyword.get(opts, :older_than_seconds, 60)
+    limit_n = Keyword.get(opts, :limit, 200)
+    cutoff = DateTime.add(DateTime.utc_now(), -older_than_seconds, :second)
+
+    TradeRecord
+    |> where([t], t.platform == "kalshi")
+    |> where([t], t.status == "open")
+    |> where([t], t.inserted_at < ^cutoff)
+    |> order_by(asc: :inserted_at)
+    |> limit(^limit_n)
+    |> preload(:kite_agent)
+    |> Repo.all()
+  end
+
   def get_trade_for_agent(trade_id, agent_id) do
     Repo.get_by(TradeRecord, id: trade_id, kite_agent_id: agent_id)
   end

@@ -110,6 +110,11 @@ config :kite_agent_hub, Oban,
        # cap table growth — keeps the last 30 days, far more than the
        # 288 samples the sparkline actually renders. Runs at 06:00 UTC.
        {"0 6 * * *", KiteAgentHub.Workers.ForexNavSnapshotPruner},
+       # Every 5 minutes, reconcile open Kalshi trades against upstream
+       # state (PR-B). Read-only against Kalshi — no auto-cancel/amend,
+       # no DB mutation on legacy zombies (NULL platform_order_id AND
+       # NULL client_order_id) per CyberSec msg 10651.
+       {"*/5 * * * *", KiteAgentHub.Workers.KalshiOrderReconciler},
        # Every minute, poll Alpaca for fills on open trades.
        # Re-enabled 2026-05-07 after PR #315 (Oban dedicated repo)
        # eliminated the pg_notify-driven pool saturation that was
