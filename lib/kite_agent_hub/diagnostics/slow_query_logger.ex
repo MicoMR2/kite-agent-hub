@@ -40,8 +40,16 @@ defmodule KiteAgentHub.Diagnostics.SlowQueryLogger do
 
   @doc false
   def handle_event(_event, measurements, metadata, _config) do
+    # Caller-visible latency = queue (pool checkout wait) + query (SQL
+    # execute) + decode (Ecto result decode). `:idle_time` is the time
+    # the pool connection sat idle in the pool BEFORE this query
+    # checked it out — connection-side idleness, not anything the
+    # caller waits on. Including it (pre-PR-C) made every query on a
+    # previously-idle connection trip the 100ms threshold and produced
+    # the 20-55s "slow" readings on api_credentials when the actual
+    # query_time was ~2ms (DevOps msg 10678).
     total =
-      [:queue_time, :query_time, :decode_time, :idle_time]
+      [:queue_time, :query_time, :decode_time]
       |> Enum.map(fn key ->
         case Map.get(measurements, key) do
           nil -> 0
