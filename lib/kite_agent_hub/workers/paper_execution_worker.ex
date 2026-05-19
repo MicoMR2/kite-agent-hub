@@ -286,7 +286,12 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
                  units,
                  price,
                  env,
+                 # Pin the idempotency key onto the broker POST so a
+                 # retry-after-timeout doesn't create a second Kalshi
+                 # order — Kalshi echoes the original when the same
+                 # client_order_id is re-submitted.
                  kalshi_opts(args)
+                 |> Map.put("client_order_id", trade.client_order_id)
                ) do
           handle_kalshi_response(trade, order, job_id)
         else
@@ -583,7 +588,15 @@ defmodule KiteAgentHub.Workers.PaperExecutionWorker do
       status: "open",
       source: "oban",
       reason: args["reason"],
-      platform: "kalshi"
+      platform: "kalshi",
+      # Write-ordering fix (PR-B): persist the idempotency key BEFORE
+      # the broker POST. A Req.TransportError timeout mid-POST then
+      # leaves us a recoverable row — KalshiOrderReconciler can
+      # `GET /orders?client_order_id=...` to locate the actual Kalshi
+      # order and back-fill platform_order_id. Without this, the 3
+      # NULL-platform_order_id zombies from msg 14251 become structurally
+      # impossible going forward.
+      client_order_id: Ecto.UUID.generate()
     })
   end
 

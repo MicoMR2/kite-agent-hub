@@ -30,6 +30,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     field :reason, :string
     field :platform, :string, default: "kite"
     field :platform_order_id, :string
+    field :client_order_id, :string
     field :broker_submitted_at, :utc_datetime_usec
     field :attestation_tx_hash, :string
 
@@ -56,6 +57,7 @@ defmodule KiteAgentHub.Trading.TradeRecord do
       :reason,
       :platform,
       :platform_order_id,
+      :client_order_id,
       :broker_submitted_at,
       :kite_agent_id
     ])
@@ -85,11 +87,14 @@ defmodule KiteAgentHub.Trading.TradeRecord do
     |> lock_field(:attestation_tx_hash)
   end
 
-  # tx_hash and trade_id_onchain cannot be changed after insert
+  # tx_hash, trade_id_onchain, and client_order_id cannot change after
+  # insert. client_order_id is the idempotency key — if it could be
+  # mutated post-POST, the dedup contract would collapse.
   defp lock_immutable_fields(changeset) do
     changeset
     |> lock_field(:tx_hash)
     |> lock_field(:trade_id_onchain)
+    |> lock_field(:client_order_id)
   end
 
   defp lock_field(changeset, field) do

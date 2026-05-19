@@ -404,6 +404,47 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
   end
 
   @doc """
+  Generic portfolio-order listing with optional filters. Wraps
+  `GET /portfolio/orders` with arbitrary query params, used by the
+  reconciler to look up orders by `client_order_id` (idempotency
+  recovery) or by `ticker` + time window (legacy zombie discovery
+  for rows with NULL platform_order_id from pre-PR-B trades).
+
+  `opts` keys: `:client_order_id`, `:ticker`, `:status`, `:limit`,
+  `:min_ts`, `:max_ts`, `:env`. Unknown keys are ignored.
+  Returns `{:ok, [order_map]}` or `{:error, reason}`.
+  """
+  def list_orders(key_id, pem, opts \\ []) do
+    env = Keyword.get(opts, :env, "paper")
+    limit = Keyword.get(opts, :limit, 200)
+
+    qs =
+      [
+        {"limit", limit},
+        {"status", opts[:status]},
+        {"ticker", opts[:ticker]},
+        {"client_order_id", opts[:client_order_id]},
+        {"min_ts", opts[:min_ts]},
+        {"max_ts", opts[:max_ts]}
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+      |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
+
+    path = "/portfolio/orders?#{qs}"
+
+    case get(path, key_id, pem, env) do
+      {:ok, %{"orders" => list}} when is_list(list) ->
+        {:ok, Enum.map(list, &parse_order/1)}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
   Fetch resting (pending) limit orders — orders sitting in the book
   awaiting a counterparty fill. Filters server-side by `status=resting`
   so the response only contains open, cancellable orders.
