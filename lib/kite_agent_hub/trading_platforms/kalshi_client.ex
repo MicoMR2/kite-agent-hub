@@ -100,6 +100,91 @@ defmodule KiteAgentHub.TradingPlatforms.KalshiClient do
     }
   end
 
+  @doc """
+  Fetch historical candlesticks for a Kalshi market. Wraps
+  `GET /series/{series_ticker}/markets/{ticker}/candlesticks`.
+
+  `opts` keys:
+  * `:period_interval` — integer minutes (1, 5, 60, 1440). Required by Kalshi.
+  * `:start_ts` — unix seconds inclusive lower bound (optional)
+  * `:end_ts` — unix seconds inclusive upper bound (optional)
+  * `:env` — "paper" or "live" (defaults paper)
+
+  Returns `{:ok, [parsed_candle]}` where each candle has integer fields
+  in the same shape as the persisted `KalshiHistoricalCandlestick`
+  schema, ready for upsert via `KalshiHistory.upsert_candles/2`.
+  """
+  def historical_candlesticks(key_id, pem, series_ticker, ticker, opts \\ []) do
+    env = Keyword.get(opts, :env, "paper")
+
+    if not valid_ticker?(ticker) or not valid_ticker?(series_ticker) do
+      {:error, "invalid kalshi ticker"}
+    else
+      qs =
+        [
+          {"period_interval", opts[:period_interval]},
+          {"start_ts", opts[:start_ts]},
+          {"end_ts", opts[:end_ts]}
+        ]
+        |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+        |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
+
+      path = "/series/#{series_ticker}/markets/#{ticker}/candlesticks?#{qs}"
+
+      case get(path, key_id, pem, env) do
+        {:ok, %{"candlesticks" => list}} when is_list(list) ->
+          {:ok, Enum.map(list, &parse_candlestick(&1, ticker, opts[:period_interval]))}
+
+        {:ok, _} ->
+          {:ok, []}
+
+        err ->
+          err
+      end
+    end
+  end
+
+  @doc false
+  # Pure parser — exported under `@doc false` so hermetic tests can
+  # drive it without an HTTP layer. Maps Kalshi's candlestick payload
+  # (yes_price_open/close/high/low, volume, open_interest, end_period_ts)
+  # to the integer-cents schema fields the persistence layer expects.
+  def parse_candlestick(c, ticker, period_minutes) when is_map(c) do
+    %{
+      ticker: ticker,
+      ts: parse_unix_ts(c["end_period_ts"] || c["timestamp"] || c["ts"]),
+      period_minutes: period_minutes,
+      yes_open_cents: extract_cents(c, ["yes_price_open", "open"]),
+      yes_close_cents: extract_cents(c, ["yes_price_close", "close"]),
+      yes_high_cents: extract_cents(c, ["yes_price_high", "high"]),
+      yes_low_cents: extract_cents(c, ["yes_price_low", "low"]),
+      volume: parse_int(c["volume"]),
+      open_interest: parse_int(c["open_interest"])
+    }
+  end
+
+  defp extract_cents(map, keys) do
+    Enum.find_value(keys, fn k -> parse_int(map[k]) end)
+  end
+
+  defp parse_unix_ts(nil), do: nil
+
+  defp parse_unix_ts(secs) when is_integer(secs) do
+    case DateTime.from_unix(secs, :second) do
+      {:ok, dt} -> dt
+      _ -> nil
+    end
+  end
+
+  defp parse_unix_ts(secs) when is_binary(secs) do
+    case Integer.parse(secs) do
+      {n, ""} -> parse_unix_ts(n)
+      _ -> nil
+    end
+  end
+
+  defp parse_unix_ts(_), do: nil
+
   @doc "Fetch portfolio balance — available_balance, portfolio_value."
   def balance(key_id, pem, env \\ "paper") do
     case get("/portfolio/balance", key_id, pem, env) do
