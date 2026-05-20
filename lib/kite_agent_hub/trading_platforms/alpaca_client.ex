@@ -726,6 +726,53 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   @doc """
+  Place an options trade after running the pure
+  `KiteAgentHub.Trading.OptionsPreflight.validate/2` check. On any
+  preflight error the broker is never called.
+
+  `intent` must include `:symbol` (OCC), `:qty` (positive integer
+  contracts), `:side` ("buy" | "sell" — Alpaca's options order body
+  per https://docs.alpaca.markets/us/docs/options-orders), and
+  `:limit_price` (float). Pass `:notional_cap_usd`,
+  `:max_premium_per_contract`, and `:underlying_allow_list` via `opts`.
+
+  Routes the validated intent through the existing `place_order/7`
+  path (which already handles OCC symbols, strips `extended_hours` for
+  options, and humanizes the NVDA-only paper error). Returns
+  `{:error, reason, details}` on preflight rejection so callers can
+  surface an actionable message — no broker round-trip on rejection.
+
+  G.2a — not wired to TradeExecutionWorker yet; reserved for the
+  worker dispatch landing in PR-G.2b.
+  """
+  def place_options_order(key_id, secret, intent, env \\ "paper", opts \\ []) do
+    case KiteAgentHub.Trading.OptionsPreflight.validate(intent, opts) do
+      {:ok, ok_intent} ->
+        place_order(
+          key_id,
+          secret,
+          ok_intent.symbol,
+          ok_intent.qty,
+          ok_intent.side,
+          env,
+          options_order_opts(ok_intent, intent)
+        )
+
+      {:error, reason, details} ->
+        {:error, reason, details}
+    end
+  end
+
+  defp options_order_opts(ok_intent, original_intent) do
+    [
+      type: "limit",
+      limit_price: ok_intent.limit_price,
+      time_in_force: original_intent[:time_in_force] || original_intent["time_in_force"] || "day",
+      client_order_id: original_intent[:client_order_id] || original_intent["client_order_id"]
+    ]
+  end
+
+  @doc """
   Place a market order on Alpaca.
 
   symbol  — e.g. "ETHUSD", "BTCUSD", "SPY"
