@@ -2394,6 +2394,18 @@ defmodule KiteAgentHubWeb.DashboardLive do
           case socket.assigns[:selected_agent] do
             %{id: agent_id} -> Trading.list_kalshi_attestations_for_agent(agent_id)
             _ -> %{}
+          end,
+        # PR-J.3 zombie/recovery chip data. Map of market_ticker ->
+        # state atom for open Kalshi trade rows owned by the agent.
+        # Cards render an amber "Pending Recon" chip for legacy
+        # zombies (both ids NULL) and a teal "Recovering" chip for
+        # write-ordering recoveries in flight (client_order_id set,
+        # platform_order_id NULL). Read-only — no action wiring in
+        # this PR per CyberSec 10649 cancel-policy constraint.
+        trade_states:
+          case socket.assigns[:selected_agent] do
+            %{id: agent_id} -> Trading.list_kalshi_open_trade_states_for_agent(agent_id)
+            _ -> %{}
           end
       })
     else
@@ -5246,6 +5258,34 @@ defmodule KiteAgentHubWeb.DashboardLive do
                                 ]}>
                                   {p.side}
                                 </span>
+                                <%!-- PR-J.3 zombie/recovery state chip.
+                                     Only renders when the matching KAH
+                                     trade row is in a non-happy-path
+                                     state. :by_order_id (happy) and any
+                                     missing-row case render no chip. --%>
+                                <%= case Map.get(data.trade_states || %{}, p.market_id) do %>
+                                  <% :legacy_zombie -> %>
+                                    <span
+                                      title="Pending reconciler — Kalshi response was lost on submit; row stays open until manual review. No DB mutation."
+                                      class="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded border border-amber-500/30 bg-amber-500/[0.08] text-amber-300 uppercase tracking-widest whitespace-nowrap"
+                                    >
+                                      <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      Pending Recon
+                                    </span>
+                                  <% :by_client_id -> %>
+                                    <span
+                                      title="Recovering — idempotency key persisted before the broker POST timed out; reconciler is back-filling from Kalshi."
+                                      class="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded border border-teal-500/30 bg-teal-500/[0.08] text-teal-300 uppercase tracking-widest whitespace-nowrap"
+                                    >
+                                      <svg class="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                      </svg>
+                                      Recovering
+                                    </span>
+                                  <% _ -> %>
+                                <% end %>
                               </div>
                             </div>
 

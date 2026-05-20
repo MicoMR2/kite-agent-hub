@@ -970,6 +970,40 @@ defmodule KiteAgentHub.Trading do
   Latest attestation wins on duplicate-market — `order_by desc`
   + `Map.new` overwrites earlier entries with newer ones.
   """
+  @doc """
+  PR-J.3: returns `%{market_ticker => state_atom}` for the agent's
+  currently-open Kalshi trades. State is one of:
+
+    * `:by_order_id`   — `platform_order_id` set (happy path)
+    * `:by_client_id`  — `client_order_id` set, `platform_order_id`
+      NULL (PR-B write-ordering recovery: the POST timed out but
+      idempotency key persisted, reconciler can back-fill)
+    * `:legacy_zombie` — both NULL (pre-PR-B writes; the 3
+      KXFEDDECISION rows from msg 14251 fall here)
+
+  Dashboard cards render a chip on `:by_client_id` and
+  `:legacy_zombie` so users see WHY a position looks suspicious;
+  `:by_order_id` rows render cleanly (no chip).
+
+  Agent-scoped via `kite_agent_id` — no cross-tenant exposure.
+  """
+  def list_kalshi_open_trade_states_for_agent(agent_id) do
+    TradeRecord
+    |> where(
+      [t],
+      t.kite_agent_id == ^agent_id and t.platform == "kalshi" and t.status == "open"
+    )
+    |> select([t], {t.market, t.platform_order_id, t.client_order_id})
+    |> Repo.all()
+    |> Enum.map(fn {market, poid, coid} -> {market, classify_open_state(poid, coid)} end)
+    |> Map.new()
+  end
+
+  @doc false
+  def classify_open_state(poid, _coid) when is_binary(poid) and poid != "", do: :by_order_id
+  def classify_open_state(_poid, coid) when is_binary(coid) and coid != "", do: :by_client_id
+  def classify_open_state(_, _), do: :legacy_zombie
+
   def list_kalshi_attestations_for_agent(agent_id) do
     TradeRecord
     |> where(
