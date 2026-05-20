@@ -208,6 +208,49 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
   end
 
   @doc """
+  Fetch open options positions (read-only).
+
+  Calls GET `/v2/positions` and filters client-side to `asset_class == "us_option"`
+  — Alpaca returns equity and option positions in a single response. Returns
+  `{:ok, [option_position_map]}` or `{:error, reason}`.
+
+  Read-only surface for PR-G.1. No trade-execution path lands here; that
+  stays in PR-G.2 with the standard trading-agent risk gates.
+  """
+  def options_positions(key_id, secret, env \\ "paper") do
+    case get("/v2/positions", key_id, secret, env) do
+      {:ok, list} when is_list(list) ->
+        {:ok,
+         list
+         |> Enum.filter(&option_position?/1)
+         |> Enum.map(&parse_option_position/1)}
+
+      {:ok, _} ->
+        {:ok, []}
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Fetch recent options orders. Calls GET `/v2/orders` filtered to
+  `asset_class=us_option`. Status defaults to "all" so the surface
+  shows both open + filled (and rejected) options orders. Returns
+  `{:ok, [option_order_map]}` or `{:error, reason}`.
+  """
+  def options_orders(key_id, secret, limit \\ 50, env \\ "paper") do
+    path =
+      "/v2/orders?status=all&limit=#{limit}&direction=desc&asset_class=us_option&nested=true"
+
+    case get(path, key_id, secret, env) do
+      {:ok, list} when is_list(list) -> {:ok, Enum.map(list, &parse_option_order/1)}
+      {:ok, _} -> {:ok, []}
+      err -> err
+    end
+  end
+
+  @doc """
   Fetch orders filtered by status ("open", "closed", "all", or any
   Alpaca-supported status). Used by `/api/v1/broker/orders` to surface
   live open broker orders so agents can catch ghost orders BEFORE
@@ -1067,6 +1110,86 @@ defmodule KiteAgentHub.TradingPlatforms.AlpacaClient do
     case Float.parse(v) do
       {f, _} -> f
       :error -> nil
+    end
+  end
+
+  # ────────────────────────────────────────────────────────────────
+  # Options parsing helpers (PR-G.1 — read-only surface)
+  # ────────────────────────────────────────────────────────────────
+
+  @doc false
+  # Returns true when an Alpaca position object represents an options
+  # contract rather than an equity. Alpaca tags both fields on the
+  # response — we accept either to survive a future shape tweak.
+  def option_position?(%{"asset_class" => "us_option"}), do: true
+  def option_position?(%{"asset_class" => "option"}), do: true
+  def option_position?(%{"contract_type" => t}) when t in ["call", "put"], do: true
+  def option_position?(_), do: false
+
+  @doc false
+  # Parse an Alpaca position record that has already been confirmed to
+  # be an option (`option_position?/1`) into the bounded shape the LV
+  # template renders. CyberSec PR-G.1 ⑥: no raw broker payload
+  # passthrough — every field is explicit.
+  def parse_option_position(p) when is_map(p) do
+    symbol = p["symbol"] || p["asset_symbol"]
+    occ_fields = parse_occ_fields(symbol)
+
+    %{
+      symbol: symbol,
+      underlying: p["underlying_symbol"] || occ_fields[:root],
+      option_type: p["contract_type"] || occ_fields[:option_type_string],
+      expiration: p["expiration_date"] || occ_fields[:expiration_string],
+      strike: parse_float(p["strike_price"]) || occ_fields[:strike],
+      qty: parse_float(p["qty"]),
+      qty_available: parse_float(p["qty_available"]),
+      side: p["side"],
+      avg_entry: parse_float(p["avg_entry_price"]),
+      current_price: parse_float(p["current_price"]),
+      market_value: parse_float(p["market_value"]),
+      cost_basis: parse_float(p["cost_basis"]),
+      unrealized_pl: parse_float(p["unrealized_pl"]),
+      unrealized_plpc: parse_float(p["unrealized_plpc"])
+    }
+  end
+
+  @doc false
+  # Parse an Alpaca options order record into a bounded shape. Mirrors
+  # `parse_order/1` but layers in OCC-derived metadata so the LV can
+  # render underlying / expiration / strike without re-parsing in the
+  # template.
+  def parse_option_order(o) when is_map(o) do
+    symbol = o["symbol"] || o["asset_symbol"]
+    occ_fields = parse_occ_fields(symbol)
+
+    %{
+      id: o["id"],
+      symbol: symbol,
+      underlying: o["underlying_symbol"] || occ_fields[:root],
+      option_type: o["contract_type"] || occ_fields[:option_type_string],
+      expiration: o["expiration_date"] || occ_fields[:expiration_string],
+      strike: parse_float(o["strike_price"]) || occ_fields[:strike],
+      side: o["side"],
+      qty: parse_float(o["qty"]),
+      filled_qty: parse_float(o["filled_qty"]),
+      filled_avg_price: parse_float(o["filled_avg_price"]),
+      status: o["status"],
+      submitted_at: o["submitted_at"]
+    }
+  end
+
+  defp parse_occ_fields(symbol) do
+    case KiteAgentHub.Trading.OccSymbol.parse(symbol) do
+      {:ok, %{root: root, expiration_date: date, option_type: type, strike: strike}} ->
+        %{
+          root: root,
+          expiration_string: Date.to_iso8601(date),
+          option_type_string: Atom.to_string(type),
+          strike: strike
+        }
+
+      :error ->
+        %{}
     end
   end
 end
