@@ -5068,64 +5068,125 @@ defmodule KiteAgentHubWeb.DashboardLive do
                     </div>
                   <% end %>
 
-                  <%!-- Portfolio P&L Curve (cumulative net of fees over settled time) --%>
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-                    <div class="flex items-center justify-between mb-4">
-                      <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                        Portfolio P&L
-                      </p>
-                      <span class={
-                        "text-xs font-mono tabular-nums " <>
-                          if(data.total_settled_pnl >= 0, do: "text-emerald-400", else: "text-red-400")
-                      }>
-                        {if data.total_settled_pnl >= 0, do: "+", else: ""}${:erlang.float_to_binary(
-                          abs(data.total_settled_pnl),
-                          decimals: 2
-                        )} · {length(data.settlements)} settled
-                      </span>
+                  <%!-- Portfolio P&L Curve — PR-J.6 polish pass.
+                       Reference: Alpaca / Forex / Portfolio P&L graphs.
+                       640×220 viewBox, gradient fill keyed off net sign,
+                       anime.js draw-in mount via SparklineMount, endpoint
+                       marker + last-value chip, y-axis $ labels at peak
+                       and break-even, x-axis date chrome at edges. --%>
+                  <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent p-6 backdrop-blur-md">
+                    <div class="flex items-start justify-between gap-4 flex-wrap mb-5">
+                      <div>
+                        <p class="text-[10px] sm:text-xs text-teal-300/80 uppercase tracking-[0.3em]">
+                          Kalshi · Cumulative P&L
+                        </p>
+                        <p class="text-[10px] text-gray-600 mt-1 italic">
+                          Net of fees, ordered by settlement time
+                        </p>
+                      </div>
+                      <div class={[
+                        "inline-flex items-center gap-3 px-4 py-2 rounded-xl font-mono text-base tabular-nums shadow-lg",
+                        data.total_settled_pnl >= 0 && "bg-emerald-600 text-white",
+                        data.total_settled_pnl < 0 && "bg-red-600 text-white"
+                      ]}>
+                        <span class="text-[9px] uppercase tracking-[0.2em] text-white/70 border-r border-white/30 pr-3">
+                          Settled
+                        </span>
+                        <span>{if data.total_settled_pnl >= 0, do: "▲", else: "▼"}</span>
+                        <span>${:erlang.float_to_binary(abs(data.total_settled_pnl), decimals: 2)}</span>
+                        <span class="text-[10px] text-white/70 border-l border-white/30 pl-3">
+                          {length(data.settlements)} settled
+                        </span>
+                      </div>
                     </div>
                     <%= if length(data.settlements) > 1 do %>
                       <% chart_color = if data.total_settled_pnl >= 0, do: "#10b981", else: "#ef4444" %>
-                      <% pnl_points = kalshi_pnl_sparkline(data.settlements, 400, 150) %>
-                      <% zero_y = kalshi_pnl_zero_y(data.settlements, 150) %>
-                      <svg viewBox="0 0 400 160" class="w-full h-40" preserveAspectRatio="none">
-                        <line x1="0" y1="40" x2="400" y2="40" stroke="white" stroke-opacity="0.05" />
-                        <line x1="0" y1="80" x2="400" y2="80" stroke="white" stroke-opacity="0.05" />
-                        <line x1="0" y1="120" x2="400" y2="120" stroke="white" stroke-opacity="0.05" />
-                        <%!-- Break-even reference line at zero P&L --%>
-                        <line
-                          x1="0"
-                          y1={zero_y}
-                          x2="400"
-                          y2={zero_y}
-                          stroke="white"
-                          stroke-opacity="0.15"
-                          stroke-dasharray="3 3"
-                        />
-                        <defs>
-                          <linearGradient id="kalshi-pnl-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color={chart_color} stop-opacity="0.25" />
-                            <stop offset="100%" stop-color={chart_color} stop-opacity="0.0" />
-                          </linearGradient>
-                        </defs>
-                        <polygon
-                          points={"#{pnl_points} 400,#{zero_y} 0,#{zero_y}"}
-                          fill="url(#kalshi-pnl-fill)"
-                        />
-                        <polyline
-                          points={pnl_points}
-                          fill="none"
-                          stroke={chart_color}
-                          stroke-width="2"
-                          vector-effect="non-scaling-stroke"
-                        />
-                      </svg>
-                      <div class="flex justify-between mt-2 text-[10px] text-gray-600 font-mono">
-                        <span>Oldest settled</span>
-                        <span>Latest settled</span>
+                      <% pnl_points = kalshi_pnl_sparkline(data.settlements, 640, 200) %>
+                      <% zero_y = kalshi_pnl_zero_y(data.settlements, 200) %>
+                      <% endpoint = kalshi_pnl_endpoint(data.settlements, 640, 200) %>
+                      <% pnl_len = kalshi_pnl_path_length(data.settlements, 640, 200) %>
+                      <% {oldest_date, latest_date} = kalshi_pnl_dates(data.settlements) %>
+                      <% pnl_peak_label = kalshi_pnl_max_label(data.settlements) %>
+                      <div class="relative" id="kalshi-pnl-chart" phx-hook="SparklineMount" data-length={pnl_len}>
+                        <%!-- Y-axis labels (left edge) --%>
+                        <div class="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between py-2 pointer-events-none text-[10px] font-mono text-gray-600">
+                          <span>+{pnl_peak_label}</span>
+                          <span>$0</span>
+                          <span>-{pnl_peak_label}</span>
+                        </div>
+                        <svg viewBox="0 0 640 220" class="w-full h-56 pl-12" preserveAspectRatio="none">
+                          <%!-- Horizontal grid --%>
+                          <line x1="0" y1="50" x2="640" y2="50" stroke="white" stroke-opacity="0.05" />
+                          <line x1="0" y1="100" x2="640" y2="100" stroke="white" stroke-opacity="0.05" />
+                          <line x1="0" y1="150" x2="640" y2="150" stroke="white" stroke-opacity="0.05" />
+                          <%!-- Break-even reference line --%>
+                          <line
+                            x1="0"
+                            y1={zero_y}
+                            x2="640"
+                            y2={zero_y}
+                            stroke="white"
+                            stroke-opacity="0.2"
+                            stroke-dasharray="4 4"
+                          />
+                          <defs>
+                            <linearGradient id="kalshi-pnl-fill-v2" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stop-color={chart_color} stop-opacity="0.45" />
+                              <stop offset="100%" stop-color={chart_color} stop-opacity="0" />
+                            </linearGradient>
+                          </defs>
+                          <polygon
+                            points={"#{pnl_points} 640,#{zero_y} 0,#{zero_y}"}
+                            fill="url(#kalshi-pnl-fill-v2)"
+                          />
+                          <polyline
+                            points={pnl_points}
+                            fill="none"
+                            stroke={chart_color}
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            vector-effect="non-scaling-stroke"
+                          >
+                            <title>Cumulative settled P&L over time. Hover gridline points for context.</title>
+                          </polyline>
+                          <%= if endpoint do %>
+                            <circle
+                              cx={endpoint.x}
+                              cy={endpoint.y}
+                              r="4"
+                              fill={chart_color}
+                              stroke="white"
+                              stroke-width="1.5"
+                            />
+                          <% end %>
+                        </svg>
+                        <%!-- Last-value chip pinned at the curve endpoint.
+                             Positioned absolutely via percentage so it
+                             tracks the svg viewport on resize. --%>
+                        <%= if endpoint do %>
+                          <span
+                            class={[
+                              "absolute pointer-events-none px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold tabular-nums",
+                              endpoint.value >= 0 && "bg-emerald-500/90 text-white",
+                              endpoint.value < 0 && "bg-red-500/90 text-white"
+                            ]}
+                            style={"right: 4px; top: #{Float.round(endpoint.y / 220 * 100, 1)}%; transform: translateY(-50%);"}
+                          >
+                            {if endpoint.value >= 0, do: "+", else: ""}${:erlang.float_to_binary(
+                              abs(endpoint.value),
+                              decimals: 2
+                            )}
+                          </span>
+                        <% end %>
+                      </div>
+                      <%!-- X-axis date chrome --%>
+                      <div class="flex justify-between mt-3 pl-12 text-[10px] text-gray-600 font-mono">
+                        <span>{oldest_date}</span>
+                        <span>{latest_date}</span>
                       </div>
                     <% else %>
-                      <div class="py-10 text-center">
+                      <div class="py-14 text-center">
                         <p class="text-sm text-gray-600">
                           {if data.settlements == [],
                             do: "No settled positions yet.",
@@ -8156,6 +8217,121 @@ defmodule KiteAgentHubWeb.DashboardLive do
   end
 
   defp kalshi_pnl_zero_y(_, height), do: height * 1.0
+
+  # PR-J.6 helpers — endpoint coord for the last-value chip + path
+  # length for the SparklineMount draw-in animation + date label
+  # strings for the x-axis chrome.
+
+  @doc false
+  def kalshi_pnl_endpoint(settlements, width, height) when length(settlements) > 1 do
+    sorted =
+      settlements
+      |> Enum.reject(&is_nil(&1.settled_time))
+      |> Enum.sort_by(& &1.settled_time)
+
+    values =
+      sorted
+      |> Enum.scan(0.0, fn s, acc -> acc + (s.revenue - s.fees) end)
+
+    case values do
+      list when length(list) < 2 ->
+        nil
+
+      _ ->
+        min_v = Enum.min(values)
+        max_v = Enum.max(values)
+        range = max(max_v - min_v, 0.01)
+        count = length(values) - 1
+        last_v = List.last(values)
+        x = (count / count * width * 1.0) |> Float.round(1)
+        y = (height - (last_v - min_v) / range * height) |> Float.round(1)
+        %{x: x, y: y, value: Float.round(last_v, 2)}
+    end
+  end
+
+  def kalshi_pnl_endpoint(_, _, _), do: nil
+
+  @doc false
+  def kalshi_pnl_path_length(settlements, width, height) when length(settlements) > 1 do
+    case kalshi_pnl_sparkline(settlements, width, height) do
+      "" ->
+        0.0
+
+      points_str ->
+        points_str
+        |> String.split(" ", trim: true)
+        |> Enum.map(fn pair ->
+          case String.split(pair, ",") do
+            [x, y] ->
+              {String.to_float(x), String.to_float(y)}
+
+            _ ->
+              {0.0, 0.0}
+          end
+        end)
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.reduce(0.0, fn [{x1, y1}, {x2, y2}], acc ->
+          acc + :math.sqrt(:math.pow(x2 - x1, 2) + :math.pow(y2 - y1, 2))
+        end)
+        |> Float.round(1)
+    end
+  end
+
+  def kalshi_pnl_path_length(_, _, _), do: 0.0
+
+  @doc false
+  def kalshi_pnl_dates(settlements) when length(settlements) > 1 do
+    sorted =
+      settlements
+      |> Enum.reject(&is_nil(&1.settled_time))
+      |> Enum.sort_by(& &1.settled_time)
+
+    case sorted do
+      [first | _] = list ->
+        last = List.last(list)
+        {short_date(first.settled_time), short_date(last.settled_time)}
+
+      _ ->
+        {"—", "—"}
+    end
+  end
+
+  def kalshi_pnl_dates(_), do: {"—", "—"}
+
+  defp short_date(nil), do: "—"
+
+  defp short_date(iso) when is_binary(iso) do
+    case String.slice(iso, 0, 10) do
+      "" -> "—"
+      s -> s
+    end
+  end
+
+  defp short_date(_), do: "—"
+
+  @doc false
+  # Max absolute net P&L across the running cumulative — sets the
+  # `$N` y-axis label so the chart self-scales without hardcoding
+  # a band.
+  def kalshi_pnl_max_label(settlements) when length(settlements) > 1 do
+    sorted =
+      settlements
+      |> Enum.reject(&is_nil(&1.settled_time))
+      |> Enum.sort_by(& &1.settled_time)
+
+    values = Enum.scan(sorted, 0.0, fn s, acc -> acc + (s.revenue - s.fees) end)
+
+    case values do
+      [] ->
+        "$0"
+
+      _ ->
+        peak = values |> Enum.map(&abs/1) |> Enum.max()
+        "$" <> :erlang.float_to_binary(peak * 1.0, decimals: 2)
+    end
+  end
+
+  def kalshi_pnl_max_label(_), do: "$0"
 
   # Cross-broker portfolio breakdown. Reads each broker's loaded
   # data shape from the existing assigns (no new API calls — the
