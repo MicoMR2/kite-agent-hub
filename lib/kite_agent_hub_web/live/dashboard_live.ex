@@ -2270,6 +2270,12 @@ defmodule KiteAgentHubWeb.DashboardLive do
           AlpacaClient.portfolio_history(key_id, secret, api_period, api_timeframe, env)
 
         orders_result = AlpacaClient.orders(key_id, secret, 20, env)
+        # PR-G.1 — read-only options surface. Both calls fail soft so a
+        # 422/403 from the broker (paper-options is NVDA-only per
+        # feedback_kah_alpaca_options_chain) lands the tab in an empty
+        # state, never a crash.
+        options_positions_result = AlpacaClient.options_positions(key_id, secret, env)
+        options_orders_result = AlpacaClient.options_orders(key_id, secret, 25, env)
 
         case account_result do
           {:ok, account} ->
@@ -2292,9 +2298,27 @@ defmodule KiteAgentHubWeb.DashboardLive do
                 _ -> []
               end
 
+            options_positions =
+              case options_positions_result do
+                {:ok, op} -> op
+                _ -> []
+              end
+
+            options_orders =
+              case options_orders_result do
+                {:ok, oo} -> oo
+                _ -> []
+              end
+
             {:ok,
              %{
-               alpaca_data: %{account: account, positions: positions, orders: orders},
+               alpaca_data: %{
+                 account: account,
+                 positions: positions,
+                 orders: orders,
+                 options_positions: options_positions,
+                 options_orders: options_orders
+               },
                alpaca_history: history,
                alpaca_history_base_value: base_value,
                alpaca_period: period
@@ -4819,6 +4843,169 @@ defmodule KiteAgentHubWeb.DashboardLive do
                           <% end %>
                         </tbody>
                       </table>
+                    <% end %>
+                  </div>
+
+                  <%!-- ═══════════ ALPACA OPTIONS SUB-SECTION ═══════════
+                       PR-G.1 read-only options surface. Renders open
+                       options positions + recent options orders below
+                       the equity orders table. Paper options chain on
+                       Alpaca is currently NVDA-only (Mico flagged in
+                       feedback_kah_alpaca_options_chain); the empty
+                       state spells that out instead of leaving a blank
+                       card.
+                       CyberSec PR-G.1 conditions: server-rendered, all
+                       fields parsed via parse_option_position/1 +
+                       parse_option_order/1 (bounded shape), no raw
+                       broker payload passthrough, HEEx-escaped, no
+                       innerHTML. --%>
+                  <% options_positions = Map.get(data, :options_positions, []) %>
+                  <% options_orders = Map.get(data, :options_orders, []) %>
+                  <% any_options? = options_positions != [] or options_orders != [] %>
+                  <div class="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+                    <div class="px-4 sm:px-6 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+                      <div class="flex items-center gap-2">
+                        <p class="text-xs font-bold text-amber-300 uppercase tracking-[0.2em]">
+                          Options
+                        </p>
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/[0.06] text-[10px] font-mono text-amber-200">
+                          read-only
+                        </span>
+                      </div>
+                      <p class="text-[10px] text-gray-500 font-mono">
+                        paper-options is NVDA-only on Alpaca · trading lands in PR-G.2
+                      </p>
+                    </div>
+
+                    <%= if any_options? do %>
+                      <div class="grid grid-cols-1 lg:grid-cols-2 gap-0">
+                        <%!-- Options positions list --%>
+                        <div class="p-4 sm:p-6 border-b lg:border-b-0 lg:border-r border-white/10">
+                          <p class="text-[10px] text-gray-500 uppercase tracking-[0.2em] mb-3">
+                            Open contracts
+                          </p>
+                          <%= if options_positions == [] do %>
+                            <p class="text-xs text-gray-500">No open options positions.</p>
+                          <% else %>
+                            <ul class="space-y-2">
+                              <%= for op <- options_positions do %>
+                                <% upl = op.unrealized_pl || 0.0 %>
+                                <% up? = upl >= 0 %>
+                                <li
+                                  class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02]"
+                                  data-positive={if up?, do: "true", else: "false"}
+                                  data-negative={if up?, do: "false", else: "true"}
+                                >
+                                  <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-mono text-white truncate">
+                                      {op.underlying || op.symbol}
+                                      <span class={[
+                                        "ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider",
+                                        op.option_type == "call" &&
+                                          "text-emerald-300 border border-emerald-500/30 bg-emerald-500/10",
+                                        op.option_type == "put" &&
+                                          "text-red-300 border border-red-500/30 bg-red-500/10",
+                                        op.option_type not in ["call", "put"] &&
+                                          "text-gray-400 border border-white/10 bg-white/[0.03]"
+                                      ]}>
+                                        {op.option_type || "—"}
+                                      </span>
+                                    </p>
+                                    <p class="text-[10px] text-gray-500 font-mono mt-0.5">
+                                      {op.expiration || "—"} · strike {if op.strike,
+                                        do:
+                                          "$" <>
+                                            :erlang.float_to_binary(op.strike, decimals: 2),
+                                        else: "—"} · qty {op.qty || "—"}
+                                    </p>
+                                  </div>
+                                  <div class="text-right shrink-0">
+                                    <p class="text-xs font-mono tabular-nums text-white">
+                                      {if op.market_value,
+                                        do:
+                                          "$" <>
+                                            :erlang.float_to_binary(op.market_value, decimals: 2),
+                                        else: "—"}
+                                    </p>
+                                    <p class={[
+                                      "text-[10px] font-mono tabular-nums",
+                                      up? && "text-emerald-400",
+                                      not up? && "text-red-400"
+                                    ]}>
+                                      {if upl >= 0, do: "+", else: "-"}${:erlang.float_to_binary(
+                                        abs(upl),
+                                        decimals: 2
+                                      )}
+                                    </p>
+                                  </div>
+                                </li>
+                              <% end %>
+                            </ul>
+                          <% end %>
+                        </div>
+
+                        <%!-- Options orders list --%>
+                        <div class="p-4 sm:p-6">
+                          <p class="text-[10px] text-gray-500 uppercase tracking-[0.2em] mb-3">
+                            Recent orders
+                          </p>
+                          <%= if options_orders == [] do %>
+                            <p class="text-xs text-gray-500">No options orders yet.</p>
+                          <% else %>
+                            <ul class="space-y-2">
+                              <%= for oo <- options_orders do %>
+                                <li class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02]">
+                                  <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-mono text-white truncate">
+                                      {oo.underlying || oo.symbol}
+                                      <span class={[
+                                        "ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider border",
+                                        oo.side == "buy" &&
+                                          "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+                                        oo.side == "sell" &&
+                                          "text-red-400 border-red-500/30 bg-red-500/10",
+                                        oo.side not in ["buy", "sell"] &&
+                                          "text-gray-400 border-white/10 bg-white/[0.03]"
+                                      ]}>
+                                        {oo.side || "—"}
+                                      </span>
+                                    </p>
+                                    <p class="text-[10px] text-gray-500 font-mono mt-0.5">
+                                      {oo.option_type || "—"} · {oo.expiration || "—"} · strike {if oo.strike,
+                                        do:
+                                          "$" <>
+                                            :erlang.float_to_binary(oo.strike, decimals: 2),
+                                        else: "—"}
+                                    </p>
+                                  </div>
+                                  <div class="text-right shrink-0">
+                                    <p class="text-[10px] uppercase tracking-wider text-gray-400">
+                                      {oo.status || "—"}
+                                    </p>
+                                    <p class="text-[10px] font-mono text-gray-500 tabular-nums">
+                                      qty {oo.filled_qty || oo.qty || "—"}
+                                    </p>
+                                  </div>
+                                </li>
+                              <% end %>
+                            </ul>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% else %>
+                      <%!-- Friendly NVDA-only empty state (CyberSec ④) --%>
+                      <div class="px-4 sm:px-6 py-10 text-center">
+                        <p class="text-sm text-gray-400 mb-2">
+                          No options activity yet.
+                        </p>
+                        <p class="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+                          Alpaca's paper options chain is currently limited to
+                          <span class="font-mono text-amber-300">NVDA</span>
+                          (and a small allow-list). Once PR-G.2 lands, your trading
+                          agents can place single long calls / puts on supported
+                          tickers. This card stays read-only until then.
+                        </p>
+                      </div>
                     <% end %>
                   </div>
               <% end %>
